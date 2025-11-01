@@ -1,8 +1,12 @@
 import React from 'react';
 import { Modal, View, Text, TouchableOpacity, Pressable, Platform } from 'react-native';
-import Constants from 'expo-constants';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { useLocationSelection } from '../context/LocationContext';
+import type { RootStackParamList } from '../navigation/types';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 type AddressBottomSheetProps = {
   visible: boolean;
@@ -10,6 +14,7 @@ type AddressBottomSheetProps = {
 };
 
 export default function AddressBottomSheet({ visible, onClose }: AddressBottomSheetProps) {
+  const navigation = useNavigation<NavigationProp>();
   const { addressLine, placeLabel, city, coords, loading, error } = useUserLocation();
   const { selectedAddress, setSelectedAddress } = useLocationSelection();
 
@@ -28,16 +33,17 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
   }
 
   function handleAddNewAddress() {
-    // Placeholder: details to be implemented later
-    // Do NOT change selectedAddress yet to avoid flipping UI state
     onClose();
+    // Navigate to address search screen after closing the modal
+    setTimeout(() => {
+      navigation.navigate('AddressSearch');
+    }, 300);
   }
 
   const cardLabel = selectedAddress?.label || placeLabel || addressLine || 'Select your address';
   const cardCity = selectedAddress?.city || city || '';
   const previewCoords = selectedAddress?.coords || coords || null;
-  const androidMapsKey = (Constants as any)?.expoConfig?.android?.config?.googleMaps?.apiKey as string | undefined;
-  const canRenderAndroidMap = Platform.OS !== 'android' || Boolean(androidMapsKey);
+  const canRenderAndroidMap = true;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -75,27 +81,39 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
             {previewCoords && canRenderAndroidMap ? (
               <View className="h-28">
                 {(() => {
-                  // Lazy-load react-native-maps only when allowed to render
-                  const { default: MapView, Marker } = require('react-native-maps');
+                  // Single-source expo-maps only with simple guard
+                  function getExpoMapView() {
+                    try {
+                      const m = require('expo-maps');
+                      if (typeof m?.MapView === 'function') return m.MapView;
+                      if (typeof m?.default === 'function') return m.default;
+                      return null;
+                    } catch {}
+                    return null;
+                  }
+                  const MapView = getExpoMapView();
+                  const isValid = typeof MapView === 'function';
+                  if (!isValid) {
+                    return (
+                      <View className="flex-1 items-center justify-center bg-pink-50">
+                        <Text className="text-pink-500 text-xs mt-1">Map preview unavailable</Text>
+                      </View>
+                    );
+                  }
                   return (
                     <MapView
-                  style={{ flex: 1 }}
-                  initialRegion={{
-                    latitude: previewCoords.latitude,
-                    longitude: previewCoords.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
-                  }}
-                  scrollEnabled={false}
-                  rotateEnabled={false}
-                  pitchEnabled={false}
-                  zoomEnabled={false}
-                    >
-                      <Marker
-                        coordinate={{ latitude: previewCoords.latitude, longitude: previewCoords.longitude }}
-                        pinColor="#ec4899"
-                      />
-                    </MapView>
+                      style={{ flex: 1 }}
+                      initialRegion={{
+                        latitude: previewCoords.latitude,
+                        longitude: previewCoords.longitude,
+                        latitudeDelta: 0.01,
+                        longitudeDelta: 0.01,
+                      }}
+                      scrollEnabled={false}
+                      rotateEnabled={false}
+                      pitchEnabled={false}
+                      zoomEnabled={false}
+                    />
                   );
                 })()}
               </View>

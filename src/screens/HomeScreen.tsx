@@ -89,7 +89,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   // Animated values for the collapsible banner
-  const BANNER_MAX_HEIGHT = 140;
+  const BANNER_MAX_HEIGHT = 170;
   const LOCATION_HEADER_HEIGHT = 80; // Approximate height of location header
   const SEARCH_BAR_HEIGHT = 80; // Approximate height of search bar
   

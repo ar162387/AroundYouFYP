@@ -9,6 +9,8 @@ import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
+import AddressSearchScreen from '../screens/AddressSearchScreen';
+import AddressConfirmScreen from '../screens/AddressConfirmScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -72,6 +74,23 @@ export default function AppNavigator() {
           name="Search"
           component={SearchScreen}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="AddressSearch"
+          component={AddressSearchScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_bottom',
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="AddressConfirm"
+          component={AddressConfirmScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
         />
       </Stack.Navigator>
     </NavigationContainer>
