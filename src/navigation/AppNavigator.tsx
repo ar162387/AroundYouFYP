@@ -3,6 +3,11 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
+import HomeIcon from '../icons/HomeIcon';
+import SearchIcon from '../icons/SearchIcon';
+import ProfileIcon from '../icons/ProfileIcon';
+import FavoriteIcon from '../icons/FavoriteIcon';
+import CartIcon from '../icons/CartIcon';
 import type { RootStackParamList } from './types';
 
 import SplashScreen from '../screens/SplashScreen';
@@ -10,7 +15,8 @@ import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
 import AddressSearchScreen from '../screens/AddressSearchScreen';
-import AddressConfirmScreen from '../screens/AddressConfirmScreen';
+import LoginScreen from '../screens/LoginScreen';
+import SignUpScreen from '../screens/SignUpScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -31,7 +37,7 @@ function Tabs() {
         component={HomeScreen}
         options={{
           tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <IconText color={color} text="🏠" />,
+          tabBarIcon: ({ color }) => <HomeIcon color={color} />,
         }}
       />
       <Tab.Screen
@@ -39,7 +45,7 @@ function Tabs() {
         component={SearchScreen}
         options={{
           tabBarLabel: 'Search',
-          tabBarIcon: ({ color }) => <IconText color={color} text="🔍" />,
+          tabBarIcon: ({ color }) => <SearchIcon color={color} />,
         }}
       />
       <Tab.Screen
@@ -47,16 +53,14 @@ function Tabs() {
         component={ProfileScreen}
         options={{
           tabBarLabel: 'Profile',
-          tabBarIcon: ({ color }) => <IconText color={color} text="👤" />,
+          tabBarIcon: ({ color }) => <ProfileIcon color={color} />,
         }}
       />
     </Tab.Navigator>
   );
 }
 
-function IconText({ color, text }: { color: string; text: string }) {
-  return <Text style={{ color, fontSize: 24 }}>{text}</Text>;
-}
+// Removed old emoji IconText in favor of themed SVG icons
 
 export default function AppNavigator() {
   return (
@@ -85,11 +89,19 @@ export default function AppNavigator() {
           }}
         />
         <Stack.Screen
-          name="AddressConfirm"
-          component={AddressConfirmScreen}
+          name="Login"
+          component={LoginScreen}
           options={{ 
             headerShown: false,
-            animation: 'slide_from_right',
+            animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="SignUp"
+          component={SignUpScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'fade',
           }}
         />
       </Stack.Navigator>

@@ -3,11 +3,8 @@ export type RootStackParamList = {
   Home: undefined; // This now renders the Tabs
   Search: undefined;
   AddressSearch: undefined;
-  AddressConfirm: {
-    coords: { latitude: number; longitude: number };
-    label?: string;
-    address?: string;
-  };
+  Login: { returnTo?: keyof RootStackParamList };
+  SignUp: { returnTo?: keyof RootStackParamList };
 };
 
 declare global {

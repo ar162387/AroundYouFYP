@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import FavoriteIcon from '../icons/FavoriteIcon';
+import CartIcon from '../icons/CartIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface HeaderProps {
@@ -48,15 +50,14 @@ export default function Header({
             className="w-10 h-10 rounded-full bg-white/20 items-center justify-center mr-2"
             activeOpacity={0.7}
           >
-            <Text className="text-white text-xl">♡</Text>
+            <FavoriteIcon size={22} color="#ffffff" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onCartPress}
             className="w-10 h-10 rounded-full bg-white/20 items-center justify-center"
             activeOpacity={0.7}
           >
-            {/* Use shopping bags to differentiate from grocery cart icons */}
-            <Text className="text-white text-xl">🛍️</Text>
+            <CartIcon size={22} color="#ffffff" />
           </TouchableOpacity>
         </View>
       </View>

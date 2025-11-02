@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "scheme": "around-you",
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#3B82F6"
@@ -37,7 +38,13 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-maps"
+      [
+        "react-native-maps",
+        {
+          "googleMapsApiKey": "${EXPO_PUBLIC_GOOGLE_MAPS_API_KEY}"
+        }
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

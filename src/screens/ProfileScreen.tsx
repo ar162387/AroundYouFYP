@@ -1,8 +1,24 @@
 import React from 'react';
 import { View, Text, ScrollView, Switch, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
+
+type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
   const [pushEnabled, setPushEnabled] = React.useState(true);
+  const { user, signOut } = useAuth();
+  const navigation = useNavigation<ProfileScreenNavigationProp>();
+
+  const handleSignInPress = () => {
+    navigation.navigate('Login', { returnTo: 'ProfileTab' });
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+  };
 
   return (
     <View className="flex-1 bg-gray-50">
@@ -12,25 +28,50 @@ export default function ProfileScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
-        {/* User Info */}
-        <View className="bg-white px-4 py-5 mt-3">
-          <Text className="text-gray-500 text-xs">Name</Text>
-          <Text className="text-gray-900 text-lg font-semibold mt-1">John Doe</Text>
-
-          <View className="h-3" />
-
-          <Text className="text-gray-500 text-xs">Phone Number</Text>
-          <Text className="text-gray-900 text-lg font-semibold mt-1">+1 555 123 4567</Text>
-        </View>
-
-        {/* Quick Actions */}
-        <View className="px-4 mt-4">
-          <View className="flex-row justify-between">
-            <SquareAction title="Orders" emoji="🧾" onPress={() => {}} />
-            <SquareAction title="Favourites" emoji="⭐" onPress={() => {}} />
-            <SquareAction title="Addresses" emoji="🏠" onPress={() => {}} />
+        {!user ? (
+          // Not logged in state
+          <View className="px-4 mt-6">
+            <View className="bg-white rounded-2xl p-6 mb-4">
+              <Text className="text-gray-900 text-base text-center mb-4">
+                Please Sign Up / Login to shop online aroundYou
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                className="w-full bg-blue-600 rounded-xl items-center justify-center py-4"
+                onPress={handleSignInPress}
+              >
+                <Text className="text-white text-base font-bold">Sign Up / Login</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        ) : (
+          // Logged in state
+          <>
+            {/* User Info */}
+            <View className="bg-white px-4 py-5 mt-3">
+              <Text className="text-gray-500 text-xs">Name</Text>
+              <Text className="text-gray-900 text-lg font-semibold mt-1">
+                {user.name || 'Not set'}
+              </Text>
+
+              <View className="h-3" />
+
+              <Text className="text-gray-500 text-xs">Email</Text>
+              <Text className="text-gray-900 text-lg font-semibold mt-1">
+                {user.email || 'Not set'}
+              </Text>
+            </View>
+
+            {/* Quick Actions */}
+            <View className="px-4 mt-4">
+              <View className="flex-row justify-between">
+                <SquareAction title="Orders" emoji="🧾" onPress={() => {}} />
+                <SquareAction title="Favourites" emoji="⭐" onPress={() => {}} />
+                <SquareAction title="Addresses" emoji="🏠" onPress={() => {}} />
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Settings List */}
         <View className="bg-white mt-4">
@@ -53,19 +94,31 @@ export default function ProfileScreen() {
           />
           <Separator />
           <ListItem title="Terms & Policies" onPress={() => {}} />
+          <Separator />
+          {user && (
+            <>
+              <ListItem title="Switch to Merchant" onPress={() => {}} />
+              <Separator />
+            </>
+          )}
+          <ListItem title="Suggestion or Complaint" onPress={() => {}} />
+          <Separator />
+          <ListItem title="FAQs" onPress={() => {}} />
         </View>
 
         {/* Logout Button */}
-        <View className="px-4 mt-6">
-          <TouchableOpacity
-            activeOpacity={0.8}
-            className="w-full bg-red-500 rounded-2xl items-center justify-center py-4"
-            onPress={() => {}}
-          >
-            <Text className="text-white text-base font-bold">Logout</Text>
-          </TouchableOpacity>
-          <Text className="text-center text-gray-400 text-xs mt-2">Version 0.1</Text>
-        </View>
+        {user && (
+          <View className="px-4 mt-6">
+            <TouchableOpacity
+              activeOpacity={0.8}
+              className="w-full bg-red-500 rounded-2xl items-center justify-center py-4"
+              onPress={handleLogout}
+            >
+              <Text className="text-white text-base font-bold">Logout</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        <Text className="text-center text-gray-400 text-xs mt-2 px-4">Version 0.1</Text>
       </ScrollView>
     </View>
   );
@@ -100,5 +153,3 @@ function ListItem({ title, right, onPress }: { title: string; right?: React.Reac
 function Separator() {
   return <View className="h-px bg-gray-200 mx-4" />;
 }
-
-

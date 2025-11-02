@@ -1,10 +1,14 @@
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity, Pressable, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Modal, View, Text, TouchableOpacity, Pressable, Platform, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { useUserLocation } from '../hooks/useUserLocation';
 import { useLocationSelection } from '../context/LocationContext';
+import { useAuth } from '../context/AuthContext';
+import PinMarker from '../icons/PinMarker';
 import type { RootStackParamList } from '../navigation/types';
+import * as addressService from '../services/addressService';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -17,9 +21,59 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
   const navigation = useNavigation<NavigationProp>();
   const { addressLine, placeLabel, city, coords, loading, error } = useUserLocation();
   const { selectedAddress, setSelectedAddress } = useLocationSelection();
+  const { user } = useAuth();
+  const [savedAddresses, setSavedAddresses] = useState<addressService.ConsumerAddress[]>([]);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
 
   const isUsingCurrent = Boolean(selectedAddress?.isCurrent);
   const canUseCurrent = Boolean(coords) && !loading && !error;
+
+  // Fetch saved addresses when modal opens and user is authenticated
+  useEffect(() => {
+    if (visible && user) {
+      // Small delay to ensure navigation is complete if coming from address search
+      const timer = setTimeout(() => {
+        fetchSavedAddresses();
+      }, 300);
+      return () => clearTimeout(timer);
+    } else if (!user) {
+      setSavedAddresses([]);
+    }
+  }, [visible, user]);
+
+  const fetchSavedAddresses = async () => {
+    setLoadingAddresses(true);
+    try {
+      const { data, error: fetchError } = await addressService.getUserAddresses();
+      if (!fetchError && data) {
+        setSavedAddresses(data);
+      } else if (fetchError) {
+        console.log('Error fetching addresses:', fetchError);
+      }
+    } catch (err) {
+      console.log('Error fetching addresses:', err);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+
+  const handleSelectSavedAddress = (address: addressService.ConsumerAddress) => {
+    const coords = {
+      latitude: address.latitude,
+      longitude: address.longitude,
+    };
+    setSelectedAddress({
+      label: address.street_address,
+      city: address.city,
+      coords,
+      isCurrent: false,
+    });
+    onClose();
+  };
+
+  // Group addresses: with titles first, then without titles
+  const addressesWithTitles = savedAddresses.filter((addr) => addr.title);
+  const addressesWithoutTitles = savedAddresses.filter((addr) => !addr.title);
 
   function handleUseCurrentLocation() {
     if ((!placeLabel && !addressLine) || !coords) return;
@@ -43,13 +97,20 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
   const cardLabel = selectedAddress?.label || placeLabel || addressLine || 'Select your address';
   const cardCity = selectedAddress?.city || city || '';
   const previewCoords = selectedAddress?.coords || coords || null;
-  const canRenderAndroidMap = true;
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View className="flex-1 justify-end bg-black/40">
         <Pressable className="flex-1" onPress={onClose} />
-        <View className="bg-white rounded-t-2xl p-4">
+        <View 
+          className="bg-white rounded-t-2xl"
+          style={{ maxHeight: '80%' }}
+        >
+          <ScrollView 
+            showsVerticalScrollIndicator={false}
+            nestedScrollEnabled={true}
+          >
+            <View className="p-4 pb-6">
           {/* Grabber */}
           <View className="items-center mb-3">
             <View className="w-12 h-1.5 bg-gray-300 rounded-full" />
@@ -78,51 +139,83 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
 
           {/* 3. Selected Address Card with mini map preview */}
           <View className="bg-white border border-pink-200 rounded-xl overflow-hidden mb-3">
-            {previewCoords && canRenderAndroidMap ? (
-              <View className="h-28">
-                {(() => {
-                  // Single-source expo-maps only with simple guard
-                  function getExpoMapView() {
-                    try {
-                      const m = require('expo-maps');
-                      if (typeof m?.MapView === 'function') return m.MapView;
-                      if (typeof m?.default === 'function') return m.default;
-                      return null;
-                    } catch {}
-                    return null;
-                  }
-                  const MapView = getExpoMapView();
-                  const isValid = typeof MapView === 'function';
-                  if (!isValid) {
-                    return (
-                      <View className="flex-1 items-center justify-center bg-pink-50">
-                        <Text className="text-pink-500 text-xs mt-1">Map preview unavailable</Text>
-                      </View>
-                    );
-                  }
-                  return (
+            {previewCoords ? (
+              <View className="h-28" style={{ position: 'relative' }}>
+                {Platform.OS === 'ios' ? (
+                  <>
                     <MapView
+                      key={`map-ios-${previewCoords.latitude}-${previewCoords.longitude}`}
                       style={{ flex: 1 }}
-                      initialRegion={{
+                      region={{
                         latitude: previewCoords.latitude,
                         longitude: previewCoords.longitude,
-                        latitudeDelta: 0.01,
-                        longitudeDelta: 0.01,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
                       }}
                       scrollEnabled={false}
                       rotateEnabled={false}
                       pitchEnabled={false}
                       zoomEnabled={false}
                     />
-                  );
-                })()}
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        marginLeft: -16,
+                        marginTop: -30,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.25,
+                        shadowRadius: 3.5,
+                        shadowOffset: { width: 0, height: 2 },
+                        elevation: 6,
+                      }}
+                      pointerEvents="none"
+                    >
+                      <PinMarker size={32} color="#3B82F6" />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <MapView
+                      key={`map-android-${previewCoords.latitude}-${previewCoords.longitude}`}
+                      style={{ flex: 1 }}
+                      provider={PROVIDER_GOOGLE}
+                      region={{
+                        latitude: previewCoords.latitude,
+                        longitude: previewCoords.longitude,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }}
+                      scrollEnabled={false}
+                      rotateEnabled={false}
+                      pitchEnabled={false}
+                      zoomEnabled={false}
+                    />
+                    <View
+                      style={{
+                        position: 'absolute',
+                        left: '50%',
+                        top: '50%',
+                        marginLeft: -16,
+                        marginTop: -30,
+                        shadowColor: '#000',
+                        shadowOpacity: 0.25,
+                        shadowRadius: 3.5,
+                        shadowOffset: { width: 0, height: 2 },
+                        elevation: 6,
+                      }}
+                      pointerEvents="none"
+                    >
+                      <PinMarker size={32} color="#3B82F6" />
+                    </View>
+                  </>
+                )}
               </View>
             ) : (
               <View className="h-28 bg-pink-50 items-center justify-center">
                 <Text className="text-2xl">📍</Text>
-                <Text className="text-pink-500 text-xs mt-1">
-                  {previewCoords && !canRenderAndroidMap ? 'Map preview unavailable (API key missing)' : 'Map preview'}
-                </Text>
+                <Text className="text-pink-500 text-xs mt-1">Map preview</Text>
               </View>
             )}
             <View className="p-3">
@@ -130,6 +223,70 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
               <Text className="text-gray-600">{cardCity}</Text>
             </View>
           </View>
+
+          {/* 5. Saved Addresses List - only show if user is authenticated */}
+          {user && (
+            <>
+              {/* Saved Addresses with Titles */}
+              {addressesWithTitles.length > 0 && (
+                <View className="mt-2">
+                  {addressesWithTitles.map((address) => (
+                    <TouchableOpacity
+                      key={address.id}
+                      className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2"
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectSavedAddress(address)}
+                    >
+                      <View className="p-3">
+                        <View className="flex-row items-center mb-1">
+                          <Text className="text-base mr-2">
+                            {address.title === 'home' ? '🏠' : '🏢'}
+                          </Text>
+                          <Text className="text-sm font-semibold text-gray-700 capitalize">
+                            {address.title}
+                          </Text>
+                        </View>
+                        <Text className="text-base font-semibold text-gray-900">{address.street_address}</Text>
+                        <Text className="text-sm text-gray-600">{address.city}</Text>
+                        {address.landmark && (
+                          <Text className="text-xs text-gray-500 mt-1">{address.landmark}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Saved Addresses without Titles */}
+              {addressesWithoutTitles.length > 0 && (
+                <View className="mt-2">
+                  {addressesWithoutTitles.map((address) => (
+                    <TouchableOpacity
+                      key={address.id}
+                      className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2"
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectSavedAddress(address)}
+                    >
+                      <View className="p-3">
+                        <Text className="text-base font-semibold text-gray-900">{address.street_address}</Text>
+                        <Text className="text-sm text-gray-600">{address.city}</Text>
+                        {address.landmark && (
+                          <Text className="text-xs text-gray-500 mt-1">{address.landmark}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Loading state */}
+              {loadingAddresses && (
+                <View className="py-4 items-center">
+                  <Text className="text-gray-500 text-sm">Loading addresses...</Text>
+                </View>
+              )}
+            </>
+          )}
 
           {/* 4. Add New Address Option */}
           <TouchableOpacity
@@ -140,9 +297,8 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
             <Text className="text-xl mr-3">➕</Text>
             <Text className="text-base font-medium">Add New Address</Text>
           </TouchableOpacity>
-
-          {/* Footer spacing */}
-          <View className="mt-2" />
+          </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
