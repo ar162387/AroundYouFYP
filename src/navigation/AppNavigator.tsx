@@ -14,7 +14,9 @@ import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
-import AddressSearchScreen from '../screens/AddressSearchScreen';
+import AddressSearchScreen from '../screens/consumer/AddressSearchScreen';
+import ConsumerAddressManagementScreen from '../screens/consumer/ConsumerAddressManagementScreen';
+import MapTestScreen from '../screens/MapTestScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
 
@@ -72,6 +74,7 @@ export default function AppNavigator() {
           animation: 'fade',
         }}
       >
+        <Stack.Screen name="MapTest" component={MapTestScreen} />
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Home" component={Tabs} />
         <Stack.Screen
@@ -86,6 +89,14 @@ export default function AppNavigator() {
             headerShown: false,
             animation: 'slide_from_bottom',
             presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="ConsumerAddressManagement"
+          component={ConsumerAddressManagementScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
           }}
         />
         <Stack.Screen

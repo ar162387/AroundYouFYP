@@ -31,7 +31,10 @@ declare module 'react-native-maps' {
     children?: ReactNode;
   }
 
-  export default class MapView extends Component<MapViewProps> {}
+  export default class MapView extends Component<MapViewProps> {
+    animateToRegion(region: Region, duration?: number): void;
+    animateToCoordinate(coordinate: { latitude: number; longitude: number }, duration?: number): void;
+  }
 
   export const PROVIDER_GOOGLE: any;
 }

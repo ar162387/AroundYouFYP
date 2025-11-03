@@ -1,8 +1,8 @@
-import React from 'react';
+
 import { View, Text, TouchableOpacity } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import FavoriteIcon from '../icons/FavoriteIcon';
-import CartIcon from '../icons/CartIcon';
+import FavoriteIcon from '../../icons/FavoriteIcon';
+import CartIcon from '../../icons/CartIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface HeaderProps {

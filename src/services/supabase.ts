@@ -1,24 +1,30 @@
 import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import Constants from 'expo-constants';
+import Config from 'react-native-config';
 
-const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-const serviceRoleKey = Constants.expoConfig?.extra?.serviceRoleKey || process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = Config.SUPABASE_URL || '';
+const supabaseAnonKey = Config.SUPABASE_ANON_KEY || '';
+const serviceRoleKey = Config.SUPABASE_SERVICE_ROLE_KEY || null;
 
+// Don't throw - just log warning and create a placeholder client to prevent crashes
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase credentials. Please check your .env file.');
+  console.warn('Missing Supabase credentials. Some features may not work. Please check your .env file.');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+// Create Supabase client with fallback to prevent crashes
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      storage: AsyncStorage,
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: false,
+    },
+  }
+);
 
 // Admin client for server-side operations (using service_role key)
 // Note: In production, this should be used only in backend/serverless functions

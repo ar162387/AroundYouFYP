@@ -1,0 +1,74 @@
+--------- beginning of main
+11-03 05:37:55.041   615  1871 D FileUtils: Rounded bytes from 2070859776 to 4000000000
+11-03 05:37:55.040  6319  6319 W binder:6319_1: type=1400 audit(0.0:471): avc:  denied  { read } for  name="u:object_r:system_adbd_prop:s0" dev="tmpfs" ino=325 scontext=u:r:gmscore_app:s0:c512,c768 tcontext=u:object_r:system_adbd_prop:s0 tclass=file permissive=0 app=com.google.android.gms
+11-03 05:37:55.046  6319  6332 W libc    : Access denied finding property "persist.adb.tls_server.enable"
+11-03 05:37:55.080  6685 11013 W GmsUrlRequestImpl: [https://android.googleapis.com/auth/devicekey] Content-Type header is overwritten.
+11-03 05:37:55.854  1103  1320 D SatelliteController: iisInCarrierRoamingNbIotNtn: satellite is disabled
+11-03 05:37:55.870  6685 11013 W GLSUser : [AppCertManager] Exception while requesting key: 
+11-03 05:37:55.870  6685 11013 W GLSUser : java.util.concurrent.ExecutionException: cnwu: Parse Proto Exception with response code 400
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at grgu.j(:com.google.android.gms@254232035@25.42.32 (260400-820822052):21)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at grhd.u(:com.google.android.gms@254232035@25.42.32 (260400-820822052):71)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at ajku.b(:com.google.android.gms@254232035@25.42.32 (260400-820822052):439)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at ajks.a(:com.google.android.gms@254232035@25.42.32 (260400-820822052):67)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at ajko.a(:com.google.android.gms@254232035@25.42.32 (260400-820822052):3)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at ajkq.a(:com.google.android.gms@254232035@25.42.32 (260400-820822052):58)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at ajkq.b(:com.google.android.gms@254232035@25.42.32 (260400-820822052):21)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bcwm.m(:com.google.android.gms@254232035@25.42.32 (260400-820822052):13)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bcxb.f(:com.google.android.gms@254232035@25.42.32 (260400-820822052):10)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at gagx.a(:com.google.android.gms@254232035@25.42.32 (260400-820822052):45)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at gagr.b(:com.google.android.gms@254232035@25.42.32 (260400-820822052):279)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at gbjx.g(:com.google.android.gms@254232035@25.42.32 (260400-820822052):15)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at gbjt.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):163)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bddm.c(:com.google.android.gms@254232035@25.42.32 (260400-820822052):50)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bddm.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):73)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bdjd.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):8)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at java.lang.Thread.run(Thread.java:1119)
+11-03 05:37:55.870  6685 11013 W GLSUser : Caused by: cnwu: Parse Proto Exception with response code 400
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at cnxx.b(:com.google.android.gms@254232035@25.42.32 (260400-820822052):71)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at coaj.d(:com.google.android.gms@254232035@25.42.32 (260400-820822052):18)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at coba.onSucceeded(:com.google.android.gms@254232035@25.42.32 (260400-820822052):9)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at m1.nd.onSucceeded(:com.google.android.gms.dynamite_cronetdynamite@254232035@25.42.32 (260400-0):3)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at m1.lw.run(:com.google.android.gms.dynamite_cronetdynamite@254232035@25.42.32 (260400-0):21)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at m1.lq.run(:com.google.android.gms.dynamite_cronetdynamite@254232035@25.42.32 (260400-0):31)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bddm.c(:com.google.android.gms@254232035@25.42.32 (260400-820822052):50)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at bddm.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):92)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	... 4 more
+11-03 05:37:55.870  6685 11013 W GLSUser : Caused by: hlij: Protocol message contained an invalid tag (zero).
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hlfh.k(:com.google.android.gms@254232035@25.42.32 (260400-820822052):43)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hljh.c(:com.google.android.gms@254232035@25.42.32 (260400-820822052):399)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hljh.i(:com.google.android.gms@254232035@25.42.32 (260400-820822052):8)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hlhn.y(:com.google.android.gms@254232035@25.42.32 (260400-820822052):23)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hlhi.g(:com.google.android.gms@254232035@25.42.32 (260400-820822052):3)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hlfd.e(:com.google.android.gms@254232035@25.42.32 (260400-820822052):1)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hlfd.d(:com.google.android.gms@254232035@25.42.32 (260400-820822052):3)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at hlfd.p(:com.google.android.gms@254232035@25.42.32 (260400-820822052):1)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at cnxx.g(:com.google.android.gms@254232035@25.42.32 (260400-820822052):69)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	at cnxx.b(:com.google.android.gms@254232035@25.42.32 (260400-820822052):11)
+11-03 05:37:55.870  6685 11013 W GLSUser : 	... 11 more
+11-03 05:37:55.872  6685 11013 W GLSUser : [DeviceKeyStore] Cannot load key: Device key file not found.
+11-03 05:37:56.208  6685 14987 W Conscrypt: Could not set socket write timeout: java.net.SocketException: Socket closed
+11-03 05:37:56.209  6685 14987 W Conscrypt: 	at com.google.android.gms.org.conscrypt.Platform.setSocketWriteTimeout(:com.google.android.gms@254232035@25.42.32 (260400-820822052):204)
+11-03 05:37:56.209  6685 14987 W Conscrypt: 	at com.google.android.gms.org.conscrypt.ConscryptFileDescriptorSocket.setSoWriteTimeout(:com.google.android.gms@254232035@25.42.32 (260400-820822052):4)
+11-03 05:37:56.542  6685 14987 W Conscrypt: Could not set socket write timeout: java.net.SocketException: Socket closed
+11-03 05:37:56.543  6685 14987 W Conscrypt: 	at com.google.android.gms.org.conscrypt.Platform.setSocketWriteTimeout(:com.google.android.gms@254232035@25.42.32 (260400-820822052):204)
+11-03 05:37:56.543  6685 14987 W Conscrypt: 	at com.google.android.gms.org.conscrypt.ConscryptFileDescriptorSocket.setSoWriteTimeout(:com.google.android.gms@254232035@25.42.32 (260400-820822052):4)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: Failed to fetch weather tile
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: iggm: INVALID_ARGUMENT: Application credential header not valid. Please fix the client to pass a valid application credential header.
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at bcxb.s(:com.google.android.gms@254232035@25.42.32 (260400-820822052):31)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at bcxb.f(:com.google.android.gms@254232035@25.42.32 (260400-820822052):90)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at gagx.a(:com.google.android.gms@254232035@25.42.32 (260400-820822052):45)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at gagr.b(:com.google.android.gms@254232035@25.42.32 (260400-820822052):279)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at gbjx.g(:com.google.android.gms@254232035@25.42.32 (260400-820822052):15)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at gbjt.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):163)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at bddm.c(:com.google.android.gms@254232035@25.42.32 (260400-820822052):50)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at bddm.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):73)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1156)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:651)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at bdjd.run(:com.google.android.gms@254232035@25.42.32 (260400-820822052):8)
+11-03 05:37:57.270  6685 11013 W GmsWeatherProviderContr: 	at java.lang.Thread.run(Thread.java:1119)
+11-03 05:37:59.985  6685  6685 D BoundBrokerSvc: onUnbind: Intent { act=com.google.android.gms.common.telemetry.service.START dat=chimera-action:/... xflg=0x4 cmp=com.google.android.gms/.chimera.PersistentApiService }
+--------- beginning of system
+11-03 05:37:59.987   615  1641 W ProcessStats: Tracking association SourceState{c5f22b5 com.google.android.gms.persistent/10148 BFgs #17201} whose proc state 4 is better than process ProcessState{1d3e0b com.google.android.gms.unstable/10148 pkg=com.google.android.gms} proc state 14 (11 skipped)
+11-03 05:38:05.853  1103  1320 D SatelliteController: iisInCarrierRoamingNbIotNtn: satellite is disabled

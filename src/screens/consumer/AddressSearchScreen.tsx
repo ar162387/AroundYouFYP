@@ -12,18 +12,20 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  PermissionsAndroid,
 } from 'react-native';
-import * as Location from 'expo-location';
+import Geolocation from '@react-native-community/geolocation';
+import Config from 'react-native-config';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
-import PinMarker from '../icons/PinMarker';
-import CenterHairline from '../icons/CenterHairline';
+import PinMarker from '../../icons/PinMarker';
+import CenterHairline from '../../icons/CenterHairline';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/types';
-import { useUserLocation } from '../hooks/useUserLocation';
-import { useLocationSelection } from '../context/LocationContext';
-import { useAuth } from '../context/AuthContext';
-import * as addressService from '../services/addressService';
+import type { RootStackParamList } from '../../navigation/types';
+import { useUserLocation } from '../../hooks/useUserLocation';
+import { useLocationSelection } from '../../context/LocationContext';
+import { useAuth } from '../../context/AuthContext';
+import * as addressService from '../../services/addressService';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -158,7 +160,7 @@ export default function AddressSearchScreen() {
 
   // Geoapify Address Autocomplete (no Google billing required)
   const fetchGeoapifyAutocomplete = async (q: string) => {
-    const key = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
+    const key = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
     const bias = userCoords ? `&bias=proximity:${userCoords.longitude},${userCoords.latitude}` : '';
     const url = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encodeURIComponent(q)}&limit=10&format=json${bias}&apiKey=${key}`;
     try {
@@ -243,36 +245,37 @@ export default function AddressSearchScreen() {
       if (locatingRef.current) return;
       locatingRef.current = true;
 
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        locatingRef.current = false;
-        return;
-      }
-
-      const withTimeout = <T,>(p: Promise<T>, ms: number) =>
-        Promise.race([
-          p,
-          new Promise<T>((_, reject) => setTimeout(() => reject(new Error('loc-timeout')), ms)) as Promise<T>,
-        ]);
-
-      let position = null as Location.LocationObject | null;
-      try {
-        position = await withTimeout(
-          Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
-          4000,
+      // Request location permission
+      if (Platform.OS === 'android') {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
         );
-      } catch {}
-
-      if (!position) {
-        try {
-          position = await Location.getLastKnownPositionAsync();
-        } catch {}
+        if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+          locatingRef.current = false;
+          return;
+        }
       }
 
-      if (position?.coords) {
+      // Get current position with timeout
+      const position = await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+        const timeout = setTimeout(() => resolve(null), 4000);
+        Geolocation.getCurrentPosition(
+          (pos) => {
+            clearTimeout(timeout);
+            resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+          },
+          () => {
+            clearTimeout(timeout);
+            resolve(null);
+          },
+          { enableHighAccuracy: false, timeout: 4000, maximumAge: 10000 }
+        );
+      });
+
+      if (position) {
         const c = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
+          latitude: position.latitude,
+          longitude: position.longitude,
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         };
@@ -337,15 +340,24 @@ export default function AddressSearchScreen() {
                   latitude: region?.latitude ?? mapRegion.latitude,
                   longitude: region?.longitude ?? mapRegion.longitude,
                 };
-                const r = await Location.reverseGeocodeAsync(center);
-                if (r && r.length > 0) {
-                  const a = r[0];
-                  const full = [a.name, a.street, a.district, a.city, a.region].filter(Boolean).join(', ');
-                  const streetLine = buildStreetLine(a);
+                // Use Geoapify Reverse Geocoding API
+                const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
+                const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${center.latitude}&lon=${center.longitude}&format=json&apiKey=${geoapifyKey}`;
+                const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
+                const json = await res.json();
+                if (json?.results?.length > 0) {
+                  const result = json.results[0];
+                  const street = result?.street || '';
+                  const houseNumber = result?.housenumber || '';
+                  const district = result?.district || result?.suburb || '';
+                  const city = result?.city || '';
+                  const state = result?.state || '';
+                  const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
+                  const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
                   setLastReverse({
                     formatted: full,
-                    city: (a.city || a.district || '') as string,
-                    region: (a.region || '') as string,
+                    city: (city || district || '') as string,
+                    region: (state || '') as string,
                     streetLine,
                   });
                 }
@@ -392,15 +404,24 @@ export default function AddressSearchScreen() {
                   latitude: region?.latitude ?? mapRegion.latitude,
                   longitude: region?.longitude ?? mapRegion.longitude,
                 };
-                const r = await Location.reverseGeocodeAsync(center);
-                if (r && r.length > 0) {
-                  const a = r[0];
-                  const full = [a.name, a.street, a.district, a.city, a.region].filter(Boolean).join(', ');
-                  const streetLine = buildStreetLine(a);
+                // Use Geoapify Reverse Geocoding API
+                const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
+                const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${center.latitude}&lon=${center.longitude}&format=json&apiKey=${geoapifyKey}`;
+                const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
+                const json = await res.json();
+                if (json?.results?.length > 0) {
+                  const result = json.results[0];
+                  const street = result?.street || '';
+                  const houseNumber = result?.housenumber || '';
+                  const district = result?.district || result?.suburb || '';
+                  const city = result?.city || '';
+                  const state = result?.state || '';
+                  const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
+                  const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
                   setLastReverse({
                     formatted: full,
-                    city: (a.city || a.district || '') as string,
-                    region: (a.region || '') as string,
+                    city: (city || district || '') as string,
+                    region: (state || '') as string,
                     streetLine,
                   });
                 }

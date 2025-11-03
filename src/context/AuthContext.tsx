@@ -20,28 +20,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for existing session
-    checkSession();
+    let subscription: any = null;
 
-    // Listen for auth state changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const { user: currentUser, error } = await authService.getCurrentUser();
-        if (!error && currentUser) {
-          setUser(currentUser);
-        } else {
+    try {
+      // Check for existing session
+      checkSession();
+
+      // Listen for auth state changes
+      const {
+        data: { subscription: authSubscription },
+      } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        try {
+          if (session?.user) {
+            const { user: currentUser, error } = await authService.getCurrentUser();
+            if (!error && currentUser) {
+              setUser(currentUser);
+            } else {
+              setUser(null);
+            }
+          } else {
+            setUser(null);
+          }
+        } catch (error) {
+          console.error('Auth state change error:', error);
           setUser(null);
+        } finally {
+          setLoading(false);
         }
-      } else {
-        setUser(null);
-      }
+      });
+      subscription = authSubscription;
+    } catch (error) {
+      console.error('Failed to initialize auth state listener:', error);
       setLoading(false);
-    });
+    }
 
     return () => {
-      subscription.unsubscribe();
+      if (subscription) {
+        try {
+          subscription.unsubscribe();
+        } catch (error) {
+          console.error('Error unsubscribing from auth:', error);
+        }
+      }
     };
   }, []);
 

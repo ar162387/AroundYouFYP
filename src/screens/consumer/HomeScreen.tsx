@@ -3,15 +3,15 @@ import { View, Text, ScrollView, TouchableOpacity, Animated, StatusBar } from 'r
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/types';
+import type { RootStackParamList } from '../../navigation/types';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
-import Header from '../components/Header';
-import AddressBottomSheet from '../components/consumer/AddressBottomSheet';
-import CategoryIcon from '../components/CategoryIcon';
-import ShopCard from '../components/ShopCard';
-import type { Shop } from '../services/supabase';
-import { useUserLocation } from '../hooks/useUserLocation';
-import { useLocationSelection } from '../context/LocationContext';
+import Header from '../../components/consumer/Header';
+import AddressBottomSheet from '../../components/consumer/AddressBottomSheet';
+import CategoryIcon from '../../components/CategoryIcon';
+import ShopCard from '../../components/consumer/ShopCard';
+import type { Shop } from '../../services/supabase';
+import { useUserLocation } from '../../hooks/consumer/useUserLocation';
+import { useLocationSelection } from '../../context/LocationContext';
 import LinearGradient from 'react-native-linear-gradient';
 
 // Dummy data for shops

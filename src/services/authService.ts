@@ -1,11 +1,6 @@
 import { supabase, supabaseAdmin } from './supabase';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
-import Constants from 'expo-constants';
-
-// Complete the auth session in the browser
-WebBrowser.maybeCompleteAuthSession();
+import InAppBrowser from 'react-native-inappbrowser-reborn';
+import { Linking } from 'react-native';
 
 export type UserRole = 'consumer' | 'merchant' | 'admin';
 
@@ -197,10 +192,7 @@ export async function signInWithEmail(
 // Google Sign In
 export async function signInWithGoogle(): Promise<{ user: User | null; error: AuthError | null }> {
   try {
-    const redirectTo = makeRedirectUri({
-      scheme: Constants.expoConfig?.scheme || 'around-you',
-      path: 'auth/callback',
-    });
+    const redirectTo = 'around-you://auth/callback';
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -219,119 +211,132 @@ export async function signInWithGoogle(): Promise<{ user: User | null; error: Au
 
     // Open the auth URL
     if (data.url) {
-      const result = await WebBrowser.openAuthSessionAsync(
-        data.url,
-        redirectTo
-      );
-
-      if (result.type === 'success' && result.url) {
-        // Parse the callback URL to extract tokens or code
-        const url = new URL(result.url);
-        const hashParams = new URLSearchParams(url.hash.substring(1));
-        const accessToken = hashParams.get('access_token') || url.searchParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token') || url.searchParams.get('refresh_token');
-        const code = url.searchParams.get('code');
-
-        // If we have tokens directly, use them
-        if (accessToken && refreshToken) {
-          const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
+      try {
+        if (await InAppBrowser.isAvailable()) {
+          const result = await InAppBrowser.openAuth(data.url, redirectTo, {
+            ephemeralWebSession: false,
+            showTitle: false,
+            enableUrlBarHiding: true,
+            enableDefaultShare: false,
           });
 
-          if (sessionError) {
-            return { user: null, error: { message: sessionError.message } };
-          }
+          if (result.type === 'success' && result.url) {
+            // Parse the callback URL to extract tokens or code
+            const url = new URL(result.url);
+            const hashParams = new URLSearchParams(url.hash.substring(1));
+            const accessToken = hashParams.get('access_token') || url.searchParams.get('access_token');
+            const refreshToken = hashParams.get('refresh_token') || url.searchParams.get('refresh_token');
+            const code = url.searchParams.get('code');
 
-          if (!sessionData.user) {
-            return { user: null, error: { message: 'Failed to sign in' } };
-          }
+            // If we have tokens directly, use them
+            if (accessToken && refreshToken) {
+              const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
 
-          // Auto-confirm user email if not confirmed (for Google OAuth signups)
-          if (supabaseAdmin && !sessionData.user.email_confirmed_at) {
-            try {
-              const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
-                sessionData.user.id,
-                {
-                  email_confirm: true,
-                }
-              );
-              if (confirmError) {
-                console.warn('Failed to auto-confirm user:', confirmError);
+              if (sessionError) {
+                return { user: null, error: { message: sessionError.message } };
               }
-            } catch (error) {
-              console.warn('Error confirming user:', error);
+
+              if (!sessionData.user) {
+                return { user: null, error: { message: 'Failed to sign in' } };
+              }
+
+              // Auto-confirm user email if not confirmed (for Google OAuth signups)
+              if (supabaseAdmin && !sessionData.user.email_confirmed_at) {
+                try {
+                  const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
+                    sessionData.user.id,
+                    {
+                      email_confirm: true,
+                    }
+                  );
+                  if (confirmError) {
+                    console.warn('Failed to auto-confirm user:', confirmError);
+                  }
+                } catch (error) {
+                  console.warn('Error confirming user:', error);
+                }
+              }
+
+              // Wait a bit for the trigger to create the profile, then fetch it
+              await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
+
+              // Fetch user profile (trigger should have created it)
+              const { data: profile, error: profileError } = await supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('id', sessionData.user.id)
+                .single();
+
+              // If profile doesn't exist yet, use function to create it (bypasses RLS)
+              if (profileError && profileError.code === 'PGRST116') {
+                const { error: createError } = await supabase.rpc('create_user_profile_if_not_exists', {
+                  user_id: sessionData.user.id,
+                  user_email: sessionData.user.email || '',
+                  user_name: sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
+                  user_role: 'consumer',
+                });
+
+                if (createError) {
+                  console.warn('Profile creation error:', createError);
+                }
+
+                // Fetch again after function call
+                const { data: newProfile } = await supabase
+                  .from('user_profiles')
+                  .select('*')
+                  .eq('id', sessionData.user.id)
+                  .single();
+
+                const user: User = {
+                  id: sessionData.user.id,
+                  email: sessionData.user.email,
+                  name: newProfile?.name || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
+                  role: (newProfile?.role as UserRole) || 'consumer',
+                  created_at: sessionData.user.created_at,
+                };
+
+                return { user, error: null };
+              }
+
+              const user: User = {
+                id: sessionData.user.id,
+                email: sessionData.user.email,
+                name: profile?.name || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
+                role: (profile?.role as UserRole) || 'consumer',
+                created_at: sessionData.user.created_at,
+              };
+
+              return { user, error: null };
+            }
+
+            // If we have a code, exchange it for tokens (Supabase handles this automatically via callback)
+            if (code) {
+              // Supabase should handle the code exchange automatically
+              // Wait for the session to be established
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              const { user: currentUser, error: userError } = await getCurrentUser();
+              if (userError || !currentUser) {
+                return { user: null, error: { message: 'Failed to complete sign in' } };
+              }
+              return { user: currentUser, error: null };
             }
           }
 
-          // Wait a bit for the trigger to create the profile, then fetch it
-          await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
-
-          // Fetch user profile (trigger should have created it)
-          const { data: profile, error: profileError } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', sessionData.user.id)
-            .single();
-
-          // If profile doesn't exist yet, use function to create it (bypasses RLS)
-          if (profileError && profileError.code === 'PGRST116') {
-            const { error: createError } = await supabase.rpc('create_user_profile_if_not_exists', {
-              user_id: sessionData.user.id,
-              user_email: sessionData.user.email || '',
-              user_name: sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
-              user_role: 'consumer',
-            });
-
-            if (createError) {
-              console.warn('Profile creation error:', createError);
-            }
-
-            // Fetch again after function call
-            const { data: newProfile } = await supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('id', sessionData.user.id)
-              .single();
-
-            const user: User = {
-              id: sessionData.user.id,
-              email: sessionData.user.email,
-              name: newProfile?.name || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
-              role: (newProfile?.role as UserRole) || 'consumer',
-              created_at: sessionData.user.created_at,
-            };
-
-            return { user, error: null };
+          if (result.type === 'cancel') {
+            return { user: null, error: { message: 'Google sign-in was cancelled' } };
           }
-
-          const user: User = {
-            id: sessionData.user.id,
-            email: sessionData.user.email,
-            name: profile?.name || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
-            role: (profile?.role as UserRole) || 'consumer',
-            created_at: sessionData.user.created_at,
-          };
-
-          return { user, error: null };
+        } else {
+          // Fallback to Linking if InAppBrowser is not available
+          await Linking.openURL(data.url);
+          return { user: null, error: { message: 'Please complete sign-in in your browser and return to the app' } };
         }
-
-        // If we have a code, exchange it for tokens (Supabase handles this automatically via callback)
-        if (code) {
-          // Supabase should handle the code exchange automatically
-          // Wait for the session to be established
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          const { user: currentUser, error: userError } = await getCurrentUser();
-          if (userError || !currentUser) {
-            return { user: null, error: { message: 'Failed to complete sign in' } };
-          }
-          return { user: currentUser, error: null };
-        }
-      }
-
-      if (result.type === 'cancel') {
-        return { user: null, error: { message: 'Google sign-in was cancelled' } };
+      } catch (err: any) {
+        console.error('InAppBrowser error:', err);
+        return { user: null, error: { message: err.message || 'Failed to open browser' } };
       }
     }
 

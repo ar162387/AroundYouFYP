@@ -45,12 +45,12 @@ export function useUserLocation(): UserLocationState {
         }
         // iOS permissions are handled in Info.plist
 
-        // Get current position
+        // Get current position with shorter timeout
         const position = await new Promise<{ latitude: number; longitude: number }>((resolve, reject) => {
           Geolocation.getCurrentPosition(
             (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
             (err) => reject(err),
-            { enableHighAccuracy: false, timeout: 15000, maximumAge: 10000 }
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 10000 }
           );
         });
 
@@ -58,43 +58,38 @@ export function useUserLocation(): UserLocationState {
         const { latitude, longitude } = position;
         setCoords({ latitude, longitude });
 
-        // Google Geocoding API first (key provided in app init)
-        const googleKey = Config.GOOGLE_MAPS_API_KEY;
+        // Use Geoapify Reverse Geocoding API (faster and no Google billing)
+        const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
         let line: string | null = null;
-        if (googleKey) {
-          try {
-            const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${googleKey}&language=en`;
-            const res = await fetch(url);
-            const json = await res.json();
-            if (json?.status === 'OK' && Array.isArray(json.results) && json.results.length > 0) {
-              const primary = json.results[0];
-              // Prefer a concise label from components
-              const components = primary.address_components || [];
-              const streetNumber = components.find((c: any) => c.types.includes('street_number'))?.long_name;
-              const route = components.find((c: any) => c.types.includes('route'))?.long_name;
-              const sublocality1 = components.find((c: any) => c.types.includes('sublocality_level_1'))?.long_name;
-              const sublocality = components.find((c: any) => c.types.includes('sublocality'))?.long_name;
-              const neighborhood = components.find((c: any) => c.types.includes('neighborhood'))?.long_name;
-              const computedCity = components.find((c: any) => c.types.includes('locality'))?.long_name
-                || components.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
-              const region = components.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name;
-              const part1 = [streetNumber, route].filter(Boolean).join(' ');
-              line = [part1, neighborhood, city || region].filter(Boolean).join(', ')
-                || primary.formatted_address
-                || null;
+        try {
+          const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&format=json&apiKey=${geoapifyKey}`;
+          const res = await fetch(url, { 
+            headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any 
+          });
+          const json = await res.json();
+          if (json?.results?.length > 0) {
+            const result = json.results[0];
+            const street = result?.street || '';
+            const houseNumber = result?.housenumber || '';
+            const district = result?.district || result?.suburb || '';
+            const neighborhood = district || result?.neighbourhood || '';
+            const computedCity = result?.city || '';
+            const state = result?.state || '';
+            
+            // Build address line
+            const part1 = [houseNumber, street].filter(Boolean).join(' ');
+            line = [part1, neighborhood, computedCity, state].filter(Boolean).join(', ')
+              || result?.formatted
+              || null;
 
-              // Set concise place label preference order
-              const concise = sublocality1 || sublocality || neighborhood || route || part1 || null;
-              setPlaceLabel(concise);
-              setCity(computedCity || null);
-            }
-          } catch (_) {
-            // Ignore and fallback
+            // Set concise place label (prefer district/suburb/neighborhood)
+            const concise = district || neighborhood || street || part1 || null;
+            setPlaceLabel(concise);
+            setCity(computedCity || null);
           }
+        } catch (_) {
+          // Silent fail - coords are still available
         }
-
-        // If Google API didn't work or wasn't available, we already have the best data from Google's response
-        // No fallback reverse geocoding since expo-location is removed
 
         setAddressLine(line);
       } catch (e: any) {

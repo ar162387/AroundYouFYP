@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, Easing } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
@@ -9,8 +9,8 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
 export default function SplashScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const scaleAnim = new Animated.Value(0);
-  const fadeAnim = new Animated.Value(0);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Animate the text popping in
@@ -31,11 +31,15 @@ export default function SplashScreen() {
 
     // Navigate to Home after 2.5 seconds
     const timer = setTimeout(() => {
-      navigation.replace('Home');
+      try {
+        navigation.replace('Home');
+      } catch (error) {
+        console.error('Navigation error:', error);
+      }
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [scaleAnim, fadeAnim, navigation]);
 
   return (
     <LinearGradient
