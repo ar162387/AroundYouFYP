@@ -1,23 +1,149 @@
-import React from 'react';
-import { View, Text, ScrollView, Switch, TouchableOpacity } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, Switch, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
+import OrdersIcon from '../icons/OrdersIcon';
+import AddressIcon from '../icons/AddressIcon';
+import FavoriteIcon from '../icons/FavoriteIcon';
+import * as merchantService from '../services/merchant/merchantService';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
-  const [pushEnabled, setPushEnabled] = React.useState(true);
-  const { user, signOut } = useAuth();
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isConsumerDefault, setIsConsumerDefault] = useState(true);
+  const [isSwitchingToMerchant, setIsSwitchingToMerchant] = useState(false);
+  const { user, signOut, setDefaultRole, getDefaultRole } = useAuth();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
 
+  const loadDefaultRole = async () => {
+    try {
+      if (getDefaultRole) {
+        const role = await getDefaultRole();
+        setIsConsumerDefault(role === 'consumer');
+      } else {
+        // Default to consumer if not set
+        setIsConsumerDefault(true);
+      }
+    } catch (error) {
+      // Default to consumer if error
+      setIsConsumerDefault(true);
+    }
+  };
+
+  useEffect(() => {
+    loadDefaultRole();
+  }, []);
+
+  // Refresh default role when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDefaultRole();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
+
   const handleSignInPress = () => {
-    navigation.navigate('Login', { returnTo: 'ProfileTab' });
+    navigation.navigate('Login', { returnTo: 'Home' });
+  };
+
+  const handleSwitchToMerchant = async () => {
+    console.log('handleSwitchToMerchant called!');
+    
+    if (!user) {
+      Alert.alert('Error', 'Please log in first');
+      return;
+    }
+
+    setIsSwitchingToMerchant(true);
+    try {
+      console.log('Checking merchant account for user:', user.id);
+      // Check if merchant account exists
+      const { merchant, error } = await merchantService.getMerchantAccount(user.id);
+      
+      console.log('Merchant account result:', { merchant, error });
+      
+      if (error && error.message) {
+        console.error('Error fetching merchant account:', error);
+        Alert.alert('Error', error.message);
+        setIsSwitchingToMerchant(false);
+        return;
+      }
+
+      if (merchant) {
+        // Merchant account exists, go to dashboard
+        console.log('Merchant account found, navigating to dashboard');
+        navigation.navigate('MerchantDashboard');
+      } else {
+        // No merchant account, show registration survey
+        console.log('No merchant account found, navigating to registration survey');
+        navigation.navigate('MerchantRegistrationSurvey');
+      }
+    } catch (error: any) {
+      console.error('Exception in handleSwitchToMerchant:', error);
+      Alert.alert('Error', error.message || 'Failed to check merchant account');
+    } finally {
+      setIsSwitchingToMerchant(false);
+    }
+  };
+
+  const handleSetAsDefault = async (value: boolean) => {
+    try {
+      if (value) {
+        // Setting consumer as default
+        if (setDefaultRole) {
+          await setDefaultRole('consumer');
+        }
+        setIsConsumerDefault(true);
+        Alert.alert('Success', 'Consumer mode set as default');
+      } else {
+        // Disabling consumer default means setting merchant as default
+        if (setDefaultRole) {
+          await setDefaultRole('merchant');
+        }
+        setIsConsumerDefault(false);
+        Alert.alert('Success', 'Merchant mode set as default');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to set default role');
+    }
   };
 
   const handleLogout = async () => {
-    await signOut();
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoggingOut(true);
+            try {
+              await signOut();
+              // Navigate to home after successful logout
+              navigation.navigate('Home');
+            } catch (error: any) {
+              Alert.alert(
+                'Logout Error',
+                error?.message || 'Failed to logout. Please try again.',
+                [{ text: 'OK' }]
+              );
+            } finally {
+              setIsLoggingOut(false);
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   return (
@@ -65,9 +191,21 @@ export default function ProfileScreen() {
             {/* Quick Actions */}
             <View className="px-4 mt-4">
               <View className="flex-row justify-between">
-                <SquareAction title="Orders" emoji="🧾" onPress={() => {}} />
-                <SquareAction title="Favourites" emoji="⭐" onPress={() => {}} />
-                <SquareAction title="Addresses" emoji="🏠" onPress={() => {}} />
+                <SquareAction 
+                  title="Orders" 
+                  icon={<OrdersIcon size={32} color="#3B82F6" />}
+                  onPress={() => {}} 
+                />
+                <SquareAction 
+                  title="Favourites" 
+                  icon={<FavoriteIcon size={32} color="#3B82F6" />}
+                  onPress={() => {}} 
+                />
+                <SquareAction 
+                  title="Addresses" 
+                  icon={<AddressIcon size={32} color="#3B82F6" />}
+                  onPress={() => navigation.navigate('ConsumerAddressManagement')} 
+                />
               </View>
             </View>
           </>
@@ -97,7 +235,24 @@ export default function ProfileScreen() {
           <Separator />
           {user && (
             <>
-              <ListItem title="Switch to Merchant" onPress={() => {}} />
+              <ListItem 
+                title="Switch to Merchant" 
+                onPress={handleSwitchToMerchant}
+                right={isSwitchingToMerchant ? <ActivityIndicator size="small" color="#2563eb" /> : undefined}
+              />
+              <Separator />
+              <ListItem
+                title="Set this role as default"
+                right={
+                  <Switch
+                    value={isConsumerDefault}
+                    onValueChange={handleSetAsDefault}
+                    disabled={false}
+                    thumbColor={isConsumerDefault ? '#2563eb' : '#f4f3f4'}
+                    trackColor={{ true: '#93c5fd', false: '#d1d5db' }}
+                  />
+                }
+              />
               <Separator />
             </>
           )}
@@ -113,8 +268,13 @@ export default function ProfileScreen() {
               activeOpacity={0.8}
               className="w-full bg-red-500 rounded-2xl items-center justify-center py-4"
               onPress={handleLogout}
+              disabled={isLoggingOut}
             >
-              <Text className="text-white text-base font-bold">Logout</Text>
+              {isLoggingOut ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text className="text-white text-base font-bold">Logout</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
@@ -124,14 +284,14 @@ export default function ProfileScreen() {
   );
 }
 
-function SquareAction({ title, emoji, onPress }: { title: string; emoji: string; onPress: () => void }) {
+function SquareAction({ title, icon, onPress }: { title: string; icon: React.ReactNode; onPress: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.8}
       className="w-[31%] aspect-square bg-white rounded-2xl items-center justify-center shadow"
     >
-      <Text className="text-3xl mb-2">{emoji}</Text>
+      <View className="mb-2">{icon}</View>
       <Text className="text-gray-800 font-semibold text-sm text-center">{title}</Text>
     </TouchableOpacity>
   );

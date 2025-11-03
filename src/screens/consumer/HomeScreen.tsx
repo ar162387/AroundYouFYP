@@ -18,7 +18,7 @@ import LinearGradient from 'react-native-linear-gradient';
 const DUMMY_SHOPS: Shop[] = [
   {
     id: '1',
-    name: 'Fresh Mart Grocery',
+    name: 'Fresh Grocery',
     image_url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800',
     rating: 4.5,
     orders: 1240,

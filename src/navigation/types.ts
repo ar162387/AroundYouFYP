@@ -9,6 +9,12 @@ export type RootStackParamList = {
   MapTest: undefined;
   Login: { returnTo?: keyof RootStackParamList };
   SignUp: { returnTo?: keyof RootStackParamList };
+  LocationPermission: undefined;
+  FirstLaunchMap: { useCurrentLocation?: boolean };
+  MerchantRegistrationSurvey: undefined;
+  MerchantDashboard: undefined;
+  CreateShop: { address?: string; latitude?: number; longitude?: number };
+  ShopAddressMap: { address?: string; latitude?: number; longitude?: number };
 };
 
 declare global {

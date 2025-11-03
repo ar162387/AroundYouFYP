@@ -8,7 +8,8 @@ import { useLocationSelection } from '../../context/LocationContext';
 import { useAuth } from '../../context/AuthContext';
 import PinMarker from '../../icons/PinMarker';
 import type { RootStackParamList } from '../../navigation/types';
-import * as addressService from '../../services/addressService';
+import * as addressService from '../../services/consumer/addressService';
+import AddressListSkeleton from '../../skeleton/AddressListSkeleton';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -194,63 +195,65 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
           {/* 5. Saved Addresses List - only show if user is authenticated */}
           {user && (
             <>
-              {/* Saved Addresses with Titles */}
-              {addressesWithTitles.length > 0 && (
-                <View className="mt-2">
-                  {addressesWithTitles.map((address) => (
-                    <TouchableOpacity
-                      key={address.id}
-                      className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2"
-                      activeOpacity={0.7}
-                      onPress={() => handleSelectSavedAddress(address)}
-                    >
-                      <View className="p-3">
-                        <View className="flex-row items-center mb-1">
-                          <Text className="text-base mr-2">
-                            {address.title === 'home' ? '🏠' : '🏢'}
-                          </Text>
-                          <Text className="text-sm font-semibold text-gray-700 capitalize">
-                            {address.title}
-                          </Text>
-                        </View>
-                        <Text className="text-base font-semibold text-gray-900">{address.street_address}</Text>
-                        <Text className="text-sm text-gray-600">{address.city}</Text>
-                        {address.landmark && (
-                          <Text className="text-xs text-gray-500 mt-1">{address.landmark}</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+              {loadingAddresses ? (
+                <>
+                  <AddressListSkeleton count={2} showTitle={true} />
+                  <AddressListSkeleton count={1} showTitle={false} />
+                </>
+              ) : (
+                <>
+                  {/* Saved Addresses with Titles */}
+                  {addressesWithTitles.length > 0 && (
+                    <View className="mt-2">
+                      {addressesWithTitles.map((address) => (
+                        <TouchableOpacity
+                          key={address.id}
+                          className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2"
+                          activeOpacity={0.7}
+                          onPress={() => handleSelectSavedAddress(address)}
+                        >
+                          <View className="p-3">
+                            <View className="flex-row items-center mb-1">
+                              <Text className="text-base mr-2">
+                                {address.title === 'home' ? '🏠' : '🏢'}
+                              </Text>
+                              <Text className="text-sm font-semibold text-gray-700 capitalize">
+                                {address.title}
+                              </Text>
+                            </View>
+                            <Text className="text-base font-semibold text-gray-900">{address.street_address}</Text>
+                            <Text className="text-sm text-gray-600">{address.city}</Text>
+                            {address.landmark && (
+                              <Text className="text-xs text-gray-500 mt-1">{address.landmark}</Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
 
-              {/* Saved Addresses without Titles */}
-              {addressesWithoutTitles.length > 0 && (
-                <View className="mt-2">
-                  {addressesWithoutTitles.map((address) => (
-                    <TouchableOpacity
-                      key={address.id}
-                      className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2"
-                      activeOpacity={0.7}
-                      onPress={() => handleSelectSavedAddress(address)}
-                    >
-                      <View className="p-3">
-                        <Text className="text-base font-semibold text-gray-900">{address.street_address}</Text>
-                        <Text className="text-sm text-gray-600">{address.city}</Text>
-                        {address.landmark && (
-                          <Text className="text-xs text-gray-500 mt-1">{address.landmark}</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              {/* Loading state */}
-              {loadingAddresses && (
-                <View className="py-4 items-center">
-                  <Text className="text-gray-500 text-sm">Loading addresses...</Text>
-                </View>
+                  {/* Saved Addresses without Titles */}
+                  {addressesWithoutTitles.length > 0 && (
+                    <View className="mt-2">
+                      {addressesWithoutTitles.map((address) => (
+                        <TouchableOpacity
+                          key={address.id}
+                          className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-2"
+                          activeOpacity={0.7}
+                          onPress={() => handleSelectSavedAddress(address)}
+                        >
+                          <View className="p-3">
+                            <Text className="text-base font-semibold text-gray-900">{address.street_address}</Text>
+                            <Text className="text-sm text-gray-600">{address.city}</Text>
+                            {address.landmark && (
+                              <Text className="text-xs text-gray-500 mt-1">{address.landmark}</Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
               )}
             </>
           )}

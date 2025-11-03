@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import * as addressService from '../../services/consumer/addressService';
 import EditIcon from '../../icons/EditIcon';
 import DeleteIcon from '../../icons/DeleteIcon';
+import AddressListSkeleton from '../../skeleton/AddressListSkeleton';
 
 type ConsumerAddressManagementScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -117,17 +118,12 @@ export default function ConsumerAddressManagementScreen() {
         >
           <Text className="text-2xl text-gray-900">←</Text>
         </TouchableOpacity>
-        <Text className="text-2xl font-bold text-gray-900 flex-1">Saved Addresses</Text>
+        <Text className="text-2xl font-bold text-gray-900 flex-1">Addresses</Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
         {loadingAddresses ? (
-          <View className="px-4 mt-6">
-            <View className="bg-white rounded-2xl p-6 items-center">
-              <ActivityIndicator size="small" color="#2563eb" />
-              <Text className="text-gray-500 text-sm mt-2">Loading addresses...</Text>
-            </View>
-          </View>
+          <AddressListSkeleton count={3} />
         ) : addresses.length === 0 ? (
           <View className="px-4 mt-6">
             <View className="bg-white rounded-2xl p-6 items-center">
@@ -200,7 +196,7 @@ export default function ConsumerAddressManagementScreen() {
         {/* Add New Address Button at the end */}
         <View className="px-4 mt-4">
           <TouchableOpacity
-            onPress={() => navigation.navigate('AddressSearch')}
+            onPress={() => navigation.navigate('AddressSearch', {})}
             activeOpacity={0.8}
             className="bg-blue-600 rounded-2xl items-center justify-center py-4"
           >

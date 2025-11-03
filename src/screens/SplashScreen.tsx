@@ -4,6 +4,9 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
+import { useLocationStore } from '../stores/locationStore';
+import { useAuth } from '../context/AuthContext';
+import * as merchantService from '../services/merchant/merchantService';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
@@ -11,6 +14,8 @@ export default function SplashScreen() {
   const navigation = useNavigation<NavigationProp>();
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const hasCompletedLocationSetup = useLocationStore((state) => state.hasCompletedLocationSetup);
+  const { user, getDefaultRole } = useAuth();
 
   useEffect(() => {
     // Animate the text popping in
@@ -29,17 +34,39 @@ export default function SplashScreen() {
       }),
     ]).start();
 
-    // Navigate to Home after 2.5 seconds
-    const timer = setTimeout(() => {
+    // Navigate based on location setup and default role
+    const timer = setTimeout(async () => {
       try {
+        if (!hasCompletedLocationSetup) {
+          navigation.replace('LocationPermission');
+          return;
+        }
+
+        // Check default role if user is logged in
+        if (user && getDefaultRole) {
+          const defaultRole = await getDefaultRole();
+          
+          if (defaultRole === 'merchant') {
+            // Check if merchant account exists
+            const { merchant } = await merchantService.getMerchantAccount(user.id);
+            if (merchant) {
+              navigation.replace('MerchantDashboard');
+              return;
+            }
+          }
+        }
+
+        // Default to consumer home
         navigation.replace('Home');
       } catch (error) {
         console.error('Navigation error:', error);
+        // Fallback to home on error
+        navigation.replace('Home');
       }
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [scaleAnim, fadeAnim, navigation]);
+  }, [scaleAnim, fadeAnim, navigation, hasCompletedLocationSetup, user, getDefaultRole]);
 
   return (
     <LinearGradient

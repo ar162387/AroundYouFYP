@@ -19,6 +19,12 @@ import ConsumerAddressManagementScreen from '../screens/consumer/ConsumerAddress
 import MapTestScreen from '../screens/MapTestScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
+import LocationPermissionScreen from '../screens/LocationPermissionScreen';
+import FirstLaunchMapScreen from '../screens/FirstLaunchMapScreen';
+import MerchantRegistrationSurveyScreen from '../screens/merchant/MerchantRegistrationSurveyScreen';
+import MerchantDashboard from '../screens/merchant/MerchantDashboard';
+import CreateShopScreen from '../screens/merchant/CreateShopScreen';
+import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -76,6 +82,23 @@ export default function AppNavigator() {
       >
         <Stack.Screen name="MapTest" component={MapTestScreen} />
         <Stack.Screen name="Splash" component={SplashScreen} />
+        <Stack.Screen
+          name="LocationPermission"
+          component={LocationPermissionScreen}
+          options={{
+            headerShown: false,
+            animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="FirstLaunchMap"
+          component={FirstLaunchMapScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_bottom',
+            presentation: 'modal',
+          }}
+        />
         <Stack.Screen name="Home" component={Tabs} />
         <Stack.Screen
           name="Search"
@@ -113,6 +136,39 @@ export default function AppNavigator() {
           options={{ 
             headerShown: false,
             animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="MerchantRegistrationSurvey"
+          component={MerchantRegistrationSurveyScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="MerchantDashboard"
+          component={MerchantDashboard}
+          options={{ 
+            headerShown: false,
+            animation: 'fade',
+          }}
+        />
+        <Stack.Screen
+          name="CreateShop"
+          component={CreateShopScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="ShopAddressMap"
+          component={ShopAddressMapScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+            presentation: 'modal',
           }}
         />
       </Stack.Navigator>

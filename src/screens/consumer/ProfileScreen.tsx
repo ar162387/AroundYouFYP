@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Switch, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,17 +7,91 @@ import { useAuth } from '../../context/AuthContext';
 import OrdersIcon from '../../icons/OrdersIcon';
 import AddressIcon from '../../icons/AddressIcon';
 import FavoriteIcon from '../../icons/FavoriteIcon';
+import * as merchantService from '../../services/merchant/merchantService';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
-  const [pushEnabled, setPushEnabled] = React.useState(true);
-  const [isLoggingOut, setIsLoggingOut] = React.useState(false);
-  const { user, signOut } = useAuth();
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isConsumerDefault, setIsConsumerDefault] = useState(true);
+  const [isSwitchingToMerchant, setIsSwitchingToMerchant] = useState(false);
+  const { user, signOut, setDefaultRole, getDefaultRole } = useAuth();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+
+  useEffect(() => {
+    loadDefaultRole();
+  }, []);
+
+  const loadDefaultRole = async () => {
+    try {
+      if (getDefaultRole) {
+        const role = await getDefaultRole();
+        setIsConsumerDefault(role === 'consumer');
+      } else {
+        setIsConsumerDefault(true);
+      }
+    } catch (error) {
+      // Default to consumer if error
+      setIsConsumerDefault(true);
+    }
+  };
 
   const handleSignInPress = () => {
     navigation.navigate('Login', { returnTo: 'Home' });
+  };
+
+  const handleSwitchToMerchant = async () => {
+    console.log('handleSwitchToMerchant called!');
+    Alert.alert('Debug', 'Button pressed! Checking merchant account...');
+    
+    if (!user) {
+      Alert.alert('Error', 'Please log in first');
+      return;
+    }
+
+    setIsSwitchingToMerchant(true);
+    try {
+      console.log('Checking merchant account for user:', user.id);
+      // Check if merchant account exists
+      const { merchant, error } = await merchantService.getMerchantAccount(user.id);
+      
+      console.log('Merchant account result:', { merchant, error });
+      
+      if (error && error.message) {
+        console.error('Error fetching merchant account:', error);
+        Alert.alert('Error', error.message);
+        setIsSwitchingToMerchant(false);
+        return;
+      }
+
+      if (merchant) {
+        // Merchant account exists, go to dashboard
+        console.log('Merchant account found, navigating to dashboard');
+        navigation.navigate('MerchantDashboard');
+      } else {
+        // No merchant account, show registration survey
+        console.log('No merchant account found, navigating to registration survey');
+        navigation.navigate('MerchantRegistrationSurvey');
+      }
+    } catch (error: any) {
+      console.error('Exception in handleSwitchToMerchant:', error);
+      Alert.alert('Error', error.message || 'Failed to check merchant account');
+    } finally {
+      setIsSwitchingToMerchant(false);
+    }
+  };
+
+  const handleSetAsDefault = async () => {
+    try {
+      if (setDefaultRole) {
+        await setDefaultRole('consumer');
+      }
+      setIsConsumerDefault(true);
+      Alert.alert('Success', 'Consumer mode set as default');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to set default role');
+    }
   };
 
   const handleLogout = async () => {
@@ -143,7 +217,27 @@ export default function ProfileScreen() {
           <Separator />
           {user && (
             <>
-              <ListItem title="Switch to Merchant" onPress={() => {}} />
+              <ListItem 
+                title="Switch to Merchant" 
+                onPress={handleSwitchToMerchant}
+                right={isSwitchingToMerchant ? <ActivityIndicator size="small" color="#2563eb" /> : undefined}
+              />
+              <Separator />
+              <ListItem
+                title="Set this role as default"
+                right={
+                  <Switch
+                    value={isConsumerDefault}
+                    onValueChange={(value) => {
+                      if (value) {
+                        handleSetAsDefault();
+                      }
+                    }}
+                    thumbColor={isConsumerDefault ? '#2563eb' : '#f4f3f4'}
+                    trackColor={{ true: '#93c5fd', false: '#d1d5db' }}
+                  />
+                }
+              />
               <Separator />
             </>
           )}

@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../services/supabase';
 import * as authService from '../services/authService';
 import type { User, UserRole } from '../services/authService';
+
+const DEFAULT_ROLE_KEY = 'default_role';
 
 interface AuthContextType {
   user: User | null;
@@ -11,6 +14,8 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   updateRole: (role: UserRole) => Promise<{ error: string | null }>;
+  setDefaultRole: (role: 'consumer' | 'merchant') => Promise<void>;
+  getDefaultRole: () => Promise<'consumer' | 'merchant'>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -166,6 +171,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const setDefaultRole = async (role: 'consumer' | 'merchant') => {
+    try {
+      await AsyncStorage.setItem(DEFAULT_ROLE_KEY, role);
+    } catch (error) {
+      console.error('Error setting default role:', error);
+    }
+  };
+
+  const getDefaultRole = async (): Promise<'consumer' | 'merchant'> => {
+    try {
+      const defaultRole = await AsyncStorage.getItem(DEFAULT_ROLE_KEY);
+      return (defaultRole as 'consumer' | 'merchant') || 'consumer';
+    } catch (error) {
+      console.error('Error getting default role:', error);
+      return 'consumer';
+    }
+  };
+
   const value: AuthContextType = {
     user,
     loading,
@@ -174,6 +197,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signInWithGoogle,
     signOut,
     updateRole,
+    setDefaultRole,
+    getDefaultRole,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

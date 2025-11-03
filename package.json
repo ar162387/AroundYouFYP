@@ -5,7 +5,8 @@
   "scripts": {
     "start": "react-native start",
     "android": "react-native run-android",
-    "ios": "react-native run-ios"
+    "ios": "react-native run-ios",
+    "postinstall": "node scripts/create-worklets-stub.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.23.1",
@@ -20,6 +21,7 @@
     "react-native-config": "^1.5.1",
     "react-native-gesture-handler": "~2.20.2",
     "react-native-haptic-feedback": "^2.2.0",
+    "react-native-image-picker": "^8.2.1",
     "react-native-inappbrowser-reborn": "^3.7.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-maps": "1.21.0",
@@ -28,7 +30,9 @@
     "react-native-screens": "~4.4.0",
     "react-native-svg": "15.8.0",
     "react-native-url-polyfill": "^3.0.0",
-    "react-native-worklets-core": "^1.6.2"
+    "react-native-worklets-core": "^1.6.2",
+    "react-query": "4",
+    "zustand": "4"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

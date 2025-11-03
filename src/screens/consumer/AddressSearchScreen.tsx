@@ -2,12 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
-  FlatList,
   Platform,
   StatusBar,
-  KeyboardAvoidingView,
   Keyboard,
   Animated,
   Dimensions,
@@ -16,75 +13,278 @@ import {
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import Config from 'react-native-config';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
-import PinMarker from '../../icons/PinMarker';
-import CenterHairline from '../../icons/CenterHairline';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp as RNRouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useAuth } from '../../context/AuthContext';
-import * as addressService from '../../services/addressService';
+import * as addressService from '../../services/consumer/addressService';
+import AddressSearchMap from '../../components/maps/AddressSearchMap';
+import AddressSearchBottomSheet, { SearchResult, SheetMode } from '../../components/consumer/AddressSearchBottomSheet';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type AddressSearchRouteProp = RNRouteProp<RootStackParamList, 'AddressSearch'>;
 
-type SearchResult = {
-  id: string;
-  name: string;
-  address: string;
-  coords: { latitude: number; longitude: number };
-};
-
+/**
+ * AddressSearchScreen - Three-state address selection flow
+ * 
+ * TRANSITION STATES:
+ * 1. SEARCH (90% screen height) - User searches for address, map shows below
+ * 2. CONFIRM (30% screen height) - Shows selected address, map animates to location
+ * 3. DETAILS (45% screen height) - Precise pin placement, optional landmark/title
+ */
 export default function AddressSearchScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<AddressSearchRouteProp>();
+  const editingAddress = route.params?.address;
   const { coords: userCoords } = useUserLocation();
-  const { setSelectedAddress } = useLocationSelection();
+  const { selectedAddress, setSelectedAddress } = useLocationSelection();
   const { user } = useAuth();
+  
+  // Map and UI refs
   const mapRef = useRef<any>(null);
   const locatingRef = useRef<boolean>(false);
   const draggingRef = useRef<boolean>(false);
   const markerOffsetY = useRef(new Animated.Value(0)).current;
   const [isMoving, setIsMoving] = useState(false);
+  
+  // Debounce/timeout refs for map interactions
   const reverseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.7);
-  const SHEET_HEIGHT_MIN = Math.round(Dimensions.get('window').height * 0.3);
-  const SHEET_HEIGHT_DETAILS = Math.round(Dimensions.get('window').height * 0.45);
-  const [sheetMode, setSheetMode] = useState<'search' | 'confirm' | 'details'>('search');
+  const regionChangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const programmaticMoveRef = useRef<boolean>(false);
+  const lastRegionRef = useRef<{latitude: number; longitude: number} | null>(null);
+  
+  // Bottom sheet dimensions and state
+  const SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.9); // State 1: Search
+  const SHEET_HEIGHT_MIN = Math.round(Dimensions.get('window').height * 0.38); // State 2: Confirm (increased to fit content + button)
+  const SHEET_HEIGHT_DETAILS = Math.round(Dimensions.get('window').height * 0.45); // State 3: Details
+  const [sheetMode, setSheetMode] = useState<SheetMode>('search');
   const sheetHeightAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  
+  // Address state
   const [lastReverse, setLastReverse] = useState<{ formatted: string; city?: string; region?: string; streetLine?: string } | null>(null);
   const prevRegionRef = useRef<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(null);
+  
+  // Floating button positioning
   const BUTTON_MARGIN = 16;
   const buttonsOffset = Animated.add(sheetHeightAnim, new Animated.Value(BUTTON_MARGIN));
   const sheetStartHeightRef = useRef<number>(SHEET_HEIGHT);
   const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
   
-  // New state for address details
+  // Address details form state
   const [landmark, setLandmark] = useState('');
   const [selectedTitle, setSelectedTitle] = useState<addressService.AddressTitle>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const editingAddressIdRef = useRef<string | null>(editingAddress?.id || null);
 
-  // Helpers
-  const looksLikePlusCode = (s?: string | null) => {
-    if (!s) return false;
-    return /\w+\+\w+/i.test(s.trim());
-  };
-  const buildStreetLine = (a: any) => {
-    if (a?.street) {
-      const suffix = looksLikePlusCode(a?.name) ? '' : (a?.name || '');
-      return [a.street, suffix].filter(Boolean).join(' ').trim();
-    }
-    if (a?.name && !looksLikePlusCode(a?.name)) return String(a.name);
-    if (a?.district) return String(a.district);
-    if (a?.city) return String(a.city);
-    return 'Street address';
-  };
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
+  // Map region state - initialized with fallback priority: editingAddress > selectedAddress > userCoords > default
+  const [mapRegion, setMapRegion] = useState({
+    latitude: editingAddress?.latitude || selectedAddress?.coords?.latitude || userCoords?.latitude || 31.451483,
+    longitude: editingAddress?.longitude || selectedAddress?.coords?.longitude || userCoords?.longitude || 74.435203,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  });
 
+  /**
+   * BOTTOM SHEET ANIMATION
+   * Handles smooth transitions between the three states
+   */
   const animateSheetTo = (h: number) => {
     Animated.timing(sheetHeightAnim, { toValue: h, duration: 220, useNativeDriver: false }).start();
   };
 
+  /**
+   * LOAD EDITING ADDRESS
+   * If editing an existing address, load its data into the form
+   */
+  useEffect(() => {
+    if (editingAddress) {
+      // Set map region to address location
+      const coords = {
+        latitude: editingAddress.latitude,
+        longitude: editingAddress.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setMapRegion(coords);
+      lastRegionRef.current = { latitude: coords.latitude, longitude: coords.longitude };
+      
+      // Set form fields
+      setLandmark(editingAddress.landmark || '');
+      setSelectedTitle(editingAddress.title || null);
+      
+      // Set address display data
+      setLastReverse({
+        formatted: editingAddress.formatted_address || editingAddress.street_address,
+        city: editingAddress.city || '',
+        region: editingAddress.region || undefined,
+        streetLine: editingAddress.street_address,
+      });
+      
+      // Pre-fill search query
+      if (editingAddress.street_address && editingAddress.city) {
+        setSearchQuery(`${editingAddress.street_address}, ${editingAddress.city}`);
+      }
+      
+      // Animate map to address location and go to confirm state
+      setTimeout(() => {
+        if (mapRef.current) {
+          programmaticMoveRef.current = true;
+          mapRef.current?.animateCamera?.(
+            { center: { latitude: coords.latitude, longitude: coords.longitude }, zoom: 16 },
+            { duration: 500 }
+          );
+          setTimeout(() => {
+            programmaticMoveRef.current = false;
+            setSheetMode('confirm');
+            animateSheetTo(SHEET_HEIGHT_MIN);
+          }, 600);
+        }
+      }, 100);
+    }
+  }, [editingAddress]);
+
+  /**
+   * INITIAL LOCATION LOADING
+   * Loads current GPS location behind the scenes when screen opens
+   * Falls back to selectedAddress from context, then userCoords, then default
+   * Skip if editing an address (already loaded above)
+   */
+  useEffect(() => {
+    if (editingAddress) return; // Skip GPS loading when editing
+    
+    let isMounted = true;
+    
+    const loadInitialLocation = async () => {
+      try {
+        // Request location permission
+        if (Platform.OS === 'android') {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            // Use fallback if permission denied
+            const fallbackCoords = selectedAddress?.coords || userCoords;
+            if (fallbackCoords && isMounted) {
+              setMapRegion({
+                latitude: fallbackCoords.latitude,
+                longitude: fallbackCoords.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              });
+            }
+            return;
+          }
+        }
+
+        // Get current GPS position
+        const position = await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
+          const timeout = setTimeout(() => resolve(null), 3000);
+          Geolocation.getCurrentPosition(
+            (pos) => {
+              clearTimeout(timeout);
+              resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+            },
+            () => {
+              clearTimeout(timeout);
+              resolve(null);
+            },
+            { enableHighAccuracy: false, timeout: 3000, maximumAge: 5000 }
+          );
+        });
+
+        if (isMounted) {
+          if (position) {
+            // Successfully got GPS location - update map
+            setMapRegion({
+              latitude: position.latitude,
+              longitude: position.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            });
+            lastRegionRef.current = { latitude: position.latitude, longitude: position.longitude };
+            
+            // Reverse geocode to get address
+            try {
+              const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
+              const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${position.latitude}&lon=${position.longitude}&format=json&apiKey=${geoapifyKey}`;
+              const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
+              const json = await res.json();
+              if (json?.results?.length > 0) {
+                const result = json.results[0];
+                const street = result?.street || '';
+                const houseNumber = result?.housenumber || '';
+                const district = result?.district || result?.suburb || '';
+                const city = result?.city || '';
+                const state = result?.state || '';
+                const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
+                const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
+                setLastReverse({ formatted: full, city: (city || district || '') as string, region: (state || '') as string, streetLine });
+              }
+            } catch (_) {
+              // Silent fail for reverse geocoding
+            }
+          } else {
+            // GPS failed - use fallback
+            const fallbackCoords = selectedAddress?.coords || userCoords;
+            if (fallbackCoords) {
+              setMapRegion({
+                latitude: fallbackCoords.latitude,
+                longitude: fallbackCoords.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              });
+            }
+          }
+        }
+      } catch (_) {
+        // Silent fail - use fallback
+        if (isMounted) {
+          const fallbackCoords = selectedAddress?.coords || userCoords;
+          if (fallbackCoords) {
+            setMapRegion({
+              latitude: fallbackCoords.latitude,
+              longitude: fallbackCoords.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            });
+          }
+        }
+      }
+    };
+
+    loadInitialLocation();
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [editingAddress]); // Skip if editing address
+
+  // Update map region when location sources change (after initial load)
+  useEffect(() => {
+    const coords = selectedAddress?.coords || userCoords;
+    if (coords && !locatingRef.current && !draggingRef.current) {
+      setMapRegion({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    }
+  }, [selectedAddress?.coords, userCoords]);
+
+  /**
+   * BOTTOM SHEET DRAG HANDLER
+   * Allows user to drag sheet between search (90%) and confirm (30%) states
+   */
   const panAccumRef = useRef(0);
   const panResponder = useRef(
     PanResponder.create({
@@ -92,6 +292,7 @@ export default function AddressSearchScreen() {
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
         sheetStartHeightRef.current = (sheetHeightAnim as any)._value ?? SHEET_HEIGHT;
+        Keyboard.dismiss();
       },
       onPanResponderMove: (_, gesture) => {
         panAccumRef.current = gesture.dy;
@@ -120,6 +321,10 @@ export default function AddressSearchScreen() {
     })
   ).current;
 
+  /**
+   * MARKER ANIMATION
+   * Marker moves up with hairline when map is being dragged/zoomed
+   */
   const animateMarkerUp = () => {
     Animated.timing(markerOffsetY, {
       toValue: -12,
@@ -136,29 +341,70 @@ export default function AddressSearchScreen() {
     }).start();
   };
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [mapRegion, setMapRegion] = useState({
-    latitude: userCoords?.latitude || 31.451483,
-    longitude: userCoords?.longitude || 74.435203,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
-  });
-
-  useEffect(() => {
-    if (userCoords) {
-      setMapRegion({
-        latitude: userCoords.latitude,
-        longitude: userCoords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      });
+  /**
+   * MAP DRAG DETECTION & REVERSE GEOCODING
+   * 
+   * When user drags map:
+   * 1. onTouchStart detects drag start → marker animates up, hairline appears
+   * 2. User drags map → coordinates update
+   * 3. onRegionChangeComplete fires when drag stops → marker animates down
+   * 4. After 1s debounce → reverse geocoding updates address
+   * 
+   * When geolocate button pressed:
+   * 1. Gets GPS location → animates map to location
+   * 2. Marker animates up during animation → down when complete
+   * 3. Reverse geocoding updates address
+   */
+  const endDragging = (regionHint?: { latitude: number; longitude: number }) => {
+    if (moveEndTimeoutRef.current) {
+      clearTimeout(moveEndTimeoutRef.current);
+      moveEndTimeoutRef.current = null;
     }
-  }, [userCoords]);
+    if (!draggingRef.current && !isMoving) return;
+    
+    const finalCoords = regionHint || lastRegionRef.current || { latitude: mapRegion.latitude, longitude: mapRegion.longitude };
+    
+    // Update coordinates when dragging stops
+    setMapRegion((prev) => ({
+      latitude: finalCoords.latitude,
+      longitude: finalCoords.longitude,
+      latitudeDelta: prev.latitudeDelta,
+      longitudeDelta: prev.longitudeDelta,
+    }));
+    lastRegionRef.current = finalCoords;
+    
+    // Reset drag state and animate marker down
+    draggingRef.current = false;
+    setIsMoving(false);
+    animateMarkerDown();
+    
+    // Debounced reverse geocoding - updates address after 1s of stillness
+    if (reverseDebounceRef.current) clearTimeout(reverseDebounceRef.current);
+    reverseDebounceRef.current = setTimeout(async () => {
+      try {
+        const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
+        const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${finalCoords.latitude}&lon=${finalCoords.longitude}&format=json&apiKey=${geoapifyKey}`;
+        const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
+        const json = await res.json();
+        if (json?.results?.length > 0) {
+          const result = json.results[0];
+          const street = result?.street || '';
+          const houseNumber = result?.housenumber || '';
+          const district = result?.district || result?.suburb || '';
+          const city = result?.city || '';
+          const state = result?.state || '';
+          const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
+          const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
+          setLastReverse({ formatted: full, city: (city || district || '') as string, region: (state || '') as string, streetLine });
+        }
+      } catch (_) {}
+    }, 1000);
+  };
 
-  // Geoapify Address Autocomplete (no Google billing required)
+  /**
+   * GEOAPIFY ADDRESS AUTOCOMPLETE
+   * Searches for addresses as user types
+   */
   const fetchGeoapifyAutocomplete = async (q: string) => {
     const key = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
     const bias = userCoords ? `&bias=proximity:${userCoords.longitude},${userCoords.latitude}` : '';
@@ -178,8 +424,7 @@ export default function AddressSearchScreen() {
         };
       });
       return mapped;
-    } catch (e) {
-      console.log('Geoapify error:', e);
+    } catch (_) {
       return [] as SearchResult[];
     }
   };
@@ -197,8 +442,7 @@ export default function AddressSearchScreen() {
       try {
         let suggestions = await fetchGeoapifyAutocomplete(query);
         setSearchResults(suggestions);
-      } catch (e) {
-        console.log('Autocomplete error:', e);
+      } catch (_) {
         setSearchResults([]);
       } finally {
         setIsSearching(false);
@@ -206,27 +450,57 @@ export default function AddressSearchScreen() {
     }, 300);
   };
 
+  /**
+   * TRANSITION 1 → 2: Search Result Selected
+   * User selects address from search → animates map to location → transitions to confirm state
+   */
   const handleSelectResult = async (result: SearchResult) => {
     Keyboard.dismiss();
     try {
       const coords = result.coords;
+      const newRegion = {
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setMapRegion(newRegion);
+      lastRegionRef.current = coords;
 
-      // Animate map to selected location
+      programmaticMoveRef.current = true;
+      
       mapRef.current?.animateCamera(
         { center: { latitude: coords.latitude, longitude: coords.longitude }, zoom: 16 },
         { duration: 500 }
       );
+      
+      setTimeout(() => {
+        programmaticMoveRef.current = false;
+      }, 600);
 
-      console.log('Selected location:', {
-        name: result.name,
-        address: result.address,
-        coords,
+      // Parse address - extract only street and city (no postal code/region)
+      const addressParts = result.address.split(',').map(p => p.trim());
+      const streetLine = result.name;
+      // Get city (skip postal codes and country codes)
+      const cityParts = addressParts.filter(part => {
+        const lower = part.toLowerCase();
+        // Filter out postal codes, country codes, and common non-city strings
+        return !/\d{4,}/.test(part) && 
+               !['pakistan', 'pk', 'usa', 'uk'].includes(lower) &&
+               part.length > 2;
+      });
+      const city = cityParts.length > 1 ? cityParts[1] : (cityParts[0] || '');
+      
+      setLastReverse({
+        formatted: result.address,
+        city,
+        region: undefined,
+        streetLine,
       });
 
-      // Stay on this screen (no second screen). Sheet transitions handle confirmation.
-    } catch (e) {
-      console.log('Select result error:', e);
-    }
+      setSearchResults([]);
+      setSearchQuery('');
+    } catch (_) {}
   };
 
   const handleClearSearch = () => {
@@ -239,13 +513,16 @@ export default function AddressSearchScreen() {
     navigation.goBack();
   };
 
-  // Custom geolocate handler (centers map to current GPS)
+  /**
+   * GEOLOCATE BUTTON HANDLER
+   * Gets current GPS location and animates map to it
+   * Same marker animation as manual drag
+   */
   const handleGeolocate = async () => {
     try {
       if (locatingRef.current) return;
       locatingRef.current = true;
 
-      // Request location permission
       if (Platform.OS === 'android') {
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
@@ -256,7 +533,6 @@ export default function AddressSearchScreen() {
         }
       }
 
-      // Get current position with timeout
       const position = await new Promise<{ latitude: number; longitude: number } | null>((resolve) => {
         const timeout = setTimeout(() => resolve(null), 4000);
         Geolocation.getCurrentPosition(
@@ -280,186 +556,152 @@ export default function AddressSearchScreen() {
           longitudeDelta: 0.01,
         };
         setMapRegion(c);
-        // Trigger the same motion animation as map drag
+        lastRegionRef.current = { latitude: c.latitude, longitude: c.longitude };
+        
+        programmaticMoveRef.current = true;
         draggingRef.current = true;
         setIsMoving(true);
         animateMarkerUp();
-        // Prefer animateCamera for smoother behavior similar to default button
+        
         const animate = mapRef.current?.animateCamera
           ? () => mapRef.current.animateCamera({ center: { latitude: c.latitude, longitude: c.longitude }, zoom: 16 }, { duration: 500 })
           : () => mapRef.current?.animateToRegion(c, 500);
         animate();
-        // Ensure we settle back down even if region callback timing varies
-        setTimeout(() => {
+        
+        setTimeout(async () => {
           draggingRef.current = false;
           setIsMoving(false);
           animateMarkerDown();
+          programmaticMoveRef.current = false;
+          
+          // Reverse geocode after animation
+          try {
+            const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
+            const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${c.latitude}&lon=${c.longitude}&format=json&apiKey=${geoapifyKey}`;
+            const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
+            const json = await res.json();
+            if (json?.results?.length > 0) {
+              const result = json.results[0];
+              const street = result?.street || '';
+              const houseNumber = result?.housenumber || '';
+              const district = result?.district || result?.suburb || '';
+              const city = result?.city || '';
+              const state = result?.state || '';
+              const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
+              const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
+              setLastReverse({
+                formatted: full,
+                city: (city || district || '') as string,
+                region: (state || '') as string,
+                streetLine,
+              });
+            }
+          } catch (_) {}
         }, 600);
       }
-    } catch (e) {
-      console.log('Geolocate error', e);
-    }
+    } catch (_) {}
     locatingRef.current = false;
+  };
+
+  /**
+   * MAP VIEW HANDLERS
+   * Handles user drag detection and coordinate updates
+   */
+  const handleMapTouchStart = () => {
+    if (!programmaticMoveRef.current && !locatingRef.current) {
+      draggingRef.current = true;
+      setIsMoving(true);
+      animateMarkerUp();
+      if (moveEndTimeoutRef.current) clearTimeout(moveEndTimeoutRef.current);
+      moveEndTimeoutRef.current = setTimeout(() => endDragging(), 2000);
+    }
+  };
+
+  const handleRegionChangeComplete = (region: any) => {
+    if (region?.latitude && region?.longitude) {
+      setMapRegion(region);
+      lastRegionRef.current = { latitude: region.latitude, longitude: region.longitude };
+      
+      if (draggingRef.current) {
+        if (regionChangeTimeoutRef.current) clearTimeout(regionChangeTimeoutRef.current);
+        regionChangeTimeoutRef.current = setTimeout(() => {
+          endDragging({ latitude: region.latitude, longitude: region.longitude });
+        }, 120);
+        if (moveEndTimeoutRef.current) {
+          clearTimeout(moveEndTimeoutRef.current);
+          moveEndTimeoutRef.current = null;
+        }
+      }
+    }
+  };
+
+  const handleMapTouchEnd = async () => {
+    if (draggingRef.current && !programmaticMoveRef.current && Platform.OS === 'android') {
+      setTimeout(async () => {
+        try {
+          let finalCoords = null;
+          if (mapRef.current?.getCamera) {
+            try {
+              const camera = await mapRef.current.getCamera();
+              if (camera?.center) {
+                finalCoords = { latitude: camera.center.latitude, longitude: camera.center.longitude };
+              }
+            } catch (_) {}
+          }
+          
+          if (!finalCoords && mapRef.current?.getCenter) {
+            try {
+              const center = await mapRef.current.getCenter();
+              if (center) {
+                finalCoords = { latitude: center.latitude, longitude: center.longitude };
+              }
+            } catch (_) {}
+          }
+          
+          if (!finalCoords) {
+            finalCoords = lastRegionRef.current || { latitude: mapRegion.latitude, longitude: mapRegion.longitude };
+          }
+          
+          if (finalCoords && draggingRef.current) {
+            endDragging(finalCoords);
+          }
+        } catch (_) {
+          const fallbackCoords = lastRegionRef.current || { latitude: mapRegion.latitude, longitude: mapRegion.longitude };
+          if (draggingRef.current) {
+            endDragging(fallbackCoords);
+          }
+        }
+      }, 150);
+    } else if (draggingRef.current && !programmaticMoveRef.current && Platform.OS === 'ios') {
+      endDragging(lastRegionRef.current || { latitude: mapRegion.latitude, longitude: mapRegion.longitude });
+    }
+  };
+
+  const handleAndroidResponderMove = () => {
+    if (!draggingRef.current && !programmaticMoveRef.current && !locatingRef.current) {
+      draggingRef.current = true;
+      setIsMoving(true);
+      animateMarkerUp();
+    }
   };
 
   return (
     <View className="flex-1 bg-white">
       <StatusBar barStyle="dark-content" />
       
-      {/* Map View - Platform-specific implementation */}
-      {Platform.OS === 'ios' ? (
-        // iOS implementation
-        <MapView
-          ref={mapRef}
-          style={{ flex: 1 }}
-          initialRegion={mapRegion}
-          onPanDrag={() => {
-            if (!draggingRef.current) {
-              draggingRef.current = true;
-              setIsMoving(true);
-              animateMarkerUp();
-            }
-            if (reverseDebounceRef.current) {
-              clearTimeout(reverseDebounceRef.current);
-              reverseDebounceRef.current = null;
-            }
-          }}
-          onRegionChangeComplete={(region: any) => {
-            if (region?.latitude && region?.longitude) {
-              setMapRegion(region);
-            }
-            if (draggingRef.current) {
-              draggingRef.current = false;
-              setIsMoving(false);
-              animateMarkerDown();
-            }
-            if (reverseDebounceRef.current) clearTimeout(reverseDebounceRef.current);
-            reverseDebounceRef.current = setTimeout(async () => {
-              try {
-                const center = {
-                  latitude: region?.latitude ?? mapRegion.latitude,
-                  longitude: region?.longitude ?? mapRegion.longitude,
-                };
-                // Use Geoapify Reverse Geocoding API
-                const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
-                const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${center.latitude}&lon=${center.longitude}&format=json&apiKey=${geoapifyKey}`;
-                const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
-                const json = await res.json();
-                if (json?.results?.length > 0) {
-                  const result = json.results[0];
-                  const street = result?.street || '';
-                  const houseNumber = result?.housenumber || '';
-                  const district = result?.district || result?.suburb || '';
-                  const city = result?.city || '';
-                  const state = result?.state || '';
-                  const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
-                  const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
-                  setLastReverse({
-                    formatted: full,
-                    city: (city || district || '') as string,
-                    region: (state || '') as string,
-                    streetLine,
-                  });
-                }
-              } catch (e) {
-                // Silent fail for reverse geocoding
-              }
-            }, 1000);
-          }}
-          showsUserLocation
-          showsMyLocationButton={false}
-        />
-      ) : (
-        // Android implementation
-        <MapView
-          ref={mapRef}
-          style={{ flex: 1 }}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={mapRegion}
-          onPanDrag={() => {
-            if (!draggingRef.current) {
-              draggingRef.current = true;
-              setIsMoving(true);
-              animateMarkerUp();
-            }
-            if (reverseDebounceRef.current) {
-              clearTimeout(reverseDebounceRef.current);
-              reverseDebounceRef.current = null;
-            }
-          }}
-          onRegionChangeComplete={(region: any) => {
-            if (region?.latitude && region?.longitude) {
-              setMapRegion(region);
-            }
-            if (draggingRef.current) {
-              draggingRef.current = false;
-              setIsMoving(false);
-              animateMarkerDown();
-            }
-            // Debounced reverse geocoding starts 1s after map becomes stationary
-            if (reverseDebounceRef.current) clearTimeout(reverseDebounceRef.current);
-            reverseDebounceRef.current = setTimeout(async () => {
-              try {
-                const center = {
-                  latitude: region?.latitude ?? mapRegion.latitude,
-                  longitude: region?.longitude ?? mapRegion.longitude,
-                };
-                // Use Geoapify Reverse Geocoding API
-                const geoapifyKey = Config.GEOAPIFY_API_KEY || '3e078bb3a2bc4892b9e1757e92860438';
-                const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${center.latitude}&lon=${center.longitude}&format=json&apiKey=${geoapifyKey}`;
-                const res = await fetch(url, { headers: { 'User-Agent': 'AroundYouApp/1.0 (support@aroundyou.app)' } as any });
-                const json = await res.json();
-                if (json?.results?.length > 0) {
-                  const result = json.results[0];
-                  const street = result?.street || '';
-                  const houseNumber = result?.housenumber || '';
-                  const district = result?.district || result?.suburb || '';
-                  const city = result?.city || '';
-                  const state = result?.state || '';
-                  const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
-                  const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
-                  setLastReverse({
-                    formatted: full,
-                    city: (city || district || '') as string,
-                    region: (state || '') as string,
-                    streetLine,
-                  });
-                }
-              } catch (e) {
-                // Silent fail for reverse geocoding
-              }
-            }, 1000);
-          }}
-          showsUserLocation
-          showsMyLocationButton={false}
-        />
-      )}
+      {/* Map View */}
+      <AddressSearchMap
+        mapRef={mapRef}
+        initialRegion={mapRegion}
+        onTouchStart={handleMapTouchStart}
+        onRegionChangeComplete={handleRegionChangeComplete}
+        onTouchEnd={handleMapTouchEnd}
+        onAndroidResponderMove={handleAndroidResponderMove}
+        isMoving={isMoving}
+        markerOffsetY={markerOffsetY}
+      />
 
-      {/* Centered Blue Marker (always centered) with attached hairline while moving */}
-      <Animated.View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: '50%',
-          transform: [
-            { translateX: -18 },
-            { translateY: -36 },
-            { translateY: markerOffsetY },
-          ],
-        }}
-      >
-        <View style={{ alignItems: 'center' }}>
-          <PinMarker size={36} color="#3B82F6" />
-          {isMoving && (
-            <View style={{ marginTop: 2 }}>
-              <CenterHairline height={22} color="#3B82F6" opacity={0.9} strokeWidth={1.5} dashArray="2,2" />
-            </View>
-          )}
-        </View>
-      </Animated.View>
-
-      {/* Close (X) - top-left */}
+      {/* Close Button */}
       <TouchableOpacity
         className="absolute w-10 h-10 bg-white rounded-full items-center justify-center shadow-lg"
         style={{ top: 48, left: 16 }}
@@ -469,7 +711,7 @@ export default function AddressSearchScreen() {
         <Text className="text-xl text-gray-700">✕</Text>
       </TouchableOpacity>
 
-      {/* Map Layer / Mini-map - stays just above the animated bottom sheet */}
+      {/* Map Layer Button */}
       <Animated.View style={{ position: 'absolute', left: 16, bottom: buttonsOffset, zIndex: 30 }}>
         <TouchableOpacity
           className="bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 items-center justify-center"
@@ -481,7 +723,7 @@ export default function AddressSearchScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Custom Geolocation / GPS - stays just above the animated bottom sheet */}
+      {/* Geolocate Button */}
       <Animated.View style={{ position: 'absolute', right: 16, bottom: buttonsOffset, zIndex: 30 }}>
         <TouchableOpacity
           className="bg-white rounded-full items-center justify-center shadow-lg border border-gray-200"
@@ -493,294 +735,124 @@ export default function AddressSearchScreen() {
         </TouchableOpacity>
       </Animated.View>
 
-      {/* Search Box */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 20 }}
-      >
-        <Animated.View
-          className="bg-white rounded-t-3xl shadow-2xl"
-          style={{ height: sheetHeightAnim, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 }}
-          {...panResponder.panHandlers}
-        >
-          {/* Grabber */}
-          <View className="items-center mb-3">
-            <View className="w-12 h-1.5 bg-gray-300 rounded-full" />
-          </View>
+      {/* Bottom Sheet - Three States */}
+      <AddressSearchBottomSheet
+        sheetHeightAnim={sheetHeightAnim}
+        sheetMode={sheetMode}
+        setSheetMode={setSheetMode}
+        animateSheetTo={animateSheetTo}
+        SHEET_HEIGHT={SHEET_HEIGHT}
+        SHEET_HEIGHT_MIN={SHEET_HEIGHT_MIN}
+        SHEET_HEIGHT_DETAILS={SHEET_HEIGHT_DETAILS}
+        panHandlers={panResponder.panHandlers}
+        searchQuery={searchQuery}
+        isSearching={isSearching}
+        searchResults={searchResults}
+        onSearchChange={handleSearch}
+        onClearSearch={handleClearSearch}
+        onSelectResult={handleSelectResult}
+        lastReverse={lastReverse}
+        mapRegion={mapRegion}
+        user={user}
+        landmark={landmark}
+        onChangeLandmark={setLandmark}
+        selectedTitle={selectedTitle}
+        onToggleTitle={(title) => {
+          setSelectedTitle(selectedTitle === title ? null : title);
+        }}
+        isSaving={isSaving}
+        onAddDetails={() => {
+          prevRegionRef.current = mapRegion;
+          const newRegion = {
+            latitude: mapRegion.latitude,
+            longitude: mapRegion.longitude,
+            latitudeDelta: Math.max(mapRegion.latitudeDelta * 0.25, 0.0005),
+            longitudeDelta: Math.max(mapRegion.longitudeDelta * 0.25, 0.0005),
+          };
+          mapRef.current?.animateToRegion(newRegion, 400);
+          setSheetMode('details');
+          animateSheetTo(SHEET_HEIGHT_DETAILS);
+        }}
+        onSearchAgain={() => {
+          setSheetMode('search');
+          animateSheetTo(SHEET_HEIGHT);
+          // Pre-fill search with street address and city only (no postal code)
+          if (lastReverse?.streetLine && lastReverse?.city) {
+            setSearchQuery(`${lastReverse.streetLine}, ${lastReverse.city}`);
+          } else if (lastReverse?.formatted) {
+            // Fallback: use formatted but try to clean it
+            const cleaned = lastReverse.formatted.split(',').slice(0, 2).join(', ');
+            setSearchQuery(cleaned);
+          }
+        }}
+        onConfirm={async () => {
+          if (isSaving) return;
+          setIsSaving(true);
+          try {
+            const center = {
+              latitude: mapRegion.latitude,
+              longitude: mapRegion.longitude,
+            };
+            const streetAddress = lastReverse?.streetLine || lastReverse?.formatted?.split(',')[0] || 'Street address';
+            const city = lastReverse?.city || '';
+            const region = lastReverse?.region || undefined;
+            const formatted = lastReverse?.formatted || '';
 
-          {sheetMode === 'search' ? (
-            <>
-              <View className="items-center mb-3">
-                <Text className="text-gray-900 text-base font-semibold">Enter the Address to Explore Shops AroundYou</Text>
-              </View>
-              {/* Search Input */}
-              <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mb-2">
-                <Text className="text-xl mr-3">🔍</Text>
-                <TextInput
-                  className="flex-1 text-base"
-                  placeholder="Search for location..."
-                  value={searchQuery}
-                  onChangeText={handleSearch}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={handleClearSearch} activeOpacity={0.7}>
-                    <Text className="text-xl text-gray-400 ml-2">✕</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+            if (user) {
+              if (editingAddressIdRef.current) {
+                // Update existing address
+                const { data: updatedAddress, error: updateError } = await addressService.updateAddress(
+                  editingAddressIdRef.current,
+                  {
+                    title: selectedTitle || undefined,
+                    street_address: streetAddress,
+                    city,
+                    region,
+                    latitude: center.latitude,
+                    longitude: center.longitude,
+                    landmark: landmark.trim() || undefined,
+                    formatted_address: formatted || undefined,
+                  }
+                );
 
-              {/* Search Results */}
-              {searchResults.length > 0 && (
-                <View style={{ maxHeight: 260 }}>
-                  <FlatList
-                    data={searchResults}
-                    keyExtractor={(item) => item.id}
-                    keyboardShouldPersistTaps="handled"
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        className="flex-row items-start py-3 px-2 border-b border-gray-100"
-                        onPress={() => { handleSelectResult(item); setSheetMode('confirm'); animateSheetTo(SHEET_HEIGHT_MIN); }}
-                        activeOpacity={0.7}
-                      >
-                        <Text className="text-lg mr-3 mt-0.5">📍</Text>
-                        <View className="flex-1">
-                          <Text className="text-base font-semibold text-gray-900">
-                            {item.name}
-                          </Text>
-                          <Text className="text-sm text-gray-600 mt-0.5" numberOfLines={2}>
-                            {item.address}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    )}
-                    showsVerticalScrollIndicator={false}
-                  />
-                </View>
-              )}
+                if (updateError) {
+                  // Silent fail - continue anyway
+                }
+              } else {
+                // Create new address
+                const { data: savedAddress, error: saveError } = await addressService.createAddress({
+                  title: selectedTitle || undefined,
+                  street_address: streetAddress,
+                  city,
+                  region,
+                  latitude: center.latitude,
+                  longitude: center.longitude,
+                  landmark: landmark.trim() || undefined,
+                  formatted_address: formatted || undefined,
+                });
 
-              {isSearching && (
-                <View className="py-4 items-center">
-                  <Text className="text-gray-500">Searching...</Text>
-                </View>
-              )}
+                if (saveError) {
+                  // Silent fail - continue anyway
+                }
+              }
+            }
 
-              {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && (
-                <View className="py-4 items-center">
-                  <Text className="text-gray-500">No results found</Text>
-                </View>
-              )}
-
-              {searchQuery.length === 0 && (
-                <View className="py-4 items-center">
-                  <Text className="text-gray-400 text-sm">
-                    Search for a location to get started
-                  </Text>
-                </View>
-              )}
-            </>
-          ) : sheetMode === 'confirm' ? (
-            // Confirm summary UI inside sheet
-            <>
-              {/* Location Header - clickable region with grey background */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                className="mb-3 bg-gray-50 border border-gray-300 rounded-xl"
-                onPress={() => {
-                  setSheetMode('search');
-                  animateSheetTo(SHEET_HEIGHT);
-                  if (lastReverse?.formatted) setSearchQuery(lastReverse.formatted);
-                }}
-                style={{ paddingHorizontal: 12, paddingVertical: 10 }}
-              >
-                <View className="flex-row items-center justify-between">
-                  <View style={{ flex: 1, paddingRight: 8 }}>
-                    <Text
-                      className="text-gray-900 text-base font-bold"
-                      numberOfLines={2}
-                      ellipsizeMode="tail"
-                    >
-                      {lastReverse?.streetLine || 'Street address'}
-                    </Text>
-                    <Text className="text-gray-600" numberOfLines={1} ellipsizeMode="tail">
-                      {lastReverse?.city || ''}
-                    </Text>
-                  </View>
-                  <Text className="text-gray-500 text-lg" style={{ paddingLeft: 8 }}>✎</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Info Box */}
-              <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-                <Text className="text-blue-700 text-sm">
-                  Your rider will deliver to the pinned location. You can make changes to your written address on the next page.
-                </Text>
-              </View>
-
-              {/* Primary Action */}
-              <TouchableOpacity
-                className="bg-blue-600 rounded-xl py-3 items-center"
-                onPress={() => {
-                  prevRegionRef.current = mapRegion;
-                  const newRegion = {
-                    latitude: mapRegion.latitude,
-                    longitude: mapRegion.longitude,
-                    latitudeDelta: Math.max(mapRegion.latitudeDelta * 0.25, 0.0005),
-                    longitudeDelta: Math.max(mapRegion.longitudeDelta * 0.25, 0.0005),
-                  };
-                  mapRef.current?.animateToRegion(newRegion, 400);
-                  setSheetMode('details');
-                  animateSheetTo(SHEET_HEIGHT_DETAILS);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text className="text-white font-bold">Add address details</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            // Details UI within the sheet (previously separate screen)
-            <>
-              <View className="mb-3">
-                <Text className="text-gray-900 text-base font-bold mb-1">Help the Rider Find Your location</Text>
-                <Text className="text-gray-600 text-sm">Place the pin exactly on your building entrance for smooth delivery</Text>
-              </View>
-
-              <View className="mb-4 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
-                <Text className="text-gray-900 font-semibold" numberOfLines={2} ellipsizeMode="tail">{lastReverse?.streetLine || 'Street address'}</Text>
-                <Text className="text-gray-600" numberOfLines={1} ellipsizeMode="tail">{lastReverse?.city || ''}</Text>
-              </View>
-
-              {/* Optional landmark field - only show if authenticated */}
-              {user && (
-                <>
-                  <View className="mb-4">
-                    <Text className="text-gray-700 text-sm font-medium mb-2">Add Flat / House / Street number or Landmark (optional)</Text>
-                    <TextInput
-                      className="bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-base"
-                      placeholder="e.g., Flat 2B, House 45, Near Main Gate"
-                      value={landmark}
-                      onChangeText={setLandmark}
-                      autoCapitalize="words"
-                    />
-                  </View>
-
-                  {/* Address Title Selection */}
-                  <View className="mb-4">
-                    <Text className="text-gray-700 text-sm font-medium mb-2">Address Title (optional, unique)</Text>
-                    <View className="flex-row gap-3">
-                      <TouchableOpacity
-                        className={`flex-1 flex-row items-center justify-center py-3 rounded-xl border-2 ${
-                          selectedTitle === 'home'
-                            ? 'bg-blue-50 border-blue-600'
-                            : 'bg-white border-gray-300'
-                        }`}
-                        onPress={() => {
-                          setSelectedTitle(selectedTitle === 'home' ? null : 'home');
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text className="text-xl mr-2">🏠</Text>
-                        <Text className={`font-semibold ${selectedTitle === 'home' ? 'text-blue-600' : 'text-gray-700'}`}>
-                          Home
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        className={`flex-1 flex-row items-center justify-center py-3 rounded-xl border-2 ${
-                          selectedTitle === 'office'
-                            ? 'bg-blue-50 border-blue-600'
-                            : 'bg-white border-gray-300'
-                        }`}
-                        onPress={() => {
-                          setSelectedTitle(selectedTitle === 'office' ? null : 'office');
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Text className="text-xl mr-2">🏢</Text>
-                        <Text className={`font-semibold ${selectedTitle === 'office' ? 'text-blue-600' : 'text-gray-700'}`}>
-                          Office
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              <View className="flex-row gap-3">
-                <TouchableOpacity
-                  className="flex-1 bg-white border-2 border-blue-600 rounded-xl py-3 items-center"
-                  onPress={() => {
-                    setSheetMode('confirm');
-                    if (prevRegionRef.current) {
-                      mapRef.current?.animateToRegion(prevRegionRef.current, 400);
-                    }
-                    animateSheetTo(SHEET_HEIGHT_MIN);
-                  }}
-                  activeOpacity={0.7}
-                  disabled={isSaving}
-                >
-                  <Text className="text-blue-600 font-bold">Back</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className={`flex-1 bg-blue-600 rounded-xl py-3 items-center ${isSaving ? 'opacity-60' : ''}`}
-                  onPress={async () => {
-                    if (isSaving) return;
-                    setIsSaving(true);
-                    try {
-                      const center = {
-                        latitude: mapRegion.latitude,
-                        longitude: mapRegion.longitude,
-                      };
-                      const streetAddress = lastReverse?.streetLine || lastReverse?.formatted?.split(',')[0] || 'Street address';
-                      const city = lastReverse?.city || '';
-                      const region = lastReverse?.region || undefined;
-                      const formatted = lastReverse?.formatted || '';
-
-                      // Save address if user is authenticated
-                      if (user) {
-                        const { data: savedAddress, error: saveError } = await addressService.createAddress({
-                          title: selectedTitle || undefined,
-                          street_address: streetAddress,
-                          city,
-                          region,
-                          latitude: center.latitude,
-                          longitude: center.longitude,
-                          landmark: landmark.trim() || undefined,
-                          formatted_address: formatted || undefined,
-                        });
-
-                        if (saveError) {
-                          console.log('Error saving address:', saveError);
-                          // Still continue to set selected address even if save fails
-                        } else {
-                          console.log('✅ Address saved:', savedAddress);
-                        }
-                      }
-
-                      // Persist selected address in context
-                      const label = streetAddress;
-                      setSelectedAddress({ label, city, coords: center, isCurrent: false });
-                      console.log('✅ Confirmed Address (details):', { label, city, coords: center });
-                      
-                      // Close flow back to Home where the bottom sheet is available
-                      navigation.goBack();
-                    } catch (err) {
-                      console.log('Error confirming address:', err);
-                    } finally {
-                      setIsSaving(false);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                  disabled={isSaving}
-                >
-                  <Text className="text-white font-bold">{isSaving ? 'Saving...' : 'Confirm location'}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </Animated.View>
-      </KeyboardAvoidingView>
+            setSelectedAddress({ label: streetAddress, city, coords: center, isCurrent: false });
+            navigation.goBack();
+          } catch (_) {
+            // Silent fail
+          } finally {
+            setIsSaving(false);
+          }
+        }}
+        onBackFromDetails={() => {
+          setSheetMode('confirm');
+          if (prevRegionRef.current) {
+            mapRef.current?.animateToRegion(prevRegionRef.current, 400);
+          }
+          animateSheetTo(SHEET_HEIGHT_MIN);
+        }}
+      />
     </View>
   );
 }
-

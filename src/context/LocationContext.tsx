@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useMemo, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, ReactNode } from 'react';
+import { useLocationStore } from '../stores/locationStore';
 
 export type Coordinates = { latitude: number; longitude: number };
 
@@ -18,6 +19,19 @@ const LocationContext = createContext<LocationContextValue | undefined>(undefine
 
 export function LocationProvider({ children }: { children: ReactNode }) {
   const [selectedAddress, setSelectedAddress] = useState<SelectedAddress | null>(null);
+  const confirmedLocation = useLocationStore((state) => state.confirmedLocation);
+
+  // Initialize from Zustand store on mount
+  useEffect(() => {
+    if (confirmedLocation && !selectedAddress) {
+      setSelectedAddress({
+        label: confirmedLocation.streetLine || confirmedLocation.address,
+        city: confirmedLocation.city || '',
+        coords: confirmedLocation.coords,
+        isCurrent: false,
+      });
+    }
+  }, [confirmedLocation]);
 
   const value = useMemo(() => ({ selectedAddress, setSelectedAddress }), [selectedAddress]);
 
