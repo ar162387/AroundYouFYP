@@ -81,8 +81,7 @@ export default function MerchantShopsScreen() {
     try {
       ReactNativeHapticFeedback.trigger('selection');
     } catch {}
-    // TODO: Navigate to shop details/edit screen
-    console.log('Shop pressed:', shop.id);
+    navigation.navigate('MerchantShopPortal', { shop });
   };
 
   return (

@@ -1,4 +1,5 @@
 import type { ConsumerAddress } from '../services/consumer/addressService';
+import type { MerchantShop } from '../services/merchant/shopService';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -15,6 +16,7 @@ export type RootStackParamList = {
   MerchantDashboard: undefined;
   CreateShop: { address?: string; latitude?: number; longitude?: number };
   ShopAddressMap: { address?: string; latitude?: number; longitude?: number };
+  MerchantShopPortal: { shop: MerchantShop };
 };
 
 declare global {

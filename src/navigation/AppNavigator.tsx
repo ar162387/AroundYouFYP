@@ -25,6 +25,7 @@ import MerchantRegistrationSurveyScreen from '../screens/merchant/MerchantRegist
 import MerchantDashboard from '../screens/merchant/MerchantDashboard';
 import CreateShopScreen from '../screens/merchant/CreateShopScreen';
 import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
+import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPortalScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -169,6 +170,14 @@ export default function AppNavigator() {
             headerShown: false,
             animation: 'slide_from_right',
             presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="MerchantShopPortal"
+          component={MerchantShopPortalScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
           }}
         />
       </Stack.Navigator>
