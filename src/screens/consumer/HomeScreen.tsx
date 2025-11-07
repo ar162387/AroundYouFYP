@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated, StatusBar } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, StatusBar, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -7,74 +7,11 @@ import type { RootStackParamList } from '../../navigation/types';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import Header from '../../components/consumer/Header';
 import AddressBottomSheet from '../../components/consumer/AddressBottomSheet';
-import CategoryIcon from '../../components/CategoryIcon';
 import ShopCard from '../../components/consumer/ShopCard';
-import type { Shop } from '../../services/supabase';
 import { useUserLocation } from '../../hooks/consumer/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
+import { useShopsByLocation } from '../../hooks/consumer/useShopsByLocation';
 import LinearGradient from 'react-native-linear-gradient';
-
-// Dummy data for shops
-const DUMMY_SHOPS: Shop[] = [
-  {
-    id: '1',
-    name: 'Fresh Grocery',
-    image_url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800',
-    rating: 4.5,
-    orders: 1240,
-    delivery_fee: 199,
-    delivery_time: '10-15 mins',
-    tags: ['Grocery', 'Fresh Produce', 'Organic'],
-    address: '123 Main St, 2 km away',
-    is_open: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    name: 'Meat & Veggie Palace',
-    image_url: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=800',
-    rating: 4.8,
-    orders: 980,
-    delivery_fee: 149,
-    delivery_time: '15-20 mins',
-    tags: ['Meat', 'Vegetables', 'Halal'],
-    address: '456 Oak Ave, 1.5 km away',
-    is_open: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    name: 'Office Supplies Plus',
-    image_url: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=800',
-    rating: 4.3,
-    orders: 350,
-    delivery_fee: 299,
-    delivery_time: '20-25 mins',
-    tags: ['Stationery', 'Office', 'School Supplies'],
-    address: '789 Pine Rd, 3 km away',
-    is_open: false,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: '4',
-    name: 'Green Valley Market',
-    image_url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800',
-    rating: 4.7,
-    orders: 1670,
-    delivery_fee: 179,
-    delivery_time: '12-18 mins',
-    tags: ['Organic', 'Farm Fresh', 'Local'],
-    address: '321 Elm St, 2.5 km away',
-    is_open: true,
-    created_at: new Date().toISOString(),
-  },
-];
-
-const SHOP_TYPES = [
-  { name: 'Grocery', emoji: '🛒' },
-  { name: 'Meat & Veg', emoji: '🥩' },
-  { name: 'Stationery', emoji: '📚' },
-];
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -82,6 +19,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const { addressLine, placeLabel, loading: locationLoading } = useUserLocation();
   const { selectedAddress } = useLocationSelection();
+  const { shops, loading: shopsLoading, error: shopsError } = useShopsByLocation();
   const [sheetVisible, setSheetVisible] = React.useState(false);
   const [showStickySearch, setShowStickySearch] = React.useState(false);
   const scrollY = React.useRef(new Animated.Value(0)).current;
@@ -261,25 +199,6 @@ export default function HomeScreen() {
         <View className="bg-white rounded-t-3xl" style={{ marginTop: -36, position: 'relative', zIndex: 2 }}>
           <View className="h-12" />
 
-        {/* Categories - Horizontal carousel */}
-        <View className="px-4 py-4">
-        
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="-mx-4 px-4"
-          >
-            {SHOP_TYPES.map((category, index) => (
-              <CategoryIcon
-                key={index}
-                name={category.name}
-                emoji={category.emoji}
-                onPress={() => console.log(`${category.name} pressed`)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-
         {/* Nearby Shops */}
         <View className="px-4 py-5">
           <View className="flex-row items-center justify-between mb-4">
@@ -289,8 +208,32 @@ export default function HomeScreen() {
             
           </View>
 
+          {/* Loading State */}
+          {shopsLoading && (
+            <View className="py-8 items-center">
+              <ActivityIndicator size="large" color="#3b82f6" />
+              <Text className="text-gray-600 mt-4">Finding shops near you...</Text>
+            </View>
+          )}
+
+          {/* Error State */}
+          {!shopsLoading && shopsError && (
+            <View className="py-8 items-center">
+              <Text className="text-red-600 text-center">{shopsError}</Text>
+            </View>
+          )}
+
+          {/* Empty State */}
+          {!shopsLoading && !shopsError && shops.length === 0 && (
+            <View className="py-8 items-center">
+              <Text className="text-gray-600 text-center">
+                No shops found in your delivery area. Try selecting a different address.
+              </Text>
+            </View>
+          )}
+
           {/* Shop Cards */}
-          {DUMMY_SHOPS.map((shop) => (
+          {!shopsLoading && !shopsError && shops.map((shop) => (
             <ShopCard
               key={shop.id}
               shop={shop}

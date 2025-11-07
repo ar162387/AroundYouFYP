@@ -16,11 +16,17 @@ export default function ShopCard({ shop, onPress }: ShopCardProps) {
       activeOpacity={0.7}
     >
       {/* Shop Image */}
-      <Image
-        source={{ uri: shop.image_url }}
-        className="w-full h-48"
-        resizeMode="cover"
-      />
+      {shop.image_url ? (
+        <Image
+          source={{ uri: shop.image_url }}
+          className="w-full h-48"
+          resizeMode="cover"
+        />
+      ) : (
+        <View className="w-full h-48 bg-gray-200 items-center justify-center">
+          <Text className="text-gray-400 text-lg">No Image</Text>
+        </View>
+      )}
 
       {/* Shop Info */}
       <View className="p-4">
@@ -31,7 +37,7 @@ export default function ShopCard({ shop, onPress }: ShopCardProps) {
           <View className="flex-row items-center">
             <Text className="text-yellow-500 text-base mr-1">★</Text>
             <Text className="text-gray-700">
-              {shop.rating.toFixed(1)} {shop.orders ? `(${shop.orders.toLocaleString()})` : ''}
+              {shop.rating > 0 ? shop.rating.toFixed(1) : 'N/A'} {shop.orders ? `(${shop.orders.toLocaleString()})` : ''}
             </Text>
           </View>
         </View>
@@ -39,10 +45,10 @@ export default function ShopCard({ shop, onPress }: ShopCardProps) {
         {/* Delivery Fee and Time */}
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-gray-600 text-sm">
-            {shop.delivery_time || '10-15 mins'}
+            {shop.delivery_time || 'N/A'}
           </Text>
           <Text className="text-primary-600">
-            Rs {shop.delivery_fee.toFixed(0)} delivery
+            {shop.delivery_fee > 0 ? `Rs ${shop.delivery_fee.toFixed(0)} delivery` : 'N/A'}
           </Text>
         </View>
 

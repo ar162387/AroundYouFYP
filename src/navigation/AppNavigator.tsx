@@ -2,16 +2,15 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text } from 'react-native';
+
 import HomeIcon from '../icons/HomeIcon';
 import SearchIcon from '../icons/SearchIcon';
 import ProfileIcon from '../icons/ProfileIcon';
-import FavoriteIcon from '../icons/FavoriteIcon';
-import CartIcon from '../icons/CartIcon';
+
 import type { RootStackParamList } from './types';
 
 import SplashScreen from '../screens/SplashScreen';
-import HomeScreen from '../screens/HomeScreen';
+import HomeScreen from '../screens/consumer/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
 import AddressSearchScreen from '../screens/consumer/AddressSearchScreen';
@@ -26,6 +25,7 @@ import MerchantDashboard from '../screens/merchant/MerchantDashboard';
 import CreateShopScreen from '../screens/merchant/CreateShopScreen';
 import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
 import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPortalScreen';
+import ManageDeliveryAreasScreen from '../screens/merchant/shop/ManageDeliveryAreasScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -175,6 +175,14 @@ export default function AppNavigator() {
         <Stack.Screen
           name="MerchantShopPortal"
           component={MerchantShopPortalScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="ManageDeliveryAreas"
+          component={ManageDeliveryAreasScreen}
           options={{
             headerShown: false,
             animation: 'slide_from_right',

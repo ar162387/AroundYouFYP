@@ -17,6 +17,7 @@ export type RootStackParamList = {
   CreateShop: { address?: string; latitude?: number; longitude?: number };
   ShopAddressMap: { address?: string; latitude?: number; longitude?: number };
   MerchantShopPortal: { shop: MerchantShop };
+  ManageDeliveryAreas: { shop: MerchantShop };
 };
 
 declare global {
