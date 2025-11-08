@@ -49,6 +49,8 @@ export type Shop = {
   delivery_time?: string; // e.g. "10-15 mins"
   tags: string[];
   address: string;
+  latitude?: number;
+  longitude?: number;
   is_open: boolean;
   created_at: string;
 };

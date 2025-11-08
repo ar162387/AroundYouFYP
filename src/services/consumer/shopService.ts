@@ -50,10 +50,12 @@ export async function findShopsByLocation(
       image_url: row.image_url || '',
       rating: 0, // N/A for now
       orders: undefined, // N/A for now
-      delivery_fee: 0, // N/A for now
+      delivery_fee: 0, // Will be calculated based on distance and delivery logic
       delivery_time: undefined, // N/A for now
       tags: row.tags || [],
       address: row.address,
+      latitude: row.latitude,
+      longitude: row.longitude,
       is_open: row.is_open,
       created_at: row.created_at,
     }));
@@ -79,7 +81,7 @@ async function findShopsByLocationFallback(
     // or we need the migration to be applied
     const { data, error } = await supabase
       .from('shops')
-      .select('id, name, image_url, tags, address, is_open, created_at')
+      .select('id, name, image_url, tags, address, latitude, longitude, is_open, created_at')
       .eq('is_open', true)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -95,10 +97,12 @@ async function findShopsByLocationFallback(
       image_url: row.image_url || '',
       rating: 0,
       orders: undefined,
-      delivery_fee: 0,
+      delivery_fee: 0, // Will be calculated based on distance and delivery logic
       delivery_time: undefined,
       tags: row.tags || [],
       address: row.address,
+      latitude: row.latitude,
+      longitude: row.longitude,
       is_open: row.is_open,
       created_at: row.created_at,
     }));

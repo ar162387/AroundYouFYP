@@ -3,7 +3,7 @@
 -- and check delivery area coverage
 
 -- Allow anyone to view shops (for consumer app)
-CREATE POLICY IF NOT EXISTS "Anyone can view shops"
+CREATE POLICY "Anyone can view shops"
   ON public.shops
   FOR SELECT
   USING (true);

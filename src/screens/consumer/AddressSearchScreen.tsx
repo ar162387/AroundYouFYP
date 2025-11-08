@@ -58,10 +58,14 @@ export default function AddressSearchScreen() {
   
   // Bottom sheet dimensions and state
   const SHEET_HEIGHT = Math.round(Dimensions.get('window').height * 0.9); // State 1: Search
-  const SHEET_HEIGHT_MIN = Math.round(Dimensions.get('window').height * 0.38); // State 2: Confirm (increased to fit content + button)
-  const SHEET_HEIGHT_DETAILS = Math.round(Dimensions.get('window').height * 0.45); // State 3: Details
+  const SHEET_HEIGHT_MIN = Math.round(Dimensions.get('window').height * 0.38); // State 2: Confirm
+  const SHEET_HEIGHT_PINPOINT = Math.round(Dimensions.get('window').height * 0.35); // State 3: Pinpoint (reduced)
+  const SHEET_HEIGHT_DETAILS = Math.round(Dimensions.get('window').height * 0.65); // State 4: Details (larger for form)
   const [sheetMode, setSheetMode] = useState<SheetMode>('search');
   const sheetHeightAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const sheetBottomAnim = useRef(new Animated.Value(0)).current; // For keyboard adjustment
+  const cameFromPinpointRef = useRef<boolean>(false); // Track if we came from pinpoint state
+  const keyboardHeightRef = useRef<number>(0);
   
   // Address state
   const [lastReverse, setLastReverse] = useState<{ formatted: string; city?: string; region?: string; streetLine?: string } | null>(null);
@@ -134,7 +138,7 @@ export default function AddressSearchScreen() {
         setSearchQuery(`${editingAddress.street_address}, ${editingAddress.city}`);
       }
       
-      // Animate map to address location and go to confirm state
+      // Animate map to address location and go to details state if user is authenticated
       setTimeout(() => {
         if (mapRef.current) {
           programmaticMoveRef.current = true;
@@ -282,6 +286,49 @@ export default function AddressSearchScreen() {
   }, [selectedAddress?.coords, userCoords]);
 
   /**
+   * KEYBOARD HANDLING FOR DETAILS STATE
+   * Adjusts bottom sheet position when keyboard shows/hides in details state
+   */
+  useEffect(() => {
+    if (sheetMode !== 'details') {
+      // Reset bottom position when not in details mode
+      sheetBottomAnim.setValue(0);
+      return;
+    }
+
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        keyboardHeightRef.current = e.endCoordinates.height;
+        // Move bottom sheet up by keyboard height to keep input visible
+        Animated.timing(sheetBottomAnim, {
+          toValue: e.endCoordinates.height,
+          duration: Platform.OS === 'ios' ? e.duration || 250 : 250,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      (e) => {
+        keyboardHeightRef.current = 0;
+        // Move bottom sheet back to bottom
+        Animated.timing(sheetBottomAnim, {
+          toValue: 0,
+          duration: Platform.OS === 'ios' ? e.duration || 250 : 250,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, [sheetMode]);
+
+  /**
    * BOTTOM SHEET DRAG HANDLER
    * Allows user to drag sheet between search (90%) and confirm (30%) states
    */
@@ -296,26 +343,77 @@ export default function AddressSearchScreen() {
       },
       onPanResponderMove: (_, gesture) => {
         panAccumRef.current = gesture.dy;
-        const target = clamp(sheetStartHeightRef.current - gesture.dy, SHEET_HEIGHT_MIN, SHEET_HEIGHT);
+        let minHeight = SHEET_HEIGHT_MIN;
+        let maxHeight = SHEET_HEIGHT;
+        
+        if (sheetMode === 'pinpoint') {
+          minHeight = SHEET_HEIGHT_MIN;
+          maxHeight = SHEET_HEIGHT_PINPOINT;
+        } else if (sheetMode === 'details') {
+          minHeight = cameFromPinpointRef.current ? SHEET_HEIGHT_PINPOINT : SHEET_HEIGHT_MIN;
+          maxHeight = SHEET_HEIGHT_DETAILS;
+        }
+        
+        const target = clamp(sheetStartHeightRef.current - gesture.dy, minHeight, maxHeight);
         sheetHeightAnim.setValue(target);
-        const mid = (SHEET_HEIGHT + SHEET_HEIGHT_MIN) / 2;
-        if (target > mid) {
-          if (sheetMode !== 'search') setSheetMode('search');
-        } else {
-          if (sheetMode === 'search') setSheetMode('confirm');
+        
+        if (sheetMode === 'search') {
+          const mid = (SHEET_HEIGHT + SHEET_HEIGHT_MIN) / 2;
+          if (target > mid) {
+            // Stay in search mode
+          } else {
+            // Always go to confirm state
+            setSheetMode('confirm');
+          }
         }
       },
       onPanResponderRelease: () => {
         const dy = panAccumRef.current;
         panAccumRef.current = 0;
         const current = (sheetHeightAnim as any)._value ?? SHEET_HEIGHT;
-        const mid = (SHEET_HEIGHT + SHEET_HEIGHT_MIN) / 2;
-        if (current >= mid) {
-          setSheetMode('search');
-          animateSheetTo(SHEET_HEIGHT);
-        } else {
-          if (sheetMode !== 'details') setSheetMode('confirm');
-          animateSheetTo(SHEET_HEIGHT_MIN);
+        
+        if (sheetMode === 'search') {
+          const mid = (SHEET_HEIGHT + SHEET_HEIGHT_MIN) / 2;
+          if (current >= mid) {
+            setSheetMode('search');
+            animateSheetTo(SHEET_HEIGHT);
+          } else {
+            // Always go to confirm state
+            setSheetMode('confirm');
+            animateSheetTo(SHEET_HEIGHT_MIN);
+          }
+        } else if (sheetMode === 'confirm') {
+          const mid = (SHEET_HEIGHT + SHEET_HEIGHT_MIN) / 2;
+          if (current >= mid) {
+            setSheetMode('search');
+            animateSheetTo(SHEET_HEIGHT);
+          } else {
+            setSheetMode('confirm');
+            animateSheetTo(SHEET_HEIGHT_MIN);
+          }
+        } else if (sheetMode === 'pinpoint') {
+          const mid = (SHEET_HEIGHT_PINPOINT + SHEET_HEIGHT_MIN) / 2;
+          if (current >= mid) {
+            setSheetMode('pinpoint');
+            animateSheetTo(SHEET_HEIGHT_PINPOINT);
+          } else {
+            setSheetMode('confirm');
+            animateSheetTo(SHEET_HEIGHT_MIN);
+          }
+        } else if (sheetMode === 'details') {
+          const mid = (SHEET_HEIGHT_DETAILS + SHEET_HEIGHT_PINPOINT) / 2;
+          if (current >= mid) {
+            setSheetMode('details');
+            animateSheetTo(SHEET_HEIGHT_DETAILS);
+          } else {
+            if (cameFromPinpointRef.current) {
+              setSheetMode('pinpoint');
+              animateSheetTo(SHEET_HEIGHT_PINPOINT);
+            } else {
+              setSheetMode('confirm');
+              animateSheetTo(SHEET_HEIGHT_MIN);
+            }
+          }
         }
       },
     })
@@ -500,6 +598,10 @@ export default function AddressSearchScreen() {
 
       setSearchResults([]);
       setSearchQuery('');
+      
+      // Always transition to confirm state
+      setSheetMode('confirm');
+      animateSheetTo(SHEET_HEIGHT_MIN);
     } catch (_) {}
   };
 
@@ -738,11 +840,13 @@ export default function AddressSearchScreen() {
       {/* Bottom Sheet - Three States */}
       <AddressSearchBottomSheet
         sheetHeightAnim={sheetHeightAnim}
+        sheetBottomAnim={sheetBottomAnim}
         sheetMode={sheetMode}
         setSheetMode={setSheetMode}
         animateSheetTo={animateSheetTo}
         SHEET_HEIGHT={SHEET_HEIGHT}
         SHEET_HEIGHT_MIN={SHEET_HEIGHT_MIN}
+        SHEET_HEIGHT_PINPOINT={SHEET_HEIGHT_PINPOINT}
         SHEET_HEIGHT_DETAILS={SHEET_HEIGHT_DETAILS}
         panHandlers={panResponder.panHandlers}
         searchQuery={searchQuery}
@@ -762,18 +866,37 @@ export default function AddressSearchScreen() {
         }}
         isSaving={isSaving}
         onAddDetails={() => {
+          // Save current region before zooming in
           prevRegionRef.current = mapRegion;
+          // Set street-level zoom (very zoomed in)
           const newRegion = {
             latitude: mapRegion.latitude,
             longitude: mapRegion.longitude,
             latitudeDelta: Math.max(mapRegion.latitudeDelta * 0.25, 0.0005),
             longitudeDelta: Math.max(mapRegion.longitudeDelta * 0.25, 0.0005),
           };
+          setMapRegion(newRegion);
           mapRef.current?.animateToRegion(newRegion, 400);
+          setSheetMode('pinpoint');
+          animateSheetTo(SHEET_HEIGHT_PINPOINT);
+        }}
+        onPinpointComplete={() => {
+          cameFromPinpointRef.current = true;
+          // Preserve zoom level from pinpoint state (street level)
+          // The mapRegion already has the street-level zoom, so we just transition
           setSheetMode('details');
           animateSheetTo(SHEET_HEIGHT_DETAILS);
         }}
+        onBackFromPinpoint={() => {
+          if (prevRegionRef.current) {
+            setMapRegion(prevRegionRef.current);
+            mapRef.current?.animateToRegion(prevRegionRef.current, 400);
+          }
+          setSheetMode('confirm');
+          animateSheetTo(SHEET_HEIGHT_MIN);
+        }}
         onSearchAgain={() => {
+          cameFromPinpointRef.current = false;
           setSheetMode('search');
           animateSheetTo(SHEET_HEIGHT);
           // Pre-fill search with street address and city only (no postal code)
@@ -838,6 +961,7 @@ export default function AddressSearchScreen() {
             }
 
             setSelectedAddress({ label: streetAddress, city, coords: center, isCurrent: false });
+            cameFromPinpointRef.current = false; // Reset when saving
             navigation.goBack();
           } catch (_) {
             // Silent fail
@@ -846,11 +970,20 @@ export default function AddressSearchScreen() {
           }
         }}
         onBackFromDetails={() => {
-          setSheetMode('confirm');
-          if (prevRegionRef.current) {
-            mapRef.current?.animateToRegion(prevRegionRef.current, 400);
+          if (cameFromPinpointRef.current) {
+            // Go back to pinpoint state (zoom already at street level)
+            setSheetMode('pinpoint');
+            animateSheetTo(SHEET_HEIGHT_PINPOINT);
+            cameFromPinpointRef.current = false;
+          } else {
+            // Go back to confirm state
+            setSheetMode('confirm');
+            if (prevRegionRef.current) {
+              setMapRegion(prevRegionRef.current);
+              mapRef.current?.animateToRegion(prevRegionRef.current, 400);
+            }
+            animateSheetTo(SHEET_HEIGHT_MIN);
           }
-          animateSheetTo(SHEET_HEIGHT_MIN);
         }}
       />
     </View>

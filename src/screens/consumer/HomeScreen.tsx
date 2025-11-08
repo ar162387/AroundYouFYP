@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Animated, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Animated, StatusBar } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,6 +8,7 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import Header from '../../components/consumer/Header';
 import AddressBottomSheet from '../../components/consumer/AddressBottomSheet';
 import ShopCard from '../../components/consumer/ShopCard';
+import ShopCardSkeleton from '../../skeleton/ShopCardSkeleton';
 import { useUserLocation } from '../../hooks/consumer/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useShopsByLocation } from '../../hooks/consumer/useShopsByLocation';
@@ -209,12 +210,7 @@ export default function HomeScreen() {
           </View>
 
           {/* Loading State */}
-          {shopsLoading && (
-            <View className="py-8 items-center">
-              <ActivityIndicator size="large" color="#3b82f6" />
-              <Text className="text-gray-600 mt-4">Finding shops near you...</Text>
-            </View>
-          )}
+          {shopsLoading && <ShopCardSkeleton count={3} />}
 
           {/* Error State */}
           {!shopsLoading && shopsError && (

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useUserLocation } from './useUserLocation';
 import { findShopsByLocation } from '../../services/consumer/shopService';
+import { calculateShopsDeliveryFees } from '../../services/consumer/deliveryFeeService';
 import type { ConsumerShop } from '../../services/consumer/shopService';
 
 export function useShopsByLocation() {
@@ -10,24 +11,44 @@ export function useShopsByLocation() {
   const [shops, setShops] = useState<ConsumerShop[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Determine which coordinates to use (priority: selectedAddress.coords > userCoords)
+  const coords = useMemo(() => {
+    return selectedAddress?.coords || userCoords;
+  }, [
+    selectedAddress?.coords?.latitude,
+    selectedAddress?.coords?.longitude,
+    userCoords?.latitude,
+    userCoords?.longitude,
+  ]);
+
+  // Track last fetched coordinates to prevent duplicate fetches
+  const lastFetchedCoordsRef = useRef<string | null>(null);
+  
+  // Create a stable key from coordinates
+  const coordsKey = coords 
+    ? `${coords.latitude.toFixed(6)},${coords.longitude.toFixed(6)}`
+    : null;
 
   useEffect(() => {
     let isMounted = true;
 
-    const fetchShops = async () => {
-      // Determine which coordinates to use
-      // Priority: selectedAddress.coords > userCoords
-      const coords = selectedAddress?.coords || userCoords;
-
-      if (!coords || !coords.latitude || !coords.longitude) {
-        if (isMounted) {
-          setShops([]);
-          setLoading(false);
-          setError(null);
-        }
-        return;
+    // Skip if no coordinates or if we already fetched for these coordinates
+    if (!coords || !coords.latitude || !coords.longitude) {
+      if (isMounted) {
+        setShops([]);
+        setLoading(false);
+        setError(null);
       }
+      return;
+    }
 
+    // Skip if we already fetched for these exact coordinates
+    if (lastFetchedCoordsRef.current === coordsKey) {
+      return;
+    }
+
+    const fetchShops = async () => {
       if (isMounted) {
         setLoading(true);
         setError(null);
@@ -45,9 +66,22 @@ export function useShopsByLocation() {
           setError(result.error.message || 'Failed to fetch shops');
           setShops([]);
         } else {
-          console.log('Setting shops:', result.data?.length || 0);
-          setShops(result.data || []);
-          setError(null);
+          const shopsData = result.data || [];
+          console.log('Setting shops:', shopsData.length);
+          
+          // Calculate delivery fees for all shops
+          const shopsWithFees = await calculateShopsDeliveryFees(
+            shopsData,
+            coords.latitude,
+            coords.longitude
+          );
+          
+          if (isMounted) {
+            setShops(shopsWithFees);
+            setError(null);
+            // Mark these coordinates as fetched
+            lastFetchedCoordsRef.current = coordsKey;
+          }
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -66,7 +100,7 @@ export function useShopsByLocation() {
     return () => {
       isMounted = false;
     };
-  }, [selectedAddress?.coords?.latitude, selectedAddress?.coords?.longitude, userCoords?.latitude, userCoords?.longitude]);
+  }, [coords, coordsKey]);
 
   return { shops, loading, error };
 }

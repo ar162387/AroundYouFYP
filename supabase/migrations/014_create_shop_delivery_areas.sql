@@ -48,7 +48,7 @@ CREATE TRIGGER shop_delivery_areas_prevent_overlap
 
 ALTER TABLE public.shop_delivery_areas ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Shop owners can view delivery areas"
+CREATE POLICY "Shop owners can view delivery areas"
   ON public.shop_delivery_areas
   FOR SELECT
   USING (
@@ -61,7 +61,7 @@ CREATE POLICY IF NOT EXISTS "Shop owners can view delivery areas"
     )
   );
 
-CREATE POLICY IF NOT EXISTS "Shop owners can insert delivery areas"
+CREATE POLICY "Shop owners can insert delivery areas"
   ON public.shop_delivery_areas
   FOR INSERT
   WITH CHECK (
@@ -74,7 +74,7 @@ CREATE POLICY IF NOT EXISTS "Shop owners can insert delivery areas"
     )
   );
 
-CREATE POLICY IF NOT EXISTS "Shop owners can update delivery areas"
+CREATE POLICY "Shop owners can update delivery areas"
   ON public.shop_delivery_areas
   FOR UPDATE
   USING (
@@ -96,7 +96,7 @@ CREATE POLICY IF NOT EXISTS "Shop owners can update delivery areas"
     )
   );
 
-CREATE POLICY IF NOT EXISTS "Shop owners can delete delivery areas"
+CREATE POLICY "Shop owners can delete delivery areas"
   ON public.shop_delivery_areas
   FOR DELETE
   USING (

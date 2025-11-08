@@ -48,7 +48,7 @@ export default function ShopCard({ shop, onPress }: ShopCardProps) {
             {shop.delivery_time || 'N/A'}
           </Text>
           <Text className="text-primary-600">
-            {shop.delivery_fee > 0 ? `Rs ${shop.delivery_fee.toFixed(0)} delivery` : 'N/A'}
+            {shop.delivery_fee > 0 ? `Rs ${shop.delivery_fee.toFixed(0)} delivery` : 'Free delivery'}
           </Text>
         </View>
 
