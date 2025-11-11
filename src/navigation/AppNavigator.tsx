@@ -13,6 +13,8 @@ import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/consumer/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SearchScreen from '../screens/SearchScreen';
+import ShopScreen from '../screens/consumer/ShopScreen';
+import CategoryItemsScreen from '../screens/consumer/CategoryItemsScreen';
 import AddressSearchScreen from '../screens/consumer/AddressSearchScreen';
 import ConsumerAddressManagementScreen from '../screens/consumer/ConsumerAddressManagementScreen';
 import MapTestScreen from '../screens/MapTestScreen';
@@ -23,6 +25,7 @@ import FirstLaunchMapScreen from '../screens/FirstLaunchMapScreen';
 import MerchantRegistrationSurveyScreen from '../screens/merchant/MerchantRegistrationSurveyScreen';
 import MerchantDashboard from '../screens/merchant/MerchantDashboard';
 import CreateShopScreen from '../screens/merchant/CreateShopScreen';
+import EditShopScreen from '../screens/merchant/EditShopScreen';
 import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
 import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPortalScreen';
 import ManageDeliveryAreasScreen from '../screens/merchant/shop/ManageDeliveryAreasScreen';
@@ -107,6 +110,22 @@ export default function AppNavigator() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
+          name="Shop"
+          component={ShopScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="CategoryItems"
+          component={CategoryItemsScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
           name="AddressSearch"
           component={AddressSearchScreen}
           options={{ 
@@ -158,6 +177,14 @@ export default function AppNavigator() {
         <Stack.Screen
           name="CreateShop"
           component={CreateShopScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="EditShop"
+          component={EditShopScreen}
           options={{ 
             headerShown: false,
             animation: 'slide_from_right',

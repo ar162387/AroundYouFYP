@@ -47,12 +47,13 @@ export async function calculateShopDeliveryFee(
 /**
  * Calculate delivery fees for multiple shops in batch
  * This is more efficient than calling calculateShopDeliveryFee for each shop individually
+ * Returns shops with delivery_fee and distanceInMeters
  */
 export async function calculateShopsDeliveryFees(
   shops: ConsumerShop[],
   consumerLatitude: number,
   consumerLongitude: number
-): Promise<ConsumerShop[]> {
+): Promise<(ConsumerShop & { distanceInMeters?: number })[]> {
   // Fetch all delivery logic records in parallel
   const deliveryLogicPromises = shops.map(shop => fetchDeliveryLogic(shop.id));
   const deliveryLogicResults = await Promise.all(deliveryLogicPromises);
@@ -93,6 +94,7 @@ export async function calculateShopsDeliveryFees(
     return {
       ...shop,
       delivery_fee: baseFee,
+      distanceInMeters,
     };
   });
 }

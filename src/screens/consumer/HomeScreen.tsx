@@ -229,13 +229,29 @@ export default function HomeScreen() {
           )}
 
           {/* Shop Cards */}
-          {!shopsLoading && !shopsError && shops.map((shop) => (
-            <ShopCard
-              key={shop.id}
-              shop={shop}
-              onPress={() => console.log(`${shop.name} pressed`)}
-            />
-          ))}
+          {!shopsLoading && !shopsError && shops.map((shop) => {
+            // Type assertion to access distanceInMeters that was added by calculateShopsDeliveryFees
+            const shopWithDistance = shop as typeof shop & { distanceInMeters?: number };
+            return (
+              <ShopCard
+                key={shop.id}
+                shop={shop}
+                onPress={() => {
+                  console.log('Navigating to shop:', {
+                    shopId: shop.id,
+                    shopName: shop.name,
+                    deliveryFee: shop.delivery_fee,
+                    distanceInMeters: shopWithDistance.distanceInMeters,
+                  });
+                  navigation.navigate('Shop', { 
+                    shopId: shop.id,
+                    shop: shop,
+                    distanceInMeters: shopWithDistance.distanceInMeters,
+                  });
+                }}
+              />
+            );
+          })}
         </View>
 
         {/* Bottom Spacing */}

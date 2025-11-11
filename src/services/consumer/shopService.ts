@@ -1,8 +1,42 @@
 import { supabase } from '../supabase';
 import type { Shop } from '../supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
+import type { DeliveryLogic } from '../merchant/deliveryLogicService';
 
 export type ConsumerShop = Shop;
+
+export type ShopDetails = {
+  id: string;
+  name: string;
+  description: string;
+  image_url: string | null;
+  address: string;
+  latitude: number;
+  longitude: number;
+  tags: string[];
+  is_open: boolean;
+  rating: number;
+  orders: number;
+  deliveryLogic: DeliveryLogic | null;
+};
+
+export type ShopCategory = {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+};
+
+export type ShopItem = {
+  id: string;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  price_cents: number;
+  currency: string;
+  is_active: boolean;
+  categories: string[];
+};
 
 type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
 
@@ -111,6 +145,253 @@ async function findShopsByLocationFallback(
     return { data: shops, error: null };
   } catch (error: any) {
     console.error('Exception in fallback:', error);
+    return { data: null, error: error as PostgrestError };
+  }
+}
+
+/**
+ * Fetch detailed shop information including delivery logic
+ */
+export async function fetchShopDetails(shopId: string): Promise<ServiceResult<ShopDetails>> {
+  try {
+    // Fetch shop info
+    const { data: shopData, error: shopError } = await supabase
+      .from('shops')
+      .select('id, name, description, image_url, address, latitude, longitude, tags, is_open')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError) {
+      console.error('Error fetching shop details:', shopError);
+      return { data: null, error: shopError };
+    }
+
+    if (!shopData) {
+      return { data: null, error: null };
+    }
+
+    // Fetch delivery logic
+    const { data: deliveryData, error: deliveryError } = await supabase
+      .from('shop_delivery_logic')
+      .select('*')
+      .eq('shop_id', shopId)
+      .maybeSingle();
+
+    if (deliveryError) {
+      console.error('Error fetching delivery logic:', deliveryError);
+    }
+
+    // Map delivery logic if it exists
+    let deliveryLogic: DeliveryLogic | null = null;
+    if (deliveryData) {
+      deliveryLogic = {
+        id: deliveryData.id,
+        shopId: deliveryData.shop_id,
+        minimumOrderValue: Number(deliveryData.minimum_order_value),
+        smallOrderSurcharge: Number(deliveryData.small_order_surcharge),
+        leastOrderValue: Number(deliveryData.least_order_value),
+        distanceMode: deliveryData.distance_mode || 'auto',
+        maxDeliveryFee: Number(deliveryData.max_delivery_fee || 130),
+        distanceTiers: deliveryData.distance_tiers || [],
+        beyondTierFeePerUnit: Number(deliveryData.beyond_tier_fee_per_unit || 10),
+        beyondTierDistanceUnit: Number(deliveryData.beyond_tier_distance_unit || 250),
+        freeDeliveryThreshold: Number(deliveryData.free_delivery_threshold || 800),
+        freeDeliveryRadius: Number(deliveryData.free_delivery_radius || 1000),
+        createdAt: deliveryData.created_at,
+        updatedAt: deliveryData.updated_at,
+      };
+    }
+
+    const shopDetails: ShopDetails = {
+      id: shopData.id,
+      name: shopData.name,
+      description: shopData.description,
+      image_url: shopData.image_url,
+      address: shopData.address,
+      latitude: shopData.latitude,
+      longitude: shopData.longitude,
+      tags: shopData.tags || [],
+      is_open: shopData.is_open,
+      rating: 0, // TODO: Implement ratings
+      orders: 0, // TODO: Implement order count
+      deliveryLogic,
+    };
+
+    return { data: shopDetails, error: null };
+  } catch (error: any) {
+    console.error('Exception fetching shop details:', error);
+    return { data: null, error: error as PostgrestError };
+  }
+}
+
+/**
+ * Fetch active categories for a shop
+ */
+export async function fetchShopCategories(shopId: string): Promise<ServiceResult<ShopCategory[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('merchant_categories')
+      .select('id, name, description, is_active')
+      .eq('shop_id', shopId)
+      .eq('is_active', true)
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching shop categories:', error);
+      return { data: null, error };
+    }
+
+    const categories: ShopCategory[] = (data || []).map((cat: any) => ({
+      id: cat.id,
+      name: cat.name,
+      description: cat.description,
+      is_active: cat.is_active,
+    }));
+
+    return { data: categories, error: null };
+  } catch (error: any) {
+    console.error('Exception fetching shop categories:', error);
+    return { data: null, error: error as PostgrestError };
+  }
+}
+
+/**
+ * Fetch items for a shop, optionally filtered by category
+ */
+export async function fetchShopItems(
+  shopId: string,
+  categoryId?: string,
+  searchQuery?: string
+): Promise<ServiceResult<ShopItem[]>> {
+  try {
+    // Use inner join only when filtering by category, otherwise use left join
+    const joinType = categoryId ? 'inner' : 'left';
+    
+    // Query merchant_items with LEFT JOIN to item_templates to get template images as fallback
+    let query = supabase
+      .from('merchant_items')
+      .select(`
+        id,
+        name,
+        description,
+        image_url,
+        template_id,
+        price_cents,
+        currency,
+        is_active,
+        merchant_item_categories!${joinType}(merchant_category_id),
+        item_templates!left(image_url)
+      `)
+      .eq('shop_id', shopId)
+      .eq('is_active', true);
+
+    // Filter by category if provided
+    if (categoryId) {
+      query = query.eq('merchant_item_categories.merchant_category_id', categoryId);
+    }
+
+    // Search by name if query provided
+    if (searchQuery && searchQuery.trim()) {
+      query = query.ilike('name', `%${searchQuery.trim()}%`);
+    }
+
+    query = query.order('name', { ascending: true });
+
+    console.log('Fetching shop items:', { shopId, categoryId, searchQuery });
+    const { data, error } = await query;
+    console.log('Shop items result:', { itemCount: data?.length, error });
+
+    if (error) {
+      console.error('Error fetching shop items:', error);
+      return { data: null, error };
+    }
+
+    // Log raw data sample for debugging
+    if (data && data.length > 0) {
+      const firstRow: any = data[0];
+      const templateData = firstRow.item_templates;
+      const templateImageUrl = Array.isArray(templateData) 
+        ? (templateData[0] as any)?.image_url 
+        : (templateData as any)?.image_url;
+      console.log('Raw data sample (first row):', {
+        id: firstRow.id,
+        name: firstRow.name,
+        image_url: firstRow.image_url,
+        template_image_url: templateImageUrl,
+        hasTemplate: !!templateData,
+        rawRow: JSON.stringify(firstRow).substring(0, 300),
+      });
+    }
+
+    // Group items and extract categories
+    const itemsMap = new Map<string, ShopItem>();
+    
+    (data || []).forEach((row: any) => {
+      if (!itemsMap.has(row.id)) {
+        // Use COALESCE logic: prefer item image_url, fallback to template image_url
+        // This matches the merchant_item_view behavior
+        // Handle item_templates as object or array (Supabase can return either)
+        const templateData = row.item_templates;
+        const templateImageUrl = Array.isArray(templateData) 
+          ? templateData[0]?.image_url 
+          : templateData?.image_url;
+        const finalImageUrl = row.image_url || templateImageUrl || null;
+        
+        itemsMap.set(row.id, {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          image_url: finalImageUrl,
+          price_cents: row.price_cents,
+          currency: row.currency,
+          is_active: row.is_active,
+          categories: [],
+        });
+      }
+      
+      // Add category ID if available (handle both single object and array responses)
+      const categoryData = row.merchant_item_categories;
+      if (categoryData) {
+        const item = itemsMap.get(row.id)!;
+        if (Array.isArray(categoryData)) {
+          // Multiple categories
+          categoryData.forEach((cat: any) => {
+            if (cat?.merchant_category_id && !item.categories.includes(cat.merchant_category_id)) {
+              item.categories.push(cat.merchant_category_id);
+            }
+          });
+        } else if (categoryData.merchant_category_id) {
+          // Single category
+          if (!item.categories.includes(categoryData.merchant_category_id)) {
+            item.categories.push(categoryData.merchant_category_id);
+          }
+        }
+      }
+    });
+
+    const items = Array.from(itemsMap.values());
+    console.log('Processed items:', items.length);
+    if (items.length > 0) {
+      console.log('First item sample:', {
+        id: items[0].id,
+        name: items[0].name,
+        image_url: items[0].image_url,
+        hasImage: !!items[0].image_url,
+        price_cents: items[0].price_cents,
+      });
+      // Log items with images for debugging
+      const itemsWithImages = items.filter(item => item.image_url);
+      console.log(`Items with images: ${itemsWithImages.length}/${items.length}`);
+      if (itemsWithImages.length > 0) {
+        console.log('Sample item with image:', {
+          name: itemsWithImages[0].name,
+          image_url: itemsWithImages[0].image_url,
+        });
+      }
+    }
+    return { data: items, error: null };
+  } catch (error: any) {
+    console.error('Exception fetching shop items:', error);
     return { data: null, error: error as PostgrestError };
   }
 }

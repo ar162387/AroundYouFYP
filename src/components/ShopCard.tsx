@@ -15,12 +15,14 @@ export default function ShopCard({ shop, onPress }: ShopCardProps) {
       className={`rounded-2xl shadow-lg mb-4 overflow-hidden ${isClosed ? 'bg-gray-100' : 'bg-white'}`}
       activeOpacity={0.7}
     >
-      {/* Shop Image */}
-      <Image
-        source={{ uri: shop.image_url }}
-        className="w-full h-48"
-        resizeMode="cover"
-      />
+      {/* Shop Image - Maintain 16:9 aspect ratio to show full cropped image */}
+      <View className="w-full bg-gray-100 overflow-hidden" style={{ aspectRatio: 16 / 9 }}>
+        <Image
+          source={{ uri: shop.image_url }}
+          className="w-full h-full"
+          resizeMode="cover"
+        />
+      </View>
 
       {/* Shop Info */}
       <View className="p-4">

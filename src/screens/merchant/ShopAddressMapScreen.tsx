@@ -55,10 +55,10 @@ export default function ShopAddressMapScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
   
-  // Map region state - initialize from confirmed location or default
+  // Map region state - initialize from route params, confirmed location, or default
   const [mapRegion, setMapRegion] = useState({
-    latitude: confirmedLocation?.coords?.latitude || PAKISTAN_CENTER.latitude,
-    longitude: confirmedLocation?.coords?.longitude || PAKISTAN_CENTER.longitude,
+    latitude: route.params?.latitude || confirmedLocation?.coords?.latitude || PAKISTAN_CENTER.latitude,
+    longitude: route.params?.longitude || confirmedLocation?.coords?.longitude || PAKISTAN_CENTER.longitude,
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
@@ -78,9 +78,27 @@ export default function ShopAddressMapScreen() {
     mapRegion
   );
 
-  // Initialize map region from confirmed location
+  // Initialize map region from route params, confirmed location, or default
   useEffect(() => {
-    if (confirmedLocation?.coords) {
+    // Priority: route params > confirmed location > default
+    if (route.params?.latitude && route.params?.longitude) {
+      const coords = {
+        latitude: route.params.latitude,
+        longitude: route.params.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      setMapRegion(coords);
+      lastRegionRef.current = { latitude: route.params.latitude, longitude: route.params.longitude };
+      
+      // Set initial reverse geocode from route params
+      if (route.params.address) {
+        setReverseGeocode({
+          formatted: route.params.address,
+          streetLine: route.params.address,
+        });
+      }
+    } else if (confirmedLocation?.coords) {
       const coords = {
         latitude: confirmedLocation.coords.latitude,
         longitude: confirmedLocation.coords.longitude,
@@ -383,11 +401,23 @@ export default function ShopAddressMapScreen() {
 
     const address = reverseGeocode?.formatted || reverseGeocode?.streetLine || 'Selected location';
 
-    navigation.navigate('CreateShop', {
-      address,
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-    });
+    // Navigate based on returnTo param (for edit flow) or default to CreateShop
+    if (route.params?.returnTo === 'EditShop' && route.params?.shop) {
+      // For edit flow, navigate back to EditShop with the updated address
+      navigation.navigate('EditShop', {
+        shop: route.params.shop,
+        address,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+    } else {
+      // Default to CreateShop
+      navigation.navigate('CreateShop', {
+        address,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+    }
   };
 
   return (

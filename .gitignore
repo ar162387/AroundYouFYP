@@ -38,4 +38,4 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+# /android  # Keep android folder - it's needed for bare React Native builds

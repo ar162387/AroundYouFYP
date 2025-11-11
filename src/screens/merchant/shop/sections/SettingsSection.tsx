@@ -1,12 +1,23 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../../../../navigation/types';
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 
 type SettingsSectionProps = {
   shop: MerchantShop;
 };
 
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 export default function SettingsSection({ shop }: SettingsSectionProps) {
+  const navigation = useNavigation<NavigationProp>();
+
+  const handleEditGeneralDetails = () => {
+    navigation.navigate('EditShop', { shop });
+  };
+
   return (
     <View className="space-y-4">
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
@@ -17,7 +28,7 @@ export default function SettingsSection({ shop }: SettingsSectionProps) {
       </View>
 
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-3">
-        <TouchableOpacity className="flex-row items-center justify-between" onPress={() => {}}>
+        <TouchableOpacity className="flex-row items-center justify-between" onPress={handleEditGeneralDetails}>
           <Text className="text-base text-gray-700">General details</Text>
           <Text className="text-sm font-semibold text-blue-600">Edit</Text>
         </TouchableOpacity>
