@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 import OrdersRevenueLineChart from '../../../../components/merchant/charts/OrdersRevenueLineChart';
+import { useShopOrderTimeSeries, useShopOrderAnalytics } from '../../../../hooks/merchant/useOrders';
+import { formatDuration } from '../../../../types/orders';
 
 type DashboardSectionProps = {
   shop: MerchantShop;
@@ -18,158 +20,126 @@ export default function DashboardSection({ shop }: DashboardSectionProps) {
   const [endInput, setEndInput] = useState({ day: '', month: '', year: '' });
   const [dateError, setDateError] = useState<string | null>(null);
 
-  // Generate dynamic chart data and labels based on selected range
-  const chartConfig = useMemo(() => {
+  // Map DashboardSection range to order service timeFilter
+  const timeFilterMap: Record<RangeType, 'today' | 'yesterday' | '7days' | '30days' | 'all_time' | 'custom'> = {
+    today: 'today',
+    yesterday: 'yesterday',
+    '7_days': '7days',
+    '30_days': '30days',
+    all_time: 'all_time',
+    custom: 'custom',
+  };
+
+  // Fetch real time-series data
+  const { data: timeSeriesData, isLoading: isLoadingChart } = useShopOrderTimeSeries(
+    shop.id,
+    timeFilterMap[range],
+    customStartDate || undefined,
+    customEndDate || undefined
+  );
+
+  // Fetch ALL-TIME analytics for the metrics cards (always shows all-time data, independent of chart filter)
+  const { data: allTimeAnalytics, isLoading: isLoadingAllTime } = useShopOrderAnalytics(
+    shop.id,
+    'all' // Always fetch all-time data for metrics cards
+  );
+
+  // Calculate previous period for comparison (compare current all-time with previous all-time)
+  // We'll compare current all-time with all-time from 30 days ago
+  const previousAllTimeFilter = useMemo(() => {
     const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return { startDate: undefined, endDate: thirtyDaysAgo };
+  }, []);
+
+  // Fetch previous all-time analytics (all orders before 30 days ago) for comparison
+  const { data: previousAllTimeAnalytics } = useShopOrderAnalytics(
+    shop.id,
+    undefined,
+    undefined,
+    previousAllTimeFilter.endDate
+  );
+
+  // Calculate time differences (always using all-time data)
+  const timeMetrics = useMemo(() => {
+    console.log('All-Time Analytics:', allTimeAnalytics);
+    console.log('Previous All-Time Analytics:', previousAllTimeAnalytics);
     
-    switch (range) {
-      case 'today': {
-        // Hourly data for today
-        const hours = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-        const data = [120, 180, 250, 320, 280, 350, 400];
-        const yLabels = [0, 100, 200, 300, 400];
+    if (!allTimeAnalytics) {
         return {
-          xLabels: hours,
-          yLabels,
-          data,
-          orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-          revenue: data.reduce((sum, val) => sum + val * 85, 0),
+        confirmation: { current: null, change: null, changeType: null },
+        preparation: { current: null, change: null, changeType: null },
+        delivery: { current: null, change: null, changeType: null },
         };
       }
       
-      case 'yesterday': {
-        // Hourly data for yesterday
-        const hours = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-        const data = [100, 160, 220, 290, 240, 310, 370];
-        const yLabels = [0, 100, 200, 300, 400];
-        return {
-          xLabels: hours,
-          yLabels,
-          data,
-          orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-          revenue: data.reduce((sum, val) => sum + val * 85, 0),
-        };
-      }
+    const calculateChange = (current: number | undefined, previous: number | undefined) => {
+      if (current === undefined || current === null) return { change: null, changeType: null };
+      if (previous === undefined || previous === null) return { change: null, changeType: null };
       
-      case '7_days': {
-        // Daily data for last 7 days
-        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        const data = [1200, 1450, 1680, 1890, 2100, 2400, 2200];
-        const yLabels = [0, 600, 1200, 1800, 2400];
+      const diff = Math.round(current - previous);
+      if (diff === 0) return { change: null, changeType: null };
         return {
-          xLabels: days,
-          yLabels,
-          data,
-          orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-          revenue: data.reduce((sum, val) => sum + val * 85, 0),
+        change: Math.abs(diff),
+        changeType: diff > 0 ? 'up' : 'down',
         };
-      }
-      
-      case '30_days': {
-        // Weekly data for last 30 days
-        const weeks = ['Wk1', 'Wk2', 'Wk3', 'Wk4'];
-        const data = [8500, 9200, 10100, 11500];
-        const yLabels = [0, 3000, 6000, 9000, 12000];
+    };
+
         return {
-          xLabels: weeks,
-          yLabels,
-          data,
-          orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-          revenue: data.reduce((sum, val) => sum + val * 85, 0),
-        };
-      }
-      
-      case 'all_time': {
-        // Monthly data
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-        const data = [25000, 28000, 32000, 35000, 38000, 42000];
-        const yLabels = [0, 10000, 20000, 30000, 40000];
-        return {
-          xLabels: months,
-          yLabels,
-          data,
-          orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-          revenue: data.reduce((sum, val) => sum + val * 85, 0),
-        };
-      }
-      
-      case 'custom': {
-        // Custom range logic
-        if (!customStartDate && !customEndDate) {
-          // Default if no dates selected
-          const days = ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5'];
-          const data = [800, 950, 1100, 1250, 1400];
-          const yLabels = [0, 400, 800, 1200, 1600];
+      confirmation: {
+        current: allTimeAnalytics.average_confirmation_time_seconds,
+        ...calculateChange(
+          allTimeAnalytics.average_confirmation_time_seconds,
+          previousAllTimeAnalytics?.average_confirmation_time_seconds
+        ),
+      },
+      preparation: {
+        current: allTimeAnalytics.average_preparation_time_seconds,
+        ...calculateChange(
+          allTimeAnalytics.average_preparation_time_seconds,
+          previousAllTimeAnalytics?.average_preparation_time_seconds
+        ),
+      },
+      delivery: {
+        current: allTimeAnalytics.average_delivery_time_seconds,
+        ...calculateChange(
+          allTimeAnalytics.average_delivery_time_seconds,
+          previousAllTimeAnalytics?.average_delivery_time_seconds
+        ),
+      },
+    };
+  }, [allTimeAnalytics, previousAllTimeAnalytics]);
+
+  // Generate chart data from real data
+  const chartConfig = useMemo(() => {
+    if (isLoadingChart || !timeSeriesData) {
           return {
-            xLabels: days,
-            yLabels,
-            data,
-            orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-            revenue: data.reduce((sum, val) => sum + val * 85, 0),
+        xLabels: [] as string[],
+        yLabels: [0] as number[],
+        data: [] as number[],
+        orders: 0,
+        revenue: 0,
           };
         }
         
-        // Calculate days between dates
-        const startDate = customStartDate || new Date('2024-01-01');
-        const endDate = customEndDate || now;
-        const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        
-        let xLabels: string[];
-        let dataPoints: number;
-        
-        if (daysDiff <= 1) {
-          // Hourly for single day
-          xLabels = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-          dataPoints = 7;
-        } else if (daysDiff <= 7) {
-          // Daily for week or less
-          xLabels = Array.from({ length: Math.min(daysDiff, 7) }, (_, i) => `Day ${i + 1}`);
-          dataPoints = xLabels.length;
-        } else if (daysDiff <= 30) {
-          // Weekly for month or less
-          const weeks = Math.ceil(daysDiff / 7);
-          xLabels = Array.from({ length: weeks }, (_, i) => `Wk${i + 1}`);
-          dataPoints = xLabels.length;
-        } else {
-          // Monthly for longer periods
-          const months = Math.min(Math.ceil(daysDiff / 30), 12);
-          xLabels = Array.from({ length: months }, (_, i) => {
-            const date = new Date(startDate);
-            date.setMonth(date.getMonth() + i);
-            return date.toLocaleDateString('en-US', { month: 'short' });
-          });
-          dataPoints = xLabels.length;
-        }
-        
-        // Generate sample data
-        const data = Array.from({ length: dataPoints }, (_, i) => 
-          Math.floor(500 + Math.random() * 1000 + (i * 100))
-        );
-        const maxData = Math.max(...data);
-        const yMax = Math.ceil(maxData / 1000) * 1000;
+    const data = timeSeriesData as { xLabels: string[]; data: number[]; orders: number; revenue: number };
+
+    // Generate yLabels based on max value
+    const maxValue = Math.max(...(data.data || []), 1);
+    const yMax = Math.ceil(maxValue / 1000) * 1000 || 1000;
         const yLabels = Array.from({ length: 5 }, (_, i) => Math.floor((yMax / 4) * i));
         
         return {
-          xLabels,
+      xLabels: data.xLabels || [],
           yLabels,
-          data,
-          orders: data.reduce((sum, val) => sum + Math.floor(val / 100), 0),
-          revenue: data.reduce((sum, val) => sum + val * 85, 0),
+      data: data.data || [],
+      orders: data.orders || 0,
+      revenue: data.revenue || 0, // This is in cents
         };
-      }
-      
-      default:
-        return {
-          xLabels: [],
-          yLabels: [0],
-          data: [],
-          orders: 0,
-          revenue: 0,
-        };
-    }
-  }, [range, customStartDate, customEndDate]);
+  }, [timeSeriesData, isLoadingChart]);
 
-  const chartData = chartConfig.data.map((value, index) => ({
+  const chartData = chartConfig.data.map((value: number, index: number) => ({
     label: chartConfig.xLabels[index] || '',
     value,
   }));
@@ -345,17 +315,162 @@ export default function DashboardSection({ shop }: DashboardSectionProps) {
         <View className="mt-6 bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
           <View className="mb-6">
             <Text className="text-sm text-gray-500">Orders</Text>
+            {isLoadingChart ? (
+              <ActivityIndicator size="small" color="#3B82F6" className="mt-2" />
+            ) : (
             <Text className="text-3xl font-semibold text-gray-900 mt-1">{chartConfig.orders.toLocaleString()}</Text>
+            )}
           </View>
           <View className="mb-6">
             <Text className="text-sm text-gray-500">Revenue</Text>
-            <Text className="text-3xl font-semibold text-gray-900 mt-1">Rs {chartConfig.revenue.toLocaleString()}</Text>
+            {isLoadingChart ? (
+              <ActivityIndicator size="small" color="#3B82F6" className="mt-2" />
+            ) : (
+              <Text className="text-3xl font-semibold text-gray-900 mt-1">
+                Rs {((chartConfig.revenue || 0) / 100).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            )}
           </View>
 
           <View className="overflow-hidden">
+            {isLoadingChart ? (
+              <View className="h-40 items-center justify-center">
+                <ActivityIndicator size="large" color="#3B82F6" />
+                <Text className="text-gray-500 mt-2">Loading chart data...</Text>
+              </View>
+            ) : chartConfig.data.length > 0 ? (
             <OrdersRevenueLineChart data={chartData} xLabels={chartConfig.xLabels} yLabels={chartConfig.yLabels} />
+            ) : (
+              <View className="h-40 items-center justify-center">
+                <Text className="text-gray-500">No data available for this period</Text>
+              </View>
+            )}
           </View>
         </View>
+      </View>
+
+      {/* Time Metrics Cards Section - Always shows all-time averages, separate from chart */}
+      <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-md mt-4">
+        <Text className="text-lg font-bold text-gray-900 mb-4">Performance Metrics (All-Time)</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 4, paddingRight: 16 }}
+            style={{ minHeight: 120 }}
+          >
+            {/* Loading state */}
+            {isLoadingAllTime && (
+              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] items-center justify-center">
+                <ActivityIndicator size="small" color="#3B82F6" />
+                <Text className="text-xs text-gray-500 mt-2">Loading metrics...</Text>
+              </View>
+            )}
+
+            {/* Confirmation Time Card */}
+            {!isLoadingAllTime && (
+              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] shadow-sm">
+                <Text className="text-xs text-gray-500 mb-1">Confirmation Time</Text>
+                <View className="flex-row items-baseline flex-wrap">
+                  {timeMetrics.confirmation.current !== null && timeMetrics.confirmation.current !== undefined ? (
+                    <>
+                      <Text className="text-2xl font-bold text-gray-900">
+                        {formatDuration(timeMetrics.confirmation.current)}
+                      </Text>
+                      {timeMetrics.confirmation.change !== null && timeMetrics.confirmation.changeType === 'up' && (
+                        <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
+                          <Text className="text-green-600 text-xs font-semibold">↑</Text>
+                          <Text className="text-green-600 text-xs font-semibold ml-1">
+                            +{formatDuration(timeMetrics.confirmation.change)}
+                          </Text>
+                        </View>
+                      )}
+                      {timeMetrics.confirmation.change !== null && timeMetrics.confirmation.changeType === 'down' && (
+                        <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
+                          <Text className="text-red-600 text-xs font-semibold">↓</Text>
+                          <Text className="text-red-600 text-xs font-semibold ml-1">
+                            -{formatDuration(timeMetrics.confirmation.change)}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <Text className="text-lg text-gray-400">No data</Text>
+                  )}
+                </View>
+                <Text className="text-xs text-gray-400 mt-1">Average time</Text>
+              </View>
+            )}
+
+            {/* Preparation Time Card */}
+            {!isLoadingAllTime && (
+              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] shadow-sm">
+                <Text className="text-xs text-gray-500 mb-1">Preparation Time</Text>
+                <View className="flex-row items-baseline flex-wrap">
+                  {timeMetrics.preparation.current !== null && timeMetrics.preparation.current !== undefined ? (
+                    <>
+                      <Text className="text-2xl font-bold text-gray-900">
+                        {formatDuration(timeMetrics.preparation.current)}
+                      </Text>
+                      {timeMetrics.preparation.change !== null && timeMetrics.preparation.changeType === 'up' && (
+                        <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
+                          <Text className="text-green-600 text-xs font-semibold">↑</Text>
+                          <Text className="text-green-600 text-xs font-semibold ml-1">
+                            +{formatDuration(timeMetrics.preparation.change)}
+                          </Text>
+                        </View>
+                      )}
+                      {timeMetrics.preparation.change !== null && timeMetrics.preparation.changeType === 'down' && (
+                        <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
+                          <Text className="text-red-600 text-xs font-semibold">↓</Text>
+                          <Text className="text-red-600 text-xs font-semibold ml-1">
+                            -{formatDuration(timeMetrics.preparation.change)}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <Text className="text-lg text-gray-400">No data</Text>
+                  )}
+                </View>
+                <Text className="text-xs text-gray-400 mt-1">Average time</Text>
+              </View>
+            )}
+
+            {/* Delivery Time Card */}
+            {!isLoadingAllTime && (
+              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] shadow-sm">
+                <Text className="text-xs text-gray-500 mb-1">Delivery Time</Text>
+                <View className="flex-row items-baseline flex-wrap">
+                  {timeMetrics.delivery.current !== null && timeMetrics.delivery.current !== undefined ? (
+                    <>
+                      <Text className="text-2xl font-bold text-gray-900">
+                        {formatDuration(timeMetrics.delivery.current)}
+                      </Text>
+                      {timeMetrics.delivery.change !== null && timeMetrics.delivery.changeType === 'up' && (
+                        <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
+                          <Text className="text-green-600 text-xs font-semibold">↑</Text>
+                          <Text className="text-green-600 text-xs font-semibold ml-1">
+                            +{formatDuration(timeMetrics.delivery.change)}
+                          </Text>
+                        </View>
+                      )}
+                      {timeMetrics.delivery.change !== null && timeMetrics.delivery.changeType === 'down' && (
+                        <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
+                          <Text className="text-red-600 text-xs font-semibold">↓</Text>
+                          <Text className="text-red-600 text-xs font-semibold ml-1">
+                            -{formatDuration(timeMetrics.delivery.change)}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <Text className="text-lg text-gray-400">No data</Text>
+                  )}
+                </View>
+                <Text className="text-xs text-gray-400 mt-1">Average time</Text>
+              </View>
+            )}
+          </ScrollView>
       </View>
 
       {/* Date Picker Modal */}

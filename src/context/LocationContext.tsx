@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useLocationStore } from '../stores/locationStore';
 
 export type Coordinates = { latitude: number; longitude: number };
@@ -18,22 +18,54 @@ type LocationContextValue = {
 const LocationContext = createContext<LocationContextValue | undefined>(undefined);
 
 export function LocationProvider({ children }: { children: ReactNode }) {
-  const [selectedAddress, setSelectedAddress] = useState<SelectedAddress | null>(null);
   const confirmedLocation = useLocationStore((state) => state.confirmedLocation);
+  const setConfirmedLocation = useLocationStore((state) => state.setConfirmedLocation);
 
-  // Initialize from Zustand store on mount
-  useEffect(() => {
-    if (confirmedLocation && !selectedAddress) {
-      setSelectedAddress({
-        label: confirmedLocation.streetLine || confirmedLocation.address,
+  // Initialize from Zustand store - restore synchronously if available
+  const getInitialAddress = (): SelectedAddress | null => {
+    if (confirmedLocation && confirmedLocation.coords) {
+      return {
+        label: confirmedLocation.streetLine || confirmedLocation.address || 'Selected location',
         city: confirmedLocation.city || '',
         coords: confirmedLocation.coords,
         isCurrent: false,
+      };
+    }
+    return null;
+  };
+
+  const [selectedAddress, setSelectedAddressState] = useState<SelectedAddress | null>(getInitialAddress);
+
+  // Also restore on mount in case store hydrates after initial render
+  useEffect(() => {
+    if (confirmedLocation && confirmedLocation.coords && !selectedAddress) {
+      const restoredAddress: SelectedAddress = {
+        label: confirmedLocation.streetLine || confirmedLocation.address || 'Selected location',
+        city: confirmedLocation.city || '',
+        coords: confirmedLocation.coords,
+        isCurrent: false,
+      };
+      setSelectedAddressState(restoredAddress);
+    }
+  }, [confirmedLocation, selectedAddress]);
+
+  // Wrapper to persist address when it's set
+  const setSelectedAddress = useCallback((addr: SelectedAddress | null) => {
+    setSelectedAddressState(addr);
+    
+    // Persist to locationStore if address has coordinates
+    if (addr && addr.coords) {
+      setConfirmedLocation({
+        coords: addr.coords,
+        address: addr.label,
+        streetLine: addr.label,
+        city: addr.city || '',
+        timestamp: Date.now(),
       });
     }
-  }, [confirmedLocation]);
+  }, [setConfirmedLocation]);
 
-  const value = useMemo(() => ({ selectedAddress, setSelectedAddress }), [selectedAddress]);
+  const value = useMemo(() => ({ selectedAddress, setSelectedAddress }), [selectedAddress, setSelectedAddress]);
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }

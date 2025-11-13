@@ -1,184 +1,189 @@
-Tables (public)
-Each table lists columns (name — type — nullable/default/comment), primary key(s), and foreign key references.
+Public schema — tables and fields
+Below are the tables found in the public schema with their columns and any notable constraints/defaults/comments. If you want DDL for any specific table or to export this as SQL, tell me which table(s).
 
-user_profiles (rls: enabled)
-
-id — uuid — not null — (PK) — references auth.users(id)
-email — text — nullable
-name — text — nullable
-role — text — not null — default: 'consumer' — check: role ∈ {consumer, merchant, admin}
-created_at — timestamptz — nullable — default: now()
-updated_at — timestamptz — nullable — default: now()
-Primary key: id
-Foreign keys: user_profiles.id → auth.users.id
-consumer_addresses (rls: enabled) — comment: Stores delivery addresses for consumers
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-user_id — uuid — not null — references auth.users(id)
-title — text — nullable — check: title ∈ {home, office} — comment: Optional address title: home or office (unique per user)
-street_address — text — not null — comment: Street address without city/region
-city — text — not null
-region — text — nullable
-latitude — numeric — not null
-longitude — numeric — not null
-landmark — text — nullable — comment: Optional landmark or flat/house number for clarification
-formatted_address — text — nullable
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: consumer_addresses.user_id → auth.users.id
-merchant_accounts (rls: enabled) — comment: Stores merchant account information including shop type and verification status
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-user_id — uuid — not null — unique — references auth.users(id)
-shop_type — text — not null — check: shop_type ∈ {grocery, meat, vegetable, mart, other}
-number_of_shops — text — not null — check: number_of_shops ∈ {1,2,3+}
-status — text — not null — default: 'none' — check: status ∈ {none,pending,verified}
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: merchant_accounts.user_id → auth.users.id
-Note: shops.merchant_id → public.merchant_accounts.id
-shops (rls: enabled) — comment: Stores shop information for merchants
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-merchant_id — uuid — not null — references public.merchant_accounts(id) — comment: Reference to the merchant account that owns this shop
-name — text — not null
-description — text — not null
-shop_type — text — not null — check: shop_type ∈ {Grocery, Meat, Vegetable, Stationery, Dairy}
-address — text — not null
-latitude — double precision — not null — comment: Latitude coordinate for shop location
-longitude — double precision — not null — comment: Longitude coordinate for shop location
-image_url — text — nullable
-tags — text[] — nullable — default: '{}'
-is_open — boolean — nullable — default: true
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys:
-shops.merchant_id → public.merchant_accounts.id
-referenced by many tables: shop_delivery_areas.shop_id, delivery_runners.shop_id, shop_delivery_logic.shop_id, merchant_categories.shop_id, merchant_items.shop_id, audit_logs.shop_id
-category_templates (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-name — text — not null
-description — text — nullable
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: merchant_categories.template_id → public.category_templates.id
-item_templates (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-name — text — not null
-barcode — text — nullable
-description — text — nullable
-image_url — text — nullable
-default_unit — text — nullable
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-name_normalized — text — generated — nullable — unique — default: lower(TRIM(BOTH FROM name))
-Primary key: id
-Foreign keys: merchant_items.template_id → public.item_templates.id
-merchant_categories (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-shop_id — uuid — not null — references public.shops.id
-template_id — uuid — nullable — references public.category_templates.id
-name — text — not null
-description — text — nullable
-is_custom — boolean — not null — default: true
-is_active — boolean — not null — default: true
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: merchant_categories.shop_id → public.shops.id
-merchant_items (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-shop_id — uuid — not null — references public.shops.id
-template_id — uuid — nullable — references public.item_templates.id
-name — text — nullable
-description — text — nullable
-barcode — text — nullable
-image_url — text — nullable
-sku — text — nullable
-price_cents — integer — not null — default: 0 — check: price_cents >= 0
-currency — text — not null — default: 'PKR'
-is_active — boolean — not null — default: true
-is_custom — boolean — not null — default: true
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-created_by — uuid — nullable — default: auth.uid()
-last_updated_by — jsonb — nullable
-Primary key: id
-Foreign keys: merchant_items.shop_id → public.shops.id
-merchant_item_categories (rls: enabled)
-
-merchant_item_id — uuid — not null — references public.merchant_items.id
-merchant_category_id — uuid — not null — references public.merchant_categories.id
-sort_order — integer — not null — default: 0
-Primary key: (merchant_item_id, merchant_category_id)
-audit_logs (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-shop_id — uuid — not null — references public.shops.id
-merchant_item_id — uuid — nullable — references public.merchant_items.id
-actor — jsonb — not null
-action_type — text — not null
-changed_fields — jsonb — not null — default: '{}'
-source — text — not null — default: 'manual'
-created_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: audit_logs.shop_id → public.shops.id, audit_logs.merchant_item_id → public.merchant_items.id
-spatial_ref_sys (rls: disabled)
-
-srid — integer — not null — PK — check: srid > 0 AND srid <= 998999
-auth_name — varchar — nullable
-auth_srid — integer — nullable
-srtext — varchar — nullable
-proj4text — varchar — nullable
-Primary key: srid
-Note: Standard PostGIS spatial_ref_sys table (many rows)
-shop_delivery_areas (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-shop_id — uuid — not null — references public.shops.id
-label — text — nullable
-geom — geometry — not null
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: shop_delivery_areas.shop_id → public.shops.id
-delivery_runners (rls: enabled)
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-shop_id — uuid — not null — references public.shops.id
-name — text — not null
-phone_number — text — not null
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-Primary key: id
-Foreign keys: delivery_runners.shop_id → public.shops.id
-shop_delivery_logic (rls: enabled) — comment: Stores delivery logic settings...
-
-id — uuid — not null — default: extensions.uuid_generate_v4()
-shop_id — uuid — not null — unique — references public.shops.id
-minimum_order_value — numeric — not null — default: 200.00 — check: > 0
-small_order_surcharge — numeric — not null — default: 40.00 — check: >= 0
-least_order_value — numeric — not null — default: 100.00 — check: > 0
-created_at — timestamptz — not null — default: timezone('utc', now())
-updated_at — timestamptz — not null — default: timezone('utc', now())
-distance_mode — text — not null — default: 'auto' — check: IN {auto, custom}
-max_delivery_fee — numeric — not null — default: 130.00
-distance_tiers — jsonb — not null — default: JSON array of tiers
-beyond_tier_fee_per_unit — numeric — not null — default: 10.00
-beyond_tier_distance_unit — numeric — not null — default: 250.00
-free_delivery_threshold — numeric — not null — default: 800.00
-free_delivery_radius — numeric — not null — default: 1000.00
-Primary key: id
-Foreign keys: shop_delivery_logic.shop_id → public.shops.id
-
+user_profiles
+id (uuid) — PK
+email (text) — nullable
+name (text) — nullable
+role (text) — default 'consumer'; check role ∈ {consumer, merchant, admin}
+created_at (timestamptz) — default now()
+updated_at (timestamptz) — default now()
+FK: public.user_profiles.id → auth.users.id
+consumer_addresses
+id (uuid) — PK, default extensions.uuid_generate_v4()
+user_id (uuid) — FK → auth.users.id
+title (text) — nullable; check title ∈ {home, office}; comment: optional address title (unique per user)
+street_address (text) — comment: street address without city/region
+city (text)
+region (text) — nullable
+latitude (numeric)
+longitude (numeric)
+landmark (text) — nullable; comment: optional landmark or flat/house number
+formatted_address (text) — nullable
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+merchant_accounts
+id (uuid) — PK, default extensions.uuid_generate_v4()
+user_id (uuid) — unique, FK → auth.users.id
+shop_type (text) — check shop_type ∈ {grocery, meat, vegetable, mart, other}
+number_of_shops (text) — check ∈ {1, 2, 3+}
+status (text) — default 'none'; check ∈ {none, pending, verified}
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+Comment: stores merchant account info; FK referenced by public.shops.merchant_id
+shops
+id (uuid) — PK, default extensions.uuid_generate_v4()
+merchant_id (uuid) — FK → public.merchant_accounts.id; comment: owner merchant account
+name (text)
+description (text)
+shop_type (text) — check ∈ {Grocery, Meat, Vegetable, Stationery, Dairy}
+address (text)
+latitude (double precision) — comment: shop location latitude
+longitude (double precision) — comment: shop location longitude
+image_url (text) — nullable
+tags (text[]) — nullable; default '{}'
+is_open (boolean) — nullable; default true
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+Comment: stores shop information
+category_templates
+id (uuid) — PK, default extensions.uuid_generate_v4()
+name (text)
+description (text) — nullable
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+item_templates
+id (uuid) — PK, default extensions.uuid_generate_v4()
+name (text)
+barcode (text) — nullable
+description (text) — nullable
+image_url (text) — nullable
+default_unit (text) — nullable
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+name_normalized (text) — generated, unique, default lower(trim(both from name))
+merchant_categories
+id (uuid) — PK, default extensions.uuid_generate_v4()
+shop_id (uuid) — FK → public.shops.id
+template_id (uuid) — nullable; FK → public.category_templates.id
+name (text)
+description (text) — nullable
+is_custom (boolean) — default true
+is_active (boolean) — default true
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+merchant_items
+id (uuid) — PK, default extensions.uuid_generate_v4()
+shop_id (uuid) — FK → public.shops.id
+template_id (uuid) — nullable; FK → public.item_templates.id
+name (text) — nullable
+description (text) — nullable
+barcode (text) — nullable
+image_url (text) — nullable
+sku (text) — nullable
+price_cents (integer) — default 0; check price_cents >= 0
+currency (text) — default 'PKR'
+is_active (boolean) — default true
+is_custom (boolean) — default true
+times_sold (integer) — default 0; check >= 0; incremented when order is delivered
+total_revenue_cents (bigint) — default 0; check >= 0; total revenue from this item
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+created_by (uuid) — nullable; default auth.uid()
+last_updated_by (jsonb) — nullable
+merchant_item_categories
+merchant_item_id (uuid) — PK part; FK → public.merchant_items.id
+merchant_category_id (uuid) — PK part; FK → public.merchant_categories.id
+sort_order (integer) — default 0
+audit_logs
+id (uuid) — PK, default extensions.uuid_generate_v4()
+shop_id (uuid) — FK → public.shops.id
+merchant_item_id (uuid) — nullable; FK → public.merchant_items.id
+actor (jsonb)
+action_type (text)
+changed_fields (jsonb) — default '{}'::jsonb
+source (text) — default 'manual'
+created_at (timestamptz) — default timezone('utc', now())
+spatial_ref_sys
+srid (integer) — PK; check srid > 0 AND srid <= 998999
+auth_name (varchar) — nullable
+auth_srid (integer) — nullable
+srtext (varchar) — nullable
+proj4text (varchar) — nullable
+Note: rls_enabled = false (standard spatial_ref_sys table)
+shop_delivery_areas
+id (uuid) — PK, default extensions.uuid_generate_v4()
+shop_id (uuid) — FK → public.shops.id
+label (text) — nullable
+geom (geometry) — user-defined type
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+delivery_runners
+id (uuid) — PK, default extensions.uuid_generate_v4()
+shop_id (uuid) — FK → public.shops.id
+name (text)
+phone_number (text)
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+shop_delivery_logic
+id (uuid) — PK, default extensions.uuid_generate_v4()
+shop_id (uuid) — unique, FK → public.shops.id
+minimum_order_value (numeric) — default 200.00; check > 0; comment about surcharge below threshold
+small_order_surcharge (numeric) — default 40.00; check >= 0
+least_order_value (numeric) — default 100.00; check > 0; hard floor for order acceptance
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+distance_mode (text) — default 'auto'; check ∈ {auto, custom}
+max_delivery_fee (numeric) — default 130.00; check > 0
+distance_tiers (jsonb) — default JSONB array of {fee, max_distance} tiers
+beyond_tier_fee_per_unit (numeric) — default 10.00; check >= 0
+beyond_tier_distance_unit (numeric) — default 250.00; check > 0
+free_delivery_threshold (numeric) — default 800.00; check >= 0
+free_delivery_radius (numeric) — default 1000.00; check >= 0
+Comment: delivery logic settings including order value and distance tiers
+orders
+id (uuid) — PK, default extensions.uuid_generate_v4()
+order_number (text) — unique, auto-generated format: ORD-YYYYMMDD-NNNN
+shop_id (uuid) — FK → public.shops.id
+user_id (uuid) — FK → auth.users.id
+consumer_address_id (uuid) — FK → public.consumer_addresses.id
+delivery_runner_id (uuid) — nullable; FK → public.delivery_runners.id
+status (order_status) — enum: pending, confirmed, out_for_delivery, delivered, cancelled; default 'pending'
+subtotal_cents (integer) — check >= 0
+delivery_fee_cents (integer) — default 0; check >= 0
+surcharge_cents (integer) — default 0; check >= 0
+total_cents (integer) — check >= 0
+payment_method (payment_method) — enum: cash, card, wallet; default 'cash'
+special_instructions (text) — nullable
+placed_at (timestamptz) — default timezone('utc', now())
+confirmed_at (timestamptz) — nullable
+out_for_delivery_at (timestamptz) — nullable
+delivered_at (timestamptz) — nullable
+cancelled_at (timestamptz) — nullable
+confirmation_time_seconds (integer) — nullable; check >= 0; duration from placed to confirmed
+preparation_time_seconds (integer) — nullable; check >= 0; duration from confirmed to out_for_delivery
+delivery_time_seconds (integer) — nullable; check >= 0; duration from out_for_delivery to delivered
+cancellation_reason (text) — nullable
+cancelled_by (uuid) — nullable; FK → auth.users.id
+delivery_address (jsonb) — JSONB snapshot of consumer address at order time
+customer_name (text) — nullable
+customer_email (text) — nullable
+customer_phone (text) — nullable
+created_at (timestamptz) — default timezone('utc', now())
+updated_at (timestamptz) — default timezone('utc', now())
+Comment: Real-time order tracking with automatic timing calculations and address snapshots
+order_items
+id (uuid) — PK, default extensions.uuid_generate_v4()
+order_id (uuid) — FK → public.orders.id
+merchant_item_id (uuid) — FK → public.merchant_items.id
+item_name (text) — snapshot at order time
+item_description (text) — nullable; snapshot at order time
+item_image_url (text) — nullable; snapshot at order time
+item_price_cents (integer) — check >= 0; snapshot at order time
+quantity (integer) — check > 0
+subtotal_cents (integer) — check >= 0; must equal item_price_cents * quantity
+created_at (timestamptz) — default timezone('utc', now())
+Comment: Order line items with price snapshots preserved at order time
 
 
 
@@ -338,3 +343,160 @@ Language: plpgsql
 Security definer: yes (SECURITY DEFINER, search_path set to public)
 Volatility: volatile
 Definition: CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $function$ BEGIN NEW.updated_at = NOW(); RETURN NEW; END; $function$
+
+
+
+RLS policies in public schema — summary
+Below are the Row-Level Security policies currently defined for tables in the public schema. I’ve grouped them by table and included action (SELECT/INSERT/UPDATE/DELETE/ALL), roles, and the policy expression(s).
+
+Notes:
+
+Role column shows the role the policy applies to (many are to public).
+“Definition” is the USING expression (controls visibility/which rows can be targeted).
+“Check” is the WITH CHECK expression (controls allowed row values on INSERT/UPDATE).
+If you want me to produce SQL to recreate, modify, or remove any policy, tell me which one(s) and I’ll provide or execute the DDL (destructive actions require confirmation).
+user_profiles
+
+"Users can view own profile" — SELECT — Roles: public
+USING: auth.uid() = id
+"Users can update own profile" — UPDATE — Roles: public
+USING: auth.uid() = id
+WITH CHECK: auth.uid() = id
+"Users can insert own profile" — INSERT — Roles: public
+WITH CHECK: auth.uid() = id
+consumer_addresses
+
+"Users can view their own addresses" — SELECT — Roles: public
+USING: auth.uid() = user_id
+"Users can insert their own addresses" — INSERT — Roles: public
+WITH CHECK: auth.uid() = user_id
+"Users can update their own addresses" — UPDATE — Roles: public
+USING: auth.uid() = user_id
+WITH CHECK: auth.uid() = user_id
+"Users can delete their own addresses" — DELETE — Roles: public
+USING: auth.uid() = user_id
+merchant_accounts
+
+"Users can view their own merchant account" — SELECT — Roles: public
+USING: auth.uid() = user_id
+"Users can insert their own merchant account" — INSERT — Roles: public
+WITH CHECK: auth.uid() = user_id
+"Users can update their own merchant account" — UPDATE — Roles: public
+USING: auth.uid() = user_id
+WITH CHECK: auth.uid() = user_id
+shops
+
+"Users can view their own shops" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM merchant_accounts WHERE merchant_accounts.id = shops.merchant_id AND merchant_accounts.user_id = auth.uid())
+"Users can insert their own shops" — INSERT — Roles: public
+WITH CHECK: EXISTS (SELECT 1 FROM merchant_accounts WHERE merchant_accounts.id = shops.merchant_id AND merchant_accounts.user_id = auth.uid())
+"Users can update their own shops" — UPDATE — Roles: public
+USING: EXISTS (SELECT 1 FROM merchant_accounts WHERE merchant_accounts.id = shops.merchant_id AND merchant_accounts.user_id = auth.uid())
+WITH CHECK: same as USING
+"Users can delete their own shops" — DELETE — Roles: public
+USING: EXISTS (SELECT 1 FROM merchant_accounts WHERE merchant_accounts.id = shops.merchant_id AND merchant_accounts.user_id = auth.uid())
+merchant_item_categories
+
+"merchant_item_categories_modify" — ALL — Roles: public
+USING: EXISTS (SELECT 1 FROM merchant_items mi JOIN shops s ON s.id = mi.shop_id JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE mi.id = merchant_item_categories.merchant_item_id AND ma.user_id = auth.uid())
+WITH CHECK: same as USING
+category_templates
+
+"category_templates_read" — SELECT — Roles: public
+USING: true
+item_templates
+
+"item_templates_read" — SELECT — Roles: public
+USING: true
+merchant_categories
+
+"merchant_categories_select" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = merchant_categories.shop_id AND ma.user_id = auth.uid())
+"merchant_categories_modify" — ALL — Roles: public
+USING: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = merchant_categories.shop_id AND ma.user_id = auth.uid())
+WITH CHECK: same as USING
+merchant_items
+
+"merchant_items_select" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = merchant_items.shop_id AND ma.user_id = auth.uid())
+"merchant_items_modify" — ALL — Roles: public
+USING: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = merchant_items.shop_id AND ma.user_id = auth.uid())
+WITH CHECK: same as USING
+merchant_item_categories (select)
+
+"merchant_item_categories_select" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM merchant_items mi JOIN shops s ON s.id = mi.shop_id JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE mi.id = merchant_item_categories.merchant_item_id AND ma.user_id = auth.uid())
+audit_logs
+
+"audit_logs_select" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = audit_logs.shop_id AND ma.user_id = auth.uid())
+"audit_logs_insert" — INSERT — Roles: public
+WITH CHECK: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = audit_logs.shop_id AND ma.user_id = auth.uid())
+shop_delivery_areas
+
+"Shop owners can view delivery areas" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops JOIN merchant_accounts ON merchant_accounts.id = shops.merchant_id WHERE shops.id = shop_delivery_areas.shop_id AND merchant_accounts.user_id = auth.uid())
+"Shop owners can insert delivery areas" — INSERT — Roles: public
+WITH CHECK: EXISTS (SELECT 1 FROM shops JOIN merchant_accounts ON merchant_accounts.id = shops.merchant_id WHERE shops.id = shop_delivery_areas.shop_id AND merchant_accounts.user_id = auth.uid())
+"Shop owners can update delivery areas" — UPDATE — Roles: public
+USING: EXISTS (same as above)
+WITH CHECK: EXISTS (same as above)
+"Shop owners can delete delivery areas" — DELETE — Roles: public
+USING: EXISTS (same as above)
+shops (public-read)
+
+"Anyone can view shops" — SELECT — Roles: public
+USING: true
+shop_delivery_areas (public-read)
+
+"Anyone can view delivery areas" — SELECT — Roles: public
+USING: true
+delivery_runners
+
+"Shop owners can view delivery runners" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops JOIN merchant_accounts ON merchant_accounts.id = shops.merchant_id WHERE shops.id = delivery_runners.shop_id AND merchant_accounts.user_id = auth.uid())
+"Shop owners can insert delivery runners" — INSERT — Roles: public
+WITH CHECK: EXISTS (same as USING condition)
+"Shop owners can update delivery runners" — UPDATE — Roles: public
+USING: EXISTS (same as USING condition)
+WITH CHECK: EXISTS (same as USING condition)
+"Shop owners can delete delivery runners" — DELETE — Roles: public
+USING: EXISTS (same as USING condition)
+shop_delivery_logic
+
+"Shop owners can view delivery logic" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops JOIN merchant_accounts ON merchant_accounts.id = shops.merchant_id WHERE shops.id = shop_delivery_logic.shop_id AND merchant_accounts.user_id = auth.uid())
+"Shop owners can insert delivery logic" — INSERT — Roles: public
+WITH CHECK: EXISTS (same as USING condition)
+"Shop owners can update delivery logic" — UPDATE — Roles: public
+USING: EXISTS (same as USING condition)
+WITH CHECK: EXISTS (same as USING condition)
+"Anyone can view delivery logic" — SELECT — Roles: public
+USING: true
+merchant_categories / merchant_items public visibility rules
+
+"Anyone can view active items from open shops" — SELECT on merchant_items — Roles: public
+USING: is_active = true AND EXISTS (SELECT 1 FROM shops s WHERE s.id = merchant_items.shop_id AND s.is_open = true)
+"Anyone can view active categories from open shops" — SELECT on merchant_categories — Roles: public
+USING: is_active = true AND EXISTS (SELECT 1 FROM shops s WHERE s.id = merchant_categories.shop_id AND s.is_open = true)
+"Anyone can view item categories from open shops" — SELECT on merchant_item_categories — Roles: public
+USING: EXISTS (SELECT 1 FROM merchant_items mi JOIN shops s ON s.id = mi.shop_id WHERE mi.id = merchant_item_categories.merchant_item_id AND mi.is_active = true AND s.is_open = true)
+orders
+
+"Consumers can view their own orders" — SELECT — Roles: public
+USING: auth.uid() = user_id
+"Consumers can insert their own orders" — INSERT — Roles: public
+WITH CHECK: auth.uid() = user_id
+"Merchants can view orders for their shops" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM shops s JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE s.id = orders.shop_id AND ma.user_id = auth.uid())
+"Merchants can update orders for their shops" — UPDATE — Roles: public
+USING: EXISTS (same as above)
+WITH CHECK: EXISTS (same as above)
+order_items
+
+"Consumers can view their own order items" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM orders o WHERE o.id = order_items.order_id AND o.user_id = auth.uid())
+"Consumers can insert order items for their orders" — INSERT — Roles: public
+WITH CHECK: EXISTS (SELECT 1 FROM orders o WHERE o.id = order_items.order_id AND o.user_id = auth.uid())
+"Merchants can view order items for their shops" — SELECT — Roles: public
+USING: EXISTS (SELECT 1 FROM orders o JOIN shops s ON s.id = o.shop_id JOIN merchant_accounts ma ON ma.id = s.merchant_id WHERE o.id = order_items.order_id AND ma.user_id = auth.uid())

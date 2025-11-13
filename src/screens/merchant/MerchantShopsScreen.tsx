@@ -123,20 +123,23 @@ export default function MerchantShopsScreen() {
             top: headerHeight - overlapHeight,
             left: 0,
             right: 0,
-            height: whiteSectionHeight,
+            bottom: 0,
             zIndex: 2
           }}
         >
           <ScrollView 
-            className="flex-1"
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 24 }}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ 
+              flexGrow: 1,
+              paddingBottom: 24,
+              paddingTop: 12
+            }}
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
-            <View className="h-12" />
-
             {loading ? (
               <ShopListSkeleton count={3} />
             ) : shops.length === 0 ? (
@@ -170,18 +173,19 @@ export default function MerchantShopsScreen() {
               /* Shops List */
               <View className="px-4">
                 {/* Shop Cards */}
-                {shops.map((shop) => (
-                  <MerchantShopCard
-                    key={shop.id}
-                    shop={shop}
-                    onPress={() => handleShopPress(shop)}
-                  />
+                {shops.map((shop, index) => (
+                  <View key={shop.id} style={{ marginBottom: index < shops.length - 1 ? 12 : 0 }}>
+                    <MerchantShopCard
+                      shop={shop}
+                      onPress={() => handleShopPress(shop)}
+                    />
+                  </View>
                 ))}
 
                 {/* Create Shop Button at the end (when shops exist) */}
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  className="bg-blue-600 rounded-xl items-center justify-center px-6 py-4 mt-2 mb-4 shadow-lg"
+                  className="bg-blue-600 rounded-xl items-center justify-center px-6 py-4 mt-4 mb-4 shadow-lg"
                   style={{ elevation: 4 }}
                   onPress={handleCreateShop}
                 >

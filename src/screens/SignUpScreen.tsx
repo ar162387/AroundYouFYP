@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Dimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +22,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
   const { signUp, signInWithGoogle, user } = useAuth();
   const insets = useSafeAreaInsets();
   const screenHeight = Dimensions.get('window').height;
-  const upperSectionHeight = screenHeight * 0.5;
+  const upperSectionHeight = screenHeight * 0.40; // Reduced from 0.5 to 0.35 to fit all content
   const returnTo = route.params?.returnTo;
 
   // Navigate back when user successfully signs up
@@ -35,6 +35,9 @@ export default function SignUpScreen({ navigation, route }: Props) {
         const tabScreens = ['HomeTab', 'SearchTab', 'ProfileTab'];
         if (tabScreens.includes(returnTo)) {
           navigation.navigate('Home' as any);
+        } else if (returnTo === 'ViewCart') {
+          // For ViewCart, use goBack() to preserve route params (shopId)
+          navigation.goBack();
         } else {
           // Type assertion needed because returnTo could be any screen key
           navigation.navigate(returnTo as any);
@@ -85,10 +88,14 @@ export default function SignUpScreen({ navigation, route }: Props) {
   };
 
   return (
-    <View className="flex-1 bg-gray-50">
-      {/* Upper Section - Gradient Header (50% of screen) */}
+    <KeyboardAvoidingView 
+      className="flex-1 bg-gray-50"
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      {/* Upper Section - Gradient Header */}
       <LinearGradient
-        colors={["#1e3a8a", "#3b82f6"]}
+        colors={["#1e3a8a", "#2563eb"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={{ 
@@ -114,22 +121,22 @@ export default function SignUpScreen({ navigation, route }: Props) {
         </View>
       </LinearGradient>
 
-      {/* Lower Section - White Form with Rounded Top Corners (50% of screen, scrollable) */}
+      {/* Lower Section - White Form with Rounded Top Corners */}
       <View 
         className="bg-white rounded-t-3xl flex-1" 
         style={{ marginTop: -36 }}
       >
         <ScrollView 
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }} 
+          contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) }} 
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="px-6 pt-12 pb-8">
+          <View className="px-6 pt-8 pb-4">
             {/* Email Input */}
-            <View className="mb-4">
+            <View className="mb-3">
               <Text className="text-gray-700 text-sm font-medium mb-2">Email</Text>
               <TextInput
-                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-4 text-gray-900 text-base"
+                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
                 placeholder="Enter your email"
                 placeholderTextColor="#9ca3af"
                 value={email}
@@ -142,10 +149,10 @@ export default function SignUpScreen({ navigation, route }: Props) {
             </View>
 
             {/* Password Input */}
-            <View className="mb-6">
+            <View className="mb-4">
               <Text className="text-gray-700 text-sm font-medium mb-2">Password</Text>
               <TextInput
-                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-4 text-gray-900 text-base"
+                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
                 placeholder="Enter your password"
                 placeholderTextColor="#9ca3af"
                 value={password}
@@ -160,7 +167,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
 
             {/* Sign Up Button */}
             <TouchableOpacity
-              className="w-full bg-blue-600 rounded-xl py-4 items-center justify-center mb-4"
+              className="w-full bg-blue-600 rounded-xl py-3.5 items-center justify-center mb-3"
               onPress={handleEmailSignUp}
               disabled={loading}
               activeOpacity={0.8}
@@ -173,7 +180,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
             </TouchableOpacity>
 
             {/* Divider */}
-            <View className="flex-row items-center my-6">
+            <View className="flex-row items-center my-4">
               <View className="flex-1 h-px bg-gray-300" />
               <Text className="mx-4 text-gray-500 text-sm">OR</Text>
               <View className="flex-1 h-px bg-gray-300" />
@@ -181,7 +188,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
 
             {/* Google Sign-Up Button */}
             <TouchableOpacity
-              className="w-full bg-white border border-gray-300 rounded-xl py-4 items-center justify-center flex-row mb-6"
+              className="w-full bg-white border border-gray-300 rounded-xl py-3.5 items-center justify-center flex-row mb-4"
               onPress={handleGoogleSignUp}
               disabled={loading}
               activeOpacity={0.8}
@@ -191,7 +198,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
             </TouchableOpacity>
 
             {/* Sign In Link */}
-            <View className="flex-row justify-center items-center mt-4">
+            <View className="flex-row justify-center items-center">
               <Text className="text-gray-600 text-base">Already have an account? </Text>
               <TouchableOpacity onPress={() => navigation.navigate('Login', { returnTo })} disabled={loading}>
                 <Text className="text-blue-600 font-semibold text-base">Sign In</Text>
@@ -200,6 +207,6 @@ export default function SignUpScreen({ navigation, route }: Props) {
           </View>
         </ScrollView>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

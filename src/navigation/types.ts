@@ -10,6 +10,11 @@ export type RootStackParamList = {
   CategoryItems: { shopId: string; categoryId: string; categoryName: string };
   AddressSearch: { address?: ConsumerAddress };
   ConsumerAddressManagement: undefined;
+  CartsManagement: undefined;
+  ViewCart: { shopId: string };
+  Checkout: { shopId: string };
+  OrderStatus: { orderId: string };
+  Orders: undefined;
   MapTest: undefined;
   Login: { returnTo?: keyof RootStackParamList };
   SignUp: { returnTo?: keyof RootStackParamList };

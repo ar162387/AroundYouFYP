@@ -1,27 +1,25 @@
-
+import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import FavoriteIcon from '../../icons/FavoriteIcon';
-import CartIcon from '../../icons/CartIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface HeaderProps {
   onFavPress?: () => void;
-  onCartPress?: () => void;
   onLocationPress?: () => void;
   locationLabel?: string;
 }
 
 export default function Header({
   onFavPress,
-  onCartPress,
   onLocationPress,
   locationLabel,
 }: HeaderProps) {
   const insets = useSafeAreaInsets();
+  
   return (
     <LinearGradient
-      colors={['#1e3a8a', '#3b82f6']}
+      colors={["#1e3a8a", "#2563eb"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
       className="pb-3 px-5"
@@ -43,23 +41,14 @@ export default function Header({
           </View>
         </TouchableOpacity>
 
-        {/* Right: Favorites and Cart (monochrome-style icons) */}
-        <View className="flex-row items-center">
+        {/* Right: Favorites icon */}
           <TouchableOpacity
             onPress={onFavPress}
-            className="w-10 h-10 rounded-full bg-white/20 items-center justify-center mr-2"
+          className="w-10 h-10 rounded-full bg-white/20 items-center justify-center"
             activeOpacity={0.7}
           >
             <FavoriteIcon size={22} color="#ffffff" />
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={onCartPress}
-            className="w-10 h-10 rounded-full bg-white/20 items-center justify-center"
-            activeOpacity={0.7}
-          >
-            <CartIcon size={22} color="#ffffff" />
-          </TouchableOpacity>
-        </View>
       </View>
     </LinearGradient>
   );

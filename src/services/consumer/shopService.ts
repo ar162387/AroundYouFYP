@@ -396,3 +396,113 @@ export async function fetchShopItems(
   }
 }
 
+export type CartValidationResult = {
+  valid: boolean;
+  meetsMinimumOrder: boolean;
+  leastOrderValue: number | null;
+  currentOrderValue: number;
+  message?: string;
+};
+
+/**
+ * Validate cart against shop's current minimum order requirements
+ * This queries the database to get the latest leastOrderValue, ensuring
+ * real-time validation even if merchant changes settings
+ */
+export async function validateCartOrderValue(
+  shopId: string,
+  orderValueCents: number
+): Promise<ServiceResult<CartValidationResult>> {
+  try {
+    // Fetch current delivery logic from database
+    const { data: deliveryData, error: deliveryError } = await supabase
+      .from('shop_delivery_logic')
+      .select('least_order_value')
+      .eq('shop_id', shopId)
+      .maybeSingle();
+
+    if (deliveryError) {
+      console.error('Error fetching delivery logic for validation:', deliveryError);
+      return { 
+        data: null, 
+        error: deliveryError 
+      };
+    }
+
+    // If no delivery logic exists, allow the order
+    if (!deliveryData) {
+      const orderValuePKR = orderValueCents / 100;
+      return {
+        data: {
+          valid: true,
+          meetsMinimumOrder: true,
+          leastOrderValue: null,
+          currentOrderValue: orderValuePKR,
+        },
+        error: null,
+      };
+    }
+
+    const leastOrderValue = Number(deliveryData.least_order_value);
+    const orderValuePKR = orderValueCents / 100;
+    const meetsMinimumOrder = orderValuePKR >= leastOrderValue;
+
+    return {
+      data: {
+        valid: meetsMinimumOrder,
+        meetsMinimumOrder,
+        leastOrderValue,
+        currentOrderValue: orderValuePKR,
+        message: meetsMinimumOrder 
+          ? undefined 
+          : `Minimum order value is Rs ${leastOrderValue.toFixed(0)}`,
+      },
+      error: null,
+    };
+  } catch (error: any) {
+    console.error('Exception validating cart order value:', error);
+    return { 
+      data: null, 
+      error: error as PostgrestError 
+    };
+  }
+}
+
+/**
+ * Check if a delivery address is within a shop's delivery zone
+ * Uses PostGIS ST_Contains to verify the point is within the delivery polygon
+ */
+export async function validateDeliveryAddress(
+  shopId: string,
+  latitude: number,
+  longitude: number
+): Promise<ServiceResult<{ isWithinDeliveryZone: boolean }>> {
+  try {
+    const pointWkt = `POINT(${longitude} ${latitude})`;
+    
+    // Query to check if the point is within any delivery area for this shop
+    const { data, error } = await supabase.rpc('find_shops_by_location', {
+      point_wkt: pointWkt,
+    });
+
+    if (error) {
+      console.error('Error validating delivery address:', error);
+      return { data: null, error };
+    }
+
+    // Check if the shop is in the returned list
+    const isWithinDeliveryZone = data ? data.some((shop: any) => shop.id === shopId) : false;
+
+    return {
+      data: { isWithinDeliveryZone },
+      error: null,
+    };
+  } catch (error: any) {
+    console.error('Exception validating delivery address:', error);
+    return { 
+      data: null, 
+      error: error as PostgrestError 
+    };
+  }
+}
+

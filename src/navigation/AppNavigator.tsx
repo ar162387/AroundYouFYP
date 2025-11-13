@@ -1,11 +1,14 @@
 import React from 'react';
+import { View, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
-import HomeIcon from '../icons/HomeIcon';
+import MarketIcon from '../icons/MarketIcon';
 import SearchIcon from '../icons/SearchIcon';
+import CartIcon from '../icons/CartIcon';
 import ProfileIcon from '../icons/ProfileIcon';
+import { useCart } from '../context/CartContext';
 
 import type { RootStackParamList } from './types';
 
@@ -17,6 +20,11 @@ import ShopScreen from '../screens/consumer/ShopScreen';
 import CategoryItemsScreen from '../screens/consumer/CategoryItemsScreen';
 import AddressSearchScreen from '../screens/consumer/AddressSearchScreen';
 import ConsumerAddressManagementScreen from '../screens/consumer/ConsumerAddressManagementScreen';
+import CartsManagementScreen from '../screens/consumer/CartsManagementScreen';
+import ViewCartScreen from '../screens/consumer/ViewCartScreen';
+import CheckoutScreen from '../screens/consumer/CheckoutScreen';
+import OrderStatusScreen from '../screens/consumer/OrderStatusScreen';
+import OrdersListScreen from '../screens/consumer/OrdersListScreen';
 import MapTestScreen from '../screens/MapTestScreen';
 import LoginScreen from '../screens/LoginScreen';
 import SignUpScreen from '../screens/SignUpScreen';
@@ -34,6 +42,9 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
 function Tabs() {
+  const { carts } = useCart();
+  const totalCarts = Object.keys(carts).length;
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -48,8 +59,8 @@ function Tabs() {
         name="HomeTab"
         component={HomeScreen}
         options={{
-          tabBarLabel: 'Home',
-          tabBarIcon: ({ color }) => <HomeIcon color={color} />,
+          tabBarLabel: 'Market',
+          tabBarIcon: ({ color }) => <MarketIcon color={color} />,
         }}
       />
       <Tab.Screen
@@ -58,6 +69,25 @@ function Tabs() {
         options={{
           tabBarLabel: 'Search',
           tabBarIcon: ({ color }) => <SearchIcon color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="CartsTab"
+        component={CartsManagementScreen}
+        options={{
+          tabBarLabel: 'Carts',
+          tabBarBadge: totalCarts > 0 ? totalCarts : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#ef4444',
+            color: '#ffffff',
+            fontSize: 10,
+            fontWeight: 'bold',
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            marginTop: 2,
+          },
+          tabBarIcon: ({ color }) => <CartIcon color={color} />,
         }}
       />
       <Tab.Screen
@@ -137,6 +167,38 @@ export default function AppNavigator() {
         <Stack.Screen
           name="ConsumerAddressManagement"
           component={ConsumerAddressManagementScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="ViewCart"
+          component={ViewCartScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="Checkout"
+          component={CheckoutScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="OrderStatus"
+          component={OrderStatusScreen}
+          options={{ 
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="Orders"
+          component={OrdersListScreen}
           options={{ 
             headerShown: false,
             animation: 'slide_from_right',

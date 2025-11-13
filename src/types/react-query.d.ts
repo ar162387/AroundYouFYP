@@ -1,4 +1,6 @@
 declare module 'react-query' {
+  import { ReactNode } from 'react';
+
   type QueryKey = readonly unknown[];
 
   interface UseQueryOptions<TData = unknown> {
@@ -36,11 +38,29 @@ declare module 'react-query' {
     options?: MutationOptions<TData, TVariables>
   ): UseMutationResult<TData, TVariables>;
 
-  interface QueryClient {
-    invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> | void;
+  interface QueryClientConfig {
+    defaultOptions?: {
+      queries?: {
+        staleTime?: number;
+        cacheTime?: number;
+        retry?: number;
+      };
+    };
+  }
+
+  export class QueryClient {
+    constructor(config?: QueryClientConfig);
+    invalidateQueries: (queryKey: QueryKey) => Promise<void> | void;
   }
 
   export function useQueryClient(): QueryClient;
+
+  interface QueryClientProviderProps {
+    client: QueryClient;
+    children: ReactNode;
+  }
+
+  export const QueryClientProvider: React.FC<QueryClientProviderProps>;
 }
 
 

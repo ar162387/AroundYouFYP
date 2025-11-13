@@ -145,8 +145,8 @@ export default function OrdersRevenueLineChart({ data, xLabels, yLabels }: Order
       </View>
 
       <View className="flex-row justify-between px-2 mt-3">
-        {xLabels.map((label) => (
-          <Text key={label} className="text-xs text-gray-500">
+        {xLabels.map((label, index) => (
+          <Text key={`x-label-${index}-${label}`} className="text-xs text-gray-500">
             {label}
           </Text>
         ))}

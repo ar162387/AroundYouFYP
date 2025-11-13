@@ -56,6 +56,23 @@ const DEFAULT_DISTANCE_TIERS: DistanceTier[] = [
 ];
 
 function mapRow(row: any): DeliveryLogic {
+  // Ensure distanceTiers is always an array
+  let distanceTiers = DEFAULT_DISTANCE_TIERS;
+  if (row.distance_tiers) {
+    if (Array.isArray(row.distance_tiers)) {
+      distanceTiers = row.distance_tiers;
+    } else {
+      // If it's a string, try to parse it
+      try {
+        distanceTiers = typeof row.distance_tiers === 'string' 
+          ? JSON.parse(row.distance_tiers) 
+          : DEFAULT_DISTANCE_TIERS;
+      } catch {
+        distanceTiers = DEFAULT_DISTANCE_TIERS;
+      }
+    }
+  }
+
   return {
     id: row.id,
     shopId: row.shop_id,
@@ -64,7 +81,7 @@ function mapRow(row: any): DeliveryLogic {
     leastOrderValue: Number(row.least_order_value),
     distanceMode: row.distance_mode || 'auto',
     maxDeliveryFee: Number(row.max_delivery_fee || 130),
-    distanceTiers: row.distance_tiers || DEFAULT_DISTANCE_TIERS,
+    distanceTiers,
     beyondTierFeePerUnit: Number(row.beyond_tier_fee_per_unit || 10),
     beyondTierDistanceUnit: Number(row.beyond_tier_distance_unit || 250),
     freeDeliveryThreshold: Number(row.free_delivery_threshold || 800),
@@ -211,25 +228,35 @@ export function calculateDistance(
 }
 
 // Helper function to calculate delivery fee based on distance
+// Uses distance tiering (auto or custom) and falls back to maximum if it exceeds all tiers
 export function calculateDeliveryFee(
   distanceInMeters: number,
   logic: DeliveryLogic
 ): number {
-  const tiers = logic.distanceTiers.sort((a, b) => a.max_distance - b.max_distance);
+  // Ensure we have valid tiers
+  if (!logic.distanceTiers || logic.distanceTiers.length === 0) {
+    // Fallback to maximum delivery fee if no tiers configured
+    return logic.maxDeliveryFee;
+  }
+
+  // Sort tiers by max_distance (ascending) to ensure proper tier matching
+  const tiers = [...logic.distanceTiers].sort((a, b) => a.max_distance - b.max_distance);
   
-  // Find matching tier
+  // Find matching tier - check each tier in order
   for (const tier of tiers) {
     if (distanceInMeters <= tier.max_distance) {
+      // Found matching tier - return fee capped at maxDeliveryFee
       return Math.min(tier.fee, logic.maxDeliveryFee);
     }
   }
 
-  // Beyond all tiers - calculate extra fee
+  // Beyond all tiers - calculate extra fee based on beyond tier rules
   const lastTier = tiers[tiers.length - 1];
   const extraDistance = distanceInMeters - lastTier.max_distance;
   const extraUnits = Math.ceil(extraDistance / logic.beyondTierDistanceUnit);
   const totalFee = lastTier.fee + (extraUnits * logic.beyondTierFeePerUnit);
 
+  // Cap at maximum delivery fee (fallback to max if exceeds all tier rules)
   return Math.min(totalFee, logic.maxDeliveryFee);
 }
 

@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Animated, Easing } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
+import { View, Image, Animated, Easing, StyleSheet, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { useLocationStore } from '../stores/locationStore';
 import { useAuth } from '../context/AuthContext';
 import * as merchantService from '../services/merchant/merchantService';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Splash'>;
 
@@ -69,41 +70,40 @@ export default function SplashScreen() {
   }, [scaleAnim, fadeAnim, navigation, hasCompletedLocationSetup, user, getDefaultRole]);
 
   return (
-    <LinearGradient
-      colors={['#1e3a8a', '#3b82f6', '#60a5fa']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
-      className="flex-1 items-center justify-center"
-    >
+    <View style={styles.container}>
       <Animated.View
-        style={{
-          opacity: fadeAnim,
-          transform: [{ scale: scaleAnim }],
-        }}
-        className="items-center"
+        style={[
+          styles.imageContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
       >
-        <Text className="text-white text-7xl font-bold mb-4">
-          Around You
-        </Text>
-        <Text className="text-white text-xl font-light tracking-widest">
-          Discover Local Shops
-        </Text>
+        <Image
+          source={require('../../SplashScreen.jpeg')}
+          style={styles.splashImage}
+          resizeMode="cover"
+        />
       </Animated.View>
-
-      {/* Decorative circles */}
-      <Animated.View
-        style={{ opacity: fadeAnim }}
-        className="absolute top-20 left-10 w-20 h-20 rounded-full bg-white/10"
-      />
-      <Animated.View
-        style={{ opacity: fadeAnim }}
-        className="absolute bottom-32 right-12 w-32 h-32 rounded-full bg-white/10"
-      />
-      <Animated.View
-        style={{ opacity: fadeAnim }}
-        className="absolute top-40 right-8 w-16 h-16 rounded-full bg-white/10"
-      />
-    </LinearGradient>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#1e3a8a', // Fallback blue background
+  },
+  imageContainer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  splashImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+});
 

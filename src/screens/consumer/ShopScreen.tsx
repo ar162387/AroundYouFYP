@@ -21,7 +21,9 @@ import { useQuery } from 'react-query';
 import { fetchShopDetails, fetchShopCategories, fetchShopItems, ShopItem } from '../../services/consumer/shopService';
 import { useUserLocation } from '../../hooks/consumer/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
+import { useCart } from '../../context/CartContext';
 import { calculateDistance, calculateDeliveryFee } from '../../services/merchant/deliveryLogicService';
+import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import StarIcon from '../../icons/StarIcon';
 import MoneyIcon from '../../icons/MoneyIcon';
 import DeliveryRunnerIcon from '../../icons/DeliveryRunnerIcon';
@@ -29,6 +31,7 @@ import TagIcon from '../../icons/TagIcon';
 import GiftIcon from '../../icons/GiftIcon';
 import BackIcon from '../../icons/BackIcon';
 import AroundYouSearchIcon from '../../icons/AroundYouSearchIcon';
+import CartIcon from '../../icons/CartIcon';
 import ShopScreenSkeleton from '../../skeleton/ShopScreenSkeleton';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -43,13 +46,13 @@ export default function ShopScreen() {
   const { shopId, shop: passedShop, distanceInMeters: passedDistance } = route.params;
   const insets = useSafeAreaInsets();
   const { coords } = useUserLocation();
+  const { addItemToCart, removeItemFromCart, getShopCart } = useCart();
   const userLat = coords?.latitude;
   const userLng = coords?.longitude;
 
   // ALL HOOKS MUST BE AT THE TOP - BEFORE ANY CONDITIONAL LOGIC
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [categoryBarSticky, setCategoryBarSticky] = useState(false);
   const [isHeaderVisible, setIsHeaderVisible] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
@@ -60,6 +63,9 @@ export default function ShopScreen() {
   const categoryScrollX = useRef<number>(0);
   const scrollY = useRef(new Animated.Value(0)).current;
   const [headerHeight, setHeaderHeight] = useState<number>(56);
+
+  // Get current cart for this shop
+  const currentCart = getShopCart(shopId);
 
   // Fetch shop details
   const { data: shopDetails, isLoading: shopLoading } = useQuery(['shopDetails', shopId], async () => {
@@ -190,12 +196,37 @@ export default function ShopScreen() {
     });
   }, [categories, itemsByCategory]);
 
+  // Helper function to get item quantity from cart
+  const getItemQuantity = (itemId: string): number => {
+    if (!currentCart) return 0;
+    const cartItem = currentCart.items.find(item => item.id === itemId);
+    return cartItem?.quantity || 0;
+  };
+
+  // Handle adding item to cart
+  const handleAddToCart = async (item: ShopItem) => {
+    if (!shopDetails) return;
+    ReactNativeHapticFeedback.trigger('impactLight');
+    await addItemToCart(shopId, item, {
+      name: shopDetails.name,
+      image_url: shopDetails.image_url || undefined,
+      address: shopDetails.address || undefined,
+      latitude: shopDetails.latitude,
+      longitude: shopDetails.longitude,
+      deliveryLogic: shopDetails.deliveryLogic,
+    });
+  };
+
+  // Handle removing item from cart
+  const handleRemoveFromCart = async (itemId: string) => {
+    ReactNativeHapticFeedback.trigger('impactLight');
+    await removeItemFromCart(shopId, itemId);
+  };
+
   // Scroll to category and center it in the category bar if it's not fully visible
   const scrollToCategory = (categoryId: string) => {
     const position = categoryRefs.current[categoryId];
     if (position !== undefined && scrollViewRef.current) {
-      setSelectedCategoryId(categoryId);
-      
       // Calculate offset accounting for the sticky category bar height
       const stickyBarHeight = 56;
       const scrollPosition = position - stickyBarHeight;
@@ -295,16 +326,21 @@ export default function ShopScreen() {
               console.error('Navigation error:', error);
             }
           }}
-          className="w-10 h-10 rounded-full bg-black/60 items-center justify-center"
           style={{ 
-            elevation: 4,
-            shadowColor: '#000',
+            width: 36,
+            height: 36,
+            borderRadius: isHeaderVisible ? 0 : 13,
+            backgroundColor: isHeaderVisible ? 'transparent' : 'rgba(0, 0, 0, 0.6)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            elevation: isHeaderVisible ? 0 : 4,
+            shadowColor: isHeaderVisible ? 'transparent' : '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.3,
+            shadowOpacity: isHeaderVisible ? 0 : 0.3,
             shadowRadius: 4,
           }}
         >
-          <BackIcon size={20} color="#FFFFFF" />
+          <BackIcon size={18} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
@@ -322,7 +358,7 @@ export default function ShopScreen() {
           setHeaderHeight(event.nativeEvent.layout.height);
         }}
       >
-        <LinearGradient colors={['#1e3a8a', '#3b82f6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+        <LinearGradient colors={['#1e3a8a', '#2563eb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
           <View style={{ paddingTop: insets.top, paddingBottom: 0, paddingHorizontal: 20 }}>
             <View className="flex-row items-center pt-3 pb-3">
               <View className="w-10" />
@@ -369,11 +405,7 @@ export default function ShopScreen() {
                   className="px-4 py-2"
                   activeOpacity={0.7}
                 >
-                  <Text
-                    className={`text-sm font-semibold ${
-                      selectedCategoryId === category.id ? 'text-blue-400' : 'text-gray-300'
-                    }`}
-                  >
+                  <Text className="text-sm font-semibold text-gray-300">
                     {category.name}
                   </Text>
                 </TouchableOpacity>
@@ -398,9 +430,12 @@ export default function ShopScreen() {
           // Track if header is visible
           setIsHeaderVisible(y > 150);
           
-          // Make category bar sticky when scrolled past it
+          // Make category bar sticky just BEFORE it's scrolled past (creating overlap for smooth transition)
           if (categoryBarY.current > 0) {
-            setCategoryBarSticky(y > categoryBarY.current - insets.top);
+            const categoryBarHeight = 56; // Height of the category bar
+            const stickyBarTargetTop = y > 150 ? headerHeight : insets.top;
+            // Trigger sticky state when original bar is one bar-height away from sticky position
+            setCategoryBarSticky(y > categoryBarY.current - stickyBarTargetTop - categoryBarHeight);
           }
         }}
       >
@@ -413,7 +448,12 @@ export default function ShopScreen() {
               resizeMode="cover"
             />
           ) : (
-            <View style={{ width: SCREEN_WIDTH, height: 200 }} className="bg-gradient-to-br from-blue-500 to-blue-700" />
+            <LinearGradient
+              colors={['#1e3a8a', '#2563eb']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ width: SCREEN_WIDTH, height: 200 }}
+            />
           )}
 
           {/* Gradient Overlay */}
@@ -517,7 +557,10 @@ export default function ShopScreen() {
         {categoriesWithItems && categoriesWithItems.length > 0 && (
           <View
             className="bg-gray-700"
-            style={{ width: SCREEN_WIDTH }}
+            style={{ 
+              width: SCREEN_WIDTH,
+              opacity: categoryBarSticky ? 0 : 1,
+            }}
             onLayout={(event) => {
               // Capture the Y position of the category bar
               categoryBarY.current = event.nativeEvent.layout.y;
@@ -545,11 +588,7 @@ export default function ShopScreen() {
                     className="px-4 py-2"
                     activeOpacity={0.7}
                   >
-                    <Text
-                      className={`text-sm font-semibold ${
-                        selectedCategoryId === category.id ? 'text-blue-400' : 'text-gray-300'
-                      }`}
-                    >
+                    <Text className="text-sm font-semibold text-gray-300">
                       {category.name}
                     </Text>
                   </TouchableOpacity>
@@ -605,7 +644,9 @@ export default function ShopScreen() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingHorizontal: 16, paddingRight: 24 }}
                   >
-                    {itemsByCategory[category.id].map((item) => (
+                    {itemsByCategory[category.id].map((item) => {
+                      const quantity = getItemQuantity(item.id);
+                      return (
                       <View key={item.id} className="mr-3 items-center" style={{ width: 155 }}>
                         {/* Item Image with Card Style */}
                         <View className="relative">
@@ -633,20 +674,55 @@ export default function ShopScreen() {
                                   console.log('Image loaded successfully:', item.name, item.image_url);
                                 }}
                               />
-                              {/* Plus Button */}
+                                {/* Cart Controls */}
+                                {quantity === 0 ? (
                               <TouchableOpacity
-                                className="absolute bottom-2 right-2 bg-blue-600 rounded-full w-8 h-8 items-center justify-center"
+                                    onPress={() => handleAddToCart(item)}
+                                className="absolute bottom-2 right-2 bg-blue-600 rounded-full items-center justify-center"
                                 style={{
+                                  width: 44,
+                                  height: 44,
                                   shadowColor: '#000',
                                   shadowOffset: { width: 0, height: 2 },
                                   shadowOpacity: 0.2,
                                   shadowRadius: 4,
                                   elevation: 4,
                                 }}
-                                activeOpacity={0.8}
+                                activeOpacity={0.7}
                               >
-                                <Text className="text-white text-lg font-bold">+</Text>
+                                <Text className="text-white text-xl font-bold">+</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <View className="absolute bottom-2 right-2 flex-row items-center bg-blue-600 rounded-full px-2 py-1.5"
+                                    style={{
+                                      shadowColor: '#000',
+                                      shadowOffset: { width: 0, height: 2 },
+                                      shadowOpacity: 0.2,
+                                      shadowRadius: 4,
+                                      elevation: 4,
+                                    }}
+                                  >
+                                    <TouchableOpacity
+                                      onPress={() => handleRemoveFromCart(item.id)}
+                                      style={{ width: 40, height: 40 }}
+                                      className="items-center justify-center"
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text className="text-white text-lg font-bold">−</Text>
+                                    </TouchableOpacity>
+                                    <Text className="text-white text-sm font-bold mx-2 min-w-[24px] text-center">
+                                      {quantity}
+                                    </Text>
+                                    <TouchableOpacity
+                                      onPress={() => handleAddToCart(item)}
+                                      style={{ width: 40, height: 40 }}
+                                      className="items-center justify-center"
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text className="text-white text-lg font-bold">+</Text>
                               </TouchableOpacity>
+                                  </View>
+                                )}
                             </View>
                           ) : (
                             <View
@@ -666,20 +742,55 @@ export default function ShopScreen() {
                                   {item.name.slice(0, 1).toUpperCase()}
                                 </Text>
                               </View>
-                              {/* Plus Button */}
+                                {/* Cart Controls */}
+                                {quantity === 0 ? (
                               <TouchableOpacity
-                                className="absolute bottom-2 right-2 bg-blue-600 rounded-full w-8 h-8 items-center justify-center"
+                                    onPress={() => handleAddToCart(item)}
+                                className="absolute bottom-2 right-2 bg-blue-600 rounded-full items-center justify-center"
                                 style={{
+                                  width: 44,
+                                  height: 44,
                                   shadowColor: '#000',
                                   shadowOffset: { width: 0, height: 2 },
                                   shadowOpacity: 0.2,
                                   shadowRadius: 4,
                                   elevation: 4,
                                 }}
-                                activeOpacity={0.8}
+                                activeOpacity={0.7}
                               >
-                                <Text className="text-white text-lg font-bold">+</Text>
+                                <Text className="text-white text-xl font-bold">+</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <View className="absolute bottom-2 right-2 flex-row items-center bg-blue-600 rounded-full px-2 py-1.5"
+                                    style={{
+                                      shadowColor: '#000',
+                                      shadowOffset: { width: 0, height: 2 },
+                                      shadowOpacity: 0.2,
+                                      shadowRadius: 4,
+                                      elevation: 4,
+                                    }}
+                                  >
+                                    <TouchableOpacity
+                                      onPress={() => handleRemoveFromCart(item.id)}
+                                      style={{ width: 40, height: 40 }}
+                                      className="items-center justify-center"
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text className="text-white text-lg font-bold">−</Text>
+                                    </TouchableOpacity>
+                                    <Text className="text-white text-sm font-bold mx-2 min-w-[24px] text-center">
+                                      {quantity}
+                                    </Text>
+                                    <TouchableOpacity
+                                      onPress={() => handleAddToCart(item)}
+                                      style={{ width: 40, height: 40 }}
+                                      className="items-center justify-center"
+                                      activeOpacity={0.7}
+                                    >
+                                      <Text className="text-white text-lg font-bold">+</Text>
                               </TouchableOpacity>
+                                  </View>
+                                )}
                             </View>
                           )}
                         </View>
@@ -702,7 +813,8 @@ export default function ShopScreen() {
                           </Text>
                         </View>
                       </View>
-                    ))}
+                      );
+                    })}
                   </ScrollView>
                 ) : (
                   <View className="px-4 py-6 bg-white rounded-2xl mx-4">
@@ -719,33 +831,83 @@ export default function ShopScreen() {
             </View>
           )}
 
-          <View className="h-8" />
+          {/* Bottom spacing - accounts for cart footer and search button */}
+          <View style={{ height: currentCart && currentCart.totalItems > 0 ? 140 : 40 }} />
         </View>
       </Animated.ScrollView>
+
+      {/* Sticky Cart Footer - Shows only when cart has items */}
+      {currentCart && currentCart.totalItems > 0 && (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: '#2563eb',
+            paddingBottom: Math.max(insets.bottom, 12) + 8,
+            paddingTop: 18,
+            paddingHorizontal: 20,
+            shadowColor: '#2563eb',
+            shadowOffset: { width: 0, height: -8 },
+            shadowOpacity: 0.6,
+            shadowRadius: 16,
+            elevation: 20,
+            zIndex: 90,
+            borderTopWidth: 2,
+            borderTopColor: 'rgba(255, 255, 255, 0.2)',
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => navigation.navigate('ViewCart', { shopId })}
+            activeOpacity={0.8}
+            className="flex-row items-center justify-between"
+          >
+            <View className="flex-row items-center flex-1">
+              <View className="bg-white/30 rounded-full w-12 h-12 items-center justify-center mr-3">
+                <CartIcon size={22} color="#FFFFFF" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-white font-bold text-lg">View your cart</Text>
+                <Text className="text-white/95 text-sm">
+                  {currentCart.totalItems} {currentCart.totalItems === 1 ? 'item' : 'items'}
+                </Text>
+              </View>
+            </View>
+            <View className="bg-white/30 rounded-xl px-5 py-2.5">
+              <Text className="text-white font-bold text-xl">
+                Rs {(currentCart.totalPrice / 100).toFixed(0)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Floating Search Button - Bottom Right */}
       <TouchableOpacity
         onPress={() => setSearchVisible(true)}
         style={{
           position: 'absolute',
-          bottom: insets.bottom + 24,
+          bottom: currentCart && currentCart.totalItems > 0 
+            ? Math.max(insets.bottom, 12) + 8 + 80  // Above cart footer (footer height ~100px)
+            : insets.bottom + 24,
           right: 20,
           zIndex: 80,
-          width: 60,
-          height: 60,
-          borderRadius: 30,
-          backgroundColor: '#1e40af',
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: 'rgba(37, 99, 235, 0.85)', // blue-600 with 85% opacity
           alignItems: 'center',
           justifyContent: 'center',
-          shadowColor: '#1e40af',
-          shadowOffset: { width: 0, height: 6 },
-          shadowOpacity: 0.4,
-          shadowRadius: 10,
-          elevation: 10,
+          shadowColor: '#2563eb',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          elevation: 8,
         }}
         activeOpacity={0.85}
       >
-        <AroundYouSearchIcon size={28} color="#FFFFFF" />
+        <AroundYouSearchIcon size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
       {/* Search Overlay Modal */}
@@ -798,6 +960,9 @@ function SearchResults({
   searchQuery: string;
   onClose: () => void;
 }) {
+  const { addItemToCart, removeItemFromCart, getShopCart } = useCart();
+  const currentCart = getShopCart(shopId);
+  
   const { data: searchResults, isLoading } = useQuery(
     ['searchShopItems', shopId, searchQuery],
     async () => {
@@ -810,12 +975,46 @@ function SearchResults({
     }
   );
 
+  // Fetch shop details for cart operations
+  const { data: shopDetails } = useQuery(['shopDetails', shopId], async () => {
+    const result = await fetchShopDetails(shopId);
+    if (result.error) throw new Error(result.error.message);
+    return result.data;
+  });
+
   // Filter out inactive items from search results
   // MUST be called before any early returns to maintain hook order
   const activeSearchResults = React.useMemo(() => {
     if (!searchResults) return [];
     return searchResults.filter((item) => item.is_active === true);
   }, [searchResults]);
+
+  // Helper function to get item quantity from cart
+  const getItemQuantity = (itemId: string): number => {
+    if (!currentCart) return 0;
+    const cartItem = currentCart.items.find(item => item.id === itemId);
+    return cartItem?.quantity || 0;
+  };
+
+  // Handle adding item to cart
+  const handleAddToCart = async (item: ShopItem) => {
+    if (!shopDetails) return;
+    ReactNativeHapticFeedback.trigger('impactLight');
+    await addItemToCart(shopId, item, {
+      name: shopDetails.name,
+      image_url: shopDetails.image_url || undefined,
+      address: shopDetails.address || undefined,
+      latitude: shopDetails.latitude,
+      longitude: shopDetails.longitude,
+      deliveryLogic: shopDetails.deliveryLogic,
+    });
+  };
+
+  // Handle removing item from cart
+  const handleRemoveFromCart = async (itemId: string) => {
+    ReactNativeHapticFeedback.trigger('impactLight');
+    await removeItemFromCart(shopId, itemId);
+  };
 
   if (isLoading) {
     return (
@@ -891,20 +1090,58 @@ function SearchResults({
               <Text className="text-lg font-bold text-gray-900 mt-1">Rs {(item.price_cents / 100).toFixed(0)}</Text>
             </View>
 
-            {/* Plus Button - Bottom Right of Card */}
+            {/* Cart Controls - Bottom Right of Card */}
+            {(() => {
+              const quantity = getItemQuantity(item.id);
+              return quantity === 0 ? (
             <TouchableOpacity
-              className="absolute bottom-2 right-2 bg-blue-600 rounded-full w-7 h-7 items-center justify-center"
+                  onPress={() => handleAddToCart(item)}
+              className="absolute bottom-2 right-2 bg-blue-600 rounded-full items-center justify-center"
               style={{
+                width: 44,
+                height: 44,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.2,
                 shadowRadius: 4,
                 elevation: 4,
               }}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <Text className="text-white text-sm font-bold">+</Text>
+              <Text className="text-white text-lg font-bold">+</Text>
+                </TouchableOpacity>
+              ) : (
+                <View className="absolute bottom-2 right-2 flex-row items-center bg-blue-600 rounded-full px-2 py-1.5"
+                  style={{
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 4,
+                    elevation: 4,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => handleRemoveFromCart(item.id)}
+                    style={{ width: 40, height: 40 }}
+                    className="items-center justify-center"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-white text-base font-bold">−</Text>
+                  </TouchableOpacity>
+                  <Text className="text-white text-sm font-bold mx-2 min-w-[24px] text-center">
+                    {quantity}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => handleAddToCart(item)}
+                    style={{ width: 40, height: 40 }}
+                    className="items-center justify-center"
+                    activeOpacity={0.7}
+                  >
+                    <Text className="text-white text-base font-bold">+</Text>
             </TouchableOpacity>
+                </View>
+              );
+            })()}
           </View>
         )}
         ListEmptyComponent={

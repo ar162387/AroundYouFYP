@@ -23,6 +23,14 @@ export const supabase = createClient(
       persistSession: true,
       detectSessionInUrl: false,
     },
+    global: {
+      headers: {
+        'x-client-info': 'around-you-app',
+      },
+    },
+    db: {
+      schema: 'public',
+    },
   }
 );
 

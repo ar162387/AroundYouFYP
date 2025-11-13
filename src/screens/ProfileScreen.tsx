@@ -194,7 +194,7 @@ export default function ProfileScreen() {
                 <SquareAction 
                   title="Orders" 
                   icon={<OrdersIcon size={32} color="#3B82F6" />}
-                  onPress={() => {}} 
+                  onPress={() => navigation.navigate('Orders')} 
                 />
                 <SquareAction 
                   title="Favourites" 

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useUserLocation } from './useUserLocation';
 import { findShopsByLocation } from '../../services/consumer/shopService';
@@ -24,18 +24,17 @@ export function useShopsByLocation() {
 
   // Track last fetched coordinates to prevent duplicate fetches
   const lastFetchedCoordsRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
   
   // Create a stable key from coordinates
   const coordsKey = coords 
     ? `${coords.latitude.toFixed(6)},${coords.longitude.toFixed(6)}`
     : null;
 
-  useEffect(() => {
-    let isMounted = true;
-
-    // Skip if no coordinates or if we already fetched for these coordinates
+  // Fetch shops function that can be called from anywhere
+  const fetchShops = useCallback(async (forceRefresh = false) => {
     if (!coords || !coords.latitude || !coords.longitude) {
-      if (isMounted) {
+      if (isMountedRef.current) {
         setShops([]);
         setLoading(false);
         setError(null);
@@ -43,65 +42,78 @@ export function useShopsByLocation() {
       return;
     }
 
-    // Skip if we already fetched for these exact coordinates
-    if (lastFetchedCoordsRef.current === coordsKey) {
+    // Skip if we already fetched for these exact coordinates (unless force refresh)
+    if (!forceRefresh && lastFetchedCoordsRef.current === coordsKey) {
       return;
     }
 
-    const fetchShops = async () => {
-      if (isMounted) {
-        setLoading(true);
-        setError(null);
-      }
+    if (isMountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
 
-      try {
-        console.log('Fetching shops for location:', { latitude: coords.latitude, longitude: coords.longitude });
-        const result = await findShopsByLocation(coords.latitude, coords.longitude);
-        console.log('Shop fetch result:', { shopsCount: result.data?.length || 0, error: result.error });
+    try {
+      console.log('Fetching shops for location:', { latitude: coords.latitude, longitude: coords.longitude });
+      const result = await findShopsByLocation(coords.latitude, coords.longitude);
+      console.log('Shop fetch result:', { shopsCount: result.data?.length || 0, error: result.error });
 
-        if (!isMounted) return;
+      if (!isMountedRef.current) return;
 
-        if (result.error) {
-          console.error('Error fetching shops:', result.error);
-          setError(result.error.message || 'Failed to fetch shops');
-          setShops([]);
-        } else {
-          const shopsData = result.data || [];
-          console.log('Setting shops:', shopsData.length);
-          
-          // Calculate delivery fees for all shops
-          const shopsWithFees = await calculateShopsDeliveryFees(
-            shopsData,
-            coords.latitude,
-            coords.longitude
-          );
-          
-          if (isMounted) {
-            setShops(shopsWithFees);
-            setError(null);
-            // Mark these coordinates as fetched
-            lastFetchedCoordsRef.current = coordsKey;
-          }
-        }
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.error('Exception fetching shops:', err);
-        setError(err?.message || 'An error occurred');
+      if (result.error) {
+        console.error('Error fetching shops:', result.error);
+        setError(result.error.message || 'Failed to fetch shops');
         setShops([]);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
+      } else {
+        const shopsData = result.data || [];
+        console.log('Setting shops:', shopsData.length);
+        
+        // Calculate delivery fees for all shops
+        const shopsWithFees = await calculateShopsDeliveryFees(
+          shopsData,
+          coords.latitude,
+          coords.longitude
+        );
+        
+        if (isMountedRef.current) {
+          setShops(shopsWithFees);
+          setError(null);
+          // Mark these coordinates as fetched
+          lastFetchedCoordsRef.current = coordsKey;
         }
       }
-    };
+    } catch (err: any) {
+      if (!isMountedRef.current) return;
+      console.error('Exception fetching shops:', err);
+      setError(err?.message || 'An error occurred');
+      setShops([]);
+    } finally {
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [coords, coordsKey]);
 
+  // Refetch function for manual refresh
+  const refetch = useCallback(async () => {
+    // Clear the last fetched coords to force a refetch
+    lastFetchedCoordsRef.current = null;
+    await fetchShops(true);
+  }, [fetchShops]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
     fetchShops();
 
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
     };
-  }, [coords, coordsKey]);
+  }, [fetchShops]);
 
-  return { shops, loading, error };
+  return { 
+    shops, 
+    loading, 
+    error,
+    refetch,
+  };
 }
 
