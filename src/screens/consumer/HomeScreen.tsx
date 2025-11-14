@@ -266,7 +266,7 @@ export default function HomeScreen() {
       <View
         style={{
           position: 'absolute',
-          bottom: TAB_BAR_HEIGHT,
+          bottom: Math.max(16, TAB_BAR_HEIGHT - 36),
           left: 0,
           right: 0,
           zIndex: 10,

@@ -25,6 +25,7 @@ import BackIcon from '../../icons/BackIcon';
 import PinMarker from '../../icons/PinMarker';
 import MoneyIcon from '../../icons/MoneyIcon';
 import AddressSelectionBottomSheet from '../../components/consumer/AddressSelectionBottomSheet';
+import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Checkout'>;
@@ -63,6 +64,7 @@ export default function CheckoutScreen() {
   });
 
   const placeOrderMutation = usePlaceOrder();
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
   // Initialize or save address when component mounts
   useEffect(() => {
@@ -286,6 +288,10 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
+    if (isPlacingOrder) {
+      return;
+    }
+
     if (!selectedAddress) {
       Alert.alert('Address Required', 'Please select a delivery address');
       return;
@@ -303,6 +309,7 @@ export default function CheckoutScreen() {
 
     // By tapping Place Order, user agrees to terms & conditions
     try {
+      setIsPlacingOrder(true);
       const orderItems = currentCart.items.map(item => ({
         merchant_item_id: item.id,
         quantity: item.quantity,
@@ -321,13 +328,20 @@ export default function CheckoutScreen() {
         await deleteShopCart(shopId);
         
         // Navigate to order status screen
-        navigation.replace('OrderStatus', { orderId: response.order.id });
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Home' },
+            { name: 'OrderStatus', params: { orderId: response.order.id } },
+          ],
+        });
       } else {
         Alert.alert('Order Failed', response.message || 'Could not place your order. Please try again.');
       }
     } catch (error) {
       console.error('Error placing order:', error);
       Alert.alert('Error', 'Failed to place order. Please check your connection and try again.');
+      setIsPlacingOrder(false);
     }
   };
 
@@ -389,7 +403,9 @@ export default function CheckoutScreen() {
         {/* Delivery Address Section */}
         <View className="mb-4">
           <View className="flex-row items-center mb-2">
-            <Text className="text-lg font-bold text-gray-900 mr-2">📍</Text>
+            <View className="mr-2">
+              <LocationMarkerIcon size={22} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+            </View>
             <Text className="text-lg font-bold text-gray-900">Delivery Address</Text>
           </View>
 
@@ -675,11 +691,14 @@ export default function CheckoutScreen() {
           }`}
           activeOpacity={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isPending ? 1 : 0.8}
         >
-          {placeOrderMutation.isPending ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-          <Text className="text-white font-bold text-lg">Place Order</Text>
-          )}
+          <View className="flex-row items-center justify-center">
+            {(isPlacingOrder || placeOrderMutation.isPending) && (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            )}
+            <Text className="text-white font-bold text-lg ml-2">
+              {isPlacingOrder || placeOrderMutation.isPending ? 'Placing order…' : 'Place Order'}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 

@@ -4,14 +4,17 @@ import type { MerchantShop } from '../../../../services/merchant/shopService';
 import OrdersRevenueLineChart from '../../../../components/merchant/charts/OrdersRevenueLineChart';
 import { useShopOrderTimeSeries, useShopOrderAnalytics } from '../../../../hooks/merchant/useOrders';
 import { formatDuration } from '../../../../types/orders';
+import OrdersTrendIcon from '../../../../icons/OrdersTrendIcon';
+import RevenueFlowIcon from '../../../../icons/RevenueFlowIcon';
 
 type DashboardSectionProps = {
   shop: MerchantShop;
+  onShowOrders?: () => void;
 };
 
 type RangeType = 'today' | 'yesterday' | '7_days' | '30_days' | 'all_time' | 'custom';
 
-export default function DashboardSection({ shop }: DashboardSectionProps) {
+export default function DashboardSection({ shop, onShowOrders }: DashboardSectionProps) {
   const [range, setRange] = useState<RangeType>('today');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
@@ -108,6 +111,27 @@ export default function DashboardSection({ shop }: DashboardSectionProps) {
           previousAllTimeAnalytics?.average_delivery_time_seconds
         ),
       },
+    };
+  }, [allTimeAnalytics, previousAllTimeAnalytics]);
+
+  const orderTrend = useMemo(() => {
+    if (!allTimeAnalytics || previousAllTimeAnalytics === undefined) {
+      return { change: null, changeType: null };
+    }
+
+    const previousTotal = previousAllTimeAnalytics?.total_orders;
+    if (previousTotal === undefined || previousTotal === null) {
+      return { change: null, changeType: null };
+    }
+
+    const diff = allTimeAnalytics.total_orders - previousTotal;
+    if (diff === 0) {
+      return { change: null, changeType: null };
+    }
+
+    return {
+      change: Math.abs(diff),
+      changeType: diff > 0 ? 'up' as const : 'down' as const,
     };
   }, [allTimeAnalytics, previousAllTimeAnalytics]);
 
@@ -283,6 +307,64 @@ export default function DashboardSection({ shop }: DashboardSectionProps) {
     []
   );
 
+  const metricCards = useMemo(() => {
+    return [
+      {
+        key: 'confirmation',
+        title: 'Confirmation Time',
+        value:
+          timeMetrics.confirmation.current !== null && timeMetrics.confirmation.current !== undefined
+            ? formatDuration(timeMetrics.confirmation.current)
+            : null,
+        changeLabel:
+          timeMetrics.confirmation.change !== null && timeMetrics.confirmation.change !== undefined
+            ? formatDuration(timeMetrics.confirmation.change)
+            : null,
+        changeType: timeMetrics.confirmation.changeType,
+        subtitle: 'Average time',
+      },
+      {
+        key: 'preparation',
+        title: 'Preparation Time',
+        value:
+          timeMetrics.preparation.current !== null && timeMetrics.preparation.current !== undefined
+            ? formatDuration(timeMetrics.preparation.current)
+            : null,
+        changeLabel:
+          timeMetrics.preparation.change !== null && timeMetrics.preparation.change !== undefined
+            ? formatDuration(timeMetrics.preparation.change)
+            : null,
+        changeType: timeMetrics.preparation.changeType,
+        subtitle: 'Average time',
+      },
+      {
+        key: 'delivery',
+        title: 'Delivery Time',
+        value:
+          timeMetrics.delivery.current !== null && timeMetrics.delivery.current !== undefined
+            ? formatDuration(timeMetrics.delivery.current)
+            : null,
+        changeLabel:
+          timeMetrics.delivery.change !== null && timeMetrics.delivery.change !== undefined
+            ? formatDuration(timeMetrics.delivery.change)
+            : null,
+        changeType: timeMetrics.delivery.changeType,
+        subtitle: 'Average time',
+      },
+      {
+        key: 'totalOrders',
+        title: 'Total Orders',
+        value: allTimeAnalytics ? allTimeAnalytics.total_orders.toLocaleString() : null,
+        changeLabel:
+          orderTrend.change !== null && orderTrend.change !== undefined
+            ? orderTrend.change.toLocaleString()
+            : null,
+        changeType: orderTrend.changeType,
+        subtitle: 'All-time',
+      },
+    ] as const;
+  }, [allTimeAnalytics, orderTrend.change, orderTrend.changeType, timeMetrics]);
+
   return (
     <View className="space-y-4">
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-md">
@@ -312,165 +394,109 @@ export default function DashboardSection({ shop }: DashboardSectionProps) {
           })}
         </View>
 
-        <View className="mt-6 bg-white border border-gray-100 rounded-3xl p-5 shadow-sm">
-          <View className="mb-6">
-            <Text className="text-sm text-gray-500">Orders</Text>
-            {isLoadingChart ? (
-              <ActivityIndicator size="small" color="#3B82F6" className="mt-2" />
-            ) : (
-            <Text className="text-3xl font-semibold text-gray-900 mt-1">{chartConfig.orders.toLocaleString()}</Text>
-            )}
-          </View>
-          <View className="mb-6">
-            <Text className="text-sm text-gray-500">Revenue</Text>
-            {isLoadingChart ? (
-              <ActivityIndicator size="small" color="#3B82F6" className="mt-2" />
-            ) : (
-              <Text className="text-3xl font-semibold text-gray-900 mt-1">
-                Rs {((chartConfig.revenue || 0) / 100).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-            )}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={onShowOrders}
+          disabled={!onShowOrders}
+          accessibilityRole="button"
+          accessibilityLabel="View detailed orders analytics"
+          className="mt-6 bg-white border border-gray-100 rounded-3xl p-5 shadow-sm"
+        >
+          <View className="flex-row justify-between gap-4">
+            <View className="flex-1 basis-0">
+              <View className="flex-row items-center">
+                <OrdersTrendIcon size={22} color="#2563eb" />
+                <Text className="ml-2 text-sm font-semibold text-gray-600">Orders</Text>
+              </View>
+              {isLoadingChart ? (
+                <ActivityIndicator size="small" color="#2563eb" className="mt-2" />
+              ) : (
+                <Text className="mt-2 text-3xl font-semibold text-gray-900">
+                  {chartConfig.orders.toLocaleString()}
+                </Text>
+              )}
+            </View>
+            <View className="flex-1 basis-0">
+              <View className="flex-row items-center">
+                <RevenueFlowIcon size={22} color="#16a34a" />
+                <Text className="ml-2 text-sm font-semibold text-gray-600">Revenue</Text>
+              </View>
+              {isLoadingChart ? (
+                <ActivityIndicator size="small" color="#16a34a" className="mt-2" />
+              ) : (
+                <Text className="mt-2 text-3xl font-semibold text-gray-900">
+                  Rs {((chartConfig.revenue || 0) / 100).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Text>
+              )}
+            </View>
           </View>
 
-          <View className="overflow-hidden">
+          <View className="overflow-hidden mt-6">
             {isLoadingChart ? (
               <View className="h-40 items-center justify-center">
                 <ActivityIndicator size="large" color="#3B82F6" />
                 <Text className="text-gray-500 mt-2">Loading chart data...</Text>
               </View>
             ) : chartConfig.data.length > 0 ? (
-            <OrdersRevenueLineChart data={chartData} xLabels={chartConfig.xLabels} yLabels={chartConfig.yLabels} />
+              <OrdersRevenueLineChart data={chartData} xLabels={chartConfig.xLabels} yLabels={chartConfig.yLabels} />
             ) : (
               <View className="h-40 items-center justify-center">
                 <Text className="text-gray-500">No data available for this period</Text>
               </View>
             )}
           </View>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Time Metrics Cards Section - Always shows all-time averages, separate from chart */}
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-md mt-4">
         <Text className="text-lg font-bold text-gray-900 mb-4">Performance Metrics (All-Time)</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 4, paddingRight: 16 }}
-            style={{ minHeight: 120 }}
-          >
-            {/* Loading state */}
-            {isLoadingAllTime && (
-              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] items-center justify-center">
-                <ActivityIndicator size="small" color="#3B82F6" />
-                <Text className="text-xs text-gray-500 mt-2">Loading metrics...</Text>
-              </View>
-            )}
-
-            {/* Confirmation Time Card */}
-            {!isLoadingAllTime && (
-              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] shadow-sm">
-                <Text className="text-xs text-gray-500 mb-1">Confirmation Time</Text>
-                <View className="flex-row items-baseline flex-wrap">
-                  {timeMetrics.confirmation.current !== null && timeMetrics.confirmation.current !== undefined ? (
-                    <>
-                      <Text className="text-2xl font-bold text-gray-900">
-                        {formatDuration(timeMetrics.confirmation.current)}
-                      </Text>
-                      {timeMetrics.confirmation.change !== null && timeMetrics.confirmation.changeType === 'up' && (
-                        <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
-                          <Text className="text-green-600 text-xs font-semibold">↑</Text>
-                          <Text className="text-green-600 text-xs font-semibold ml-1">
-                            +{formatDuration(timeMetrics.confirmation.change)}
-                          </Text>
-                        </View>
-                      )}
-                      {timeMetrics.confirmation.change !== null && timeMetrics.confirmation.changeType === 'down' && (
-                        <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
-                          <Text className="text-red-600 text-xs font-semibold">↓</Text>
-                          <Text className="text-red-600 text-xs font-semibold ml-1">
-                            -{formatDuration(timeMetrics.confirmation.change)}
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  ) : (
-                    <Text className="text-lg text-gray-400">No data</Text>
-                  )}
+        <View className="flex-row flex-wrap -mx-1">
+          {isLoadingAllTime
+            ? Array.from({ length: 4 }).map((_, index) => (
+                <View key={`metric-skeleton-${index}`} className="w-1/2 px-1 pb-3">
+                  <View className="bg-white border border-gray-100 rounded-2xl p-4 items-center justify-center shadow-sm">
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                    <Text className="text-xs text-gray-500 mt-2">Loading...</Text>
+                  </View>
                 </View>
-                <Text className="text-xs text-gray-400 mt-1">Average time</Text>
-              </View>
-            )}
-
-            {/* Preparation Time Card */}
-            {!isLoadingAllTime && (
-              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] shadow-sm">
-                <Text className="text-xs text-gray-500 mb-1">Preparation Time</Text>
-                <View className="flex-row items-baseline flex-wrap">
-                  {timeMetrics.preparation.current !== null && timeMetrics.preparation.current !== undefined ? (
-                    <>
-                      <Text className="text-2xl font-bold text-gray-900">
-                        {formatDuration(timeMetrics.preparation.current)}
-                      </Text>
-                      {timeMetrics.preparation.change !== null && timeMetrics.preparation.changeType === 'up' && (
-                        <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
-                          <Text className="text-green-600 text-xs font-semibold">↑</Text>
-                          <Text className="text-green-600 text-xs font-semibold ml-1">
-                            +{formatDuration(timeMetrics.preparation.change)}
-                          </Text>
-                        </View>
+              ))
+            : metricCards.map((card) => (
+                <View key={card.key} className="w-1/2 px-1 pb-3">
+                  <View className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                    <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                      {card.title}
+                    </Text>
+                    <View className="flex-row items-baseline flex-wrap">
+                      {card.value ? (
+                        <>
+                          <Text className="text-xl font-bold text-gray-900">{card.value}</Text>
+                          {card.changeLabel && card.changeType === 'up' && (
+                            <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
+                              <Text className="text-green-600 text-xs font-semibold">↑</Text>
+                            <Text className="text-green-600 text-xs font-semibold ml-1">
+                              +{card.changeLabel}
+                            </Text>
+                            </View>
+                          )}
+                          {card.changeLabel && card.changeType === 'down' && (
+                            <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
+                              <Text className="text-red-600 text-xs font-semibold">↓</Text>
+                            <Text className="text-red-600 text-xs font-semibold ml-1">
+                              -{card.changeLabel}
+                            </Text>
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <Text className="text-sm text-gray-400">No data</Text>
                       )}
-                      {timeMetrics.preparation.change !== null && timeMetrics.preparation.changeType === 'down' && (
-                        <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
-                          <Text className="text-red-600 text-xs font-semibold">↓</Text>
-                          <Text className="text-red-600 text-xs font-semibold ml-1">
-                            -{formatDuration(timeMetrics.preparation.change)}
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  ) : (
-                    <Text className="text-lg text-gray-400">No data</Text>
-                  )}
+                    </View>
+                    <Text className="text-[11px] text-gray-400 mt-1">{card.subtitle}</Text>
+                  </View>
                 </View>
-                <Text className="text-xs text-gray-400 mt-1">Average time</Text>
-              </View>
-            )}
-
-            {/* Delivery Time Card */}
-            {!isLoadingAllTime && (
-              <View className="bg-white border border-gray-100 rounded-2xl p-4 mr-3 min-w-[200px] shadow-sm">
-                <Text className="text-xs text-gray-500 mb-1">Delivery Time</Text>
-                <View className="flex-row items-baseline flex-wrap">
-                  {timeMetrics.delivery.current !== null && timeMetrics.delivery.current !== undefined ? (
-                    <>
-                      <Text className="text-2xl font-bold text-gray-900">
-                        {formatDuration(timeMetrics.delivery.current)}
-                      </Text>
-                      {timeMetrics.delivery.change !== null && timeMetrics.delivery.changeType === 'up' && (
-                        <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
-                          <Text className="text-green-600 text-xs font-semibold">↑</Text>
-                          <Text className="text-green-600 text-xs font-semibold ml-1">
-                            +{formatDuration(timeMetrics.delivery.change)}
-                          </Text>
-                        </View>
-                      )}
-                      {timeMetrics.delivery.change !== null && timeMetrics.delivery.changeType === 'down' && (
-                        <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
-                          <Text className="text-red-600 text-xs font-semibold">↓</Text>
-                          <Text className="text-red-600 text-xs font-semibold ml-1">
-                            -{formatDuration(timeMetrics.delivery.change)}
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  ) : (
-                    <Text className="text-lg text-gray-400">No data</Text>
-                  )}
-                </View>
-                <Text className="text-xs text-gray-400 mt-1">Average time</Text>
-              </View>
-            )}
-          </ScrollView>
+              ))}
+        </View>
       </View>
 
       {/* Date Picker Modal */}

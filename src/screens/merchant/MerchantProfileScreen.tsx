@@ -77,7 +77,10 @@ export default function MerchantProfileScreen() {
         {
           text: 'Switch',
           onPress: () => {
-            navigation.navigate('Home');
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Home' }],
+            });
           },
         },
       ]

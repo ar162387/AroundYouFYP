@@ -1,32 +1,70 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import type { MerchantShop } from '../../services/merchant/shopService';
+import OrdersTrendIcon from '../../icons/OrdersTrendIcon';
+import CancelledOrderIcon from '../../icons/CancelledOrderIcon';
+import RevenueFlowIcon from '../../icons/RevenueFlowIcon';
 
 interface MerchantShopCardProps {
   shop: MerchantShop;
   onPress?: () => void;
 }
 
+const IconWrapper = ({ children }: { children: React.ReactNode }) => (
+  <View className="w-7 h-7 items-center justify-center">
+    {children}
+  </View>
+);
+
 // Custom icons for stats
 const OrdersIcon = () => (
-  <View className="w-8 h-8 bg-green-100 rounded-full items-center justify-center">
-    <Text className="text-green-600 text-base">📦</Text>
-  </View>
+  <IconWrapper>
+    <OrdersTrendIcon size={24} />
+  </IconWrapper>
 );
 
 const CancelledIcon = () => (
-  <View className="w-8 h-8 bg-red-100 rounded-full items-center justify-center">
-    <Text className="text-red-600 text-base">❌</Text>
-  </View>
+  <IconWrapper>
+    <CancelledOrderIcon size={22} />
+  </IconWrapper>
 );
 
 const RevenueIcon = () => (
-  <View className="w-8 h-8 bg-blue-100 rounded-full items-center justify-center">
-    <Text className="text-blue-600 text-base">💰</Text>
+  <IconWrapper>
+    <RevenueFlowIcon size={22} />
+  </IconWrapper>
+);
+
+const StatItem = ({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) => (
+  <View className="flex-1 basis-0">
+    <View className="flex-row items-center">
+      {icon}
+      <Text className="ml-2 text-[11px] font-medium text-gray-500">{label}</Text>
+    </View>
+    <Text className="mt-1 text-lg font-semibold text-gray-900">{value}</Text>
   </View>
 );
 
 export default function MerchantShopCard({ shop, onPress }: MerchantShopCardProps) {
+  const revenueValue = Number(shop.revenue_today || 0);
+  let formattedRevenue = `Rs ${Math.round(revenueValue).toLocaleString('en-PK')}`;
+  try {
+    formattedRevenue = `Rs ${revenueValue.toLocaleString('en-PK', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    })}`;
+  } catch {
+    // Fallback already assigned above
+  }
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -42,18 +80,20 @@ export default function MerchantShopCard({ shop, onPress }: MerchantShopCardProp
     >
       {/* Shop Image and Name */}
       <View className="flex-row">
-        {shop.image_url ? (
-          <Image
-            source={{ uri: shop.image_url }}
-            className="w-24 h-24 rounded-l-2xl"
-            resizeMode="cover"
-          />
-        ) : (
-          <View className="w-24 h-24 bg-gray-200 rounded-l-2xl items-center justify-center">
-            <Text className="text-4xl">🏪</Text>
-          </View>
-        )}
-        
+        <View className="w-[132px] h-24 overflow-hidden">
+          {shop.image_url ? (
+            <Image
+              source={{ uri: shop.image_url }}
+              className="w-full h-full"
+              resizeMode="contain"
+            />
+          ) : (
+            <View className="w-full h-full bg-gray-200 items-center justify-center">
+              <Text className="text-4xl">🏪</Text>
+            </View>
+          )}
+        </View>
+
         <View className="flex-1 p-4 justify-center">
           <Text className="text-lg font-bold text-gray-900 mb-1" numberOfLines={2}>
             {shop.name}
@@ -66,33 +106,10 @@ export default function MerchantShopCard({ shop, onPress }: MerchantShopCardProp
 
       {/* Stats Section */}
       <View className="px-4 pb-4 pt-2 border-t border-gray-100">
-        <View className="flex-row justify-between items-center">
-          {/* Orders Today */}
-          <View className="flex-row items-center flex-1">
-            <OrdersIcon />
-            <View className="ml-2 flex-1">
-              <Text className="text-xs text-gray-500">Orders Today</Text>
-              <Text className="text-base font-bold text-gray-900">{shop.orders_today}</Text>
-            </View>
-          </View>
-
-          {/* Cancelled Today */}
-          <View className="flex-row items-center flex-1 ml-4">
-            <CancelledIcon />
-            <View className="ml-2 flex-1">
-              <Text className="text-xs text-gray-500">Cancelled</Text>
-              <Text className="text-base font-bold text-gray-900">{shop.orders_cancelled_today}</Text>
-            </View>
-          </View>
-
-          {/* Revenue Today */}
-          <View className="flex-row items-center flex-1 ml-4">
-            <RevenueIcon />
-            <View className="ml-2 flex-1">
-              <Text className="text-xs text-gray-500">Revenue</Text>
-              <Text className="text-base font-bold text-gray-900">Rs {shop.revenue_today.toLocaleString()}</Text>
-            </View>
-          </View>
+        <View className="flex-row justify-between gap-4">
+          <StatItem icon={<OrdersIcon />} label="Orders" value={`${shop.orders_today}`} />
+          <StatItem icon={<CancelledIcon />} label="Cancelled" value={`${shop.orders_cancelled_today}`} />
+          <StatItem icon={<RevenueIcon />} label="Revenue" value={formattedRevenue} />
         </View>
       </View>
     </TouchableOpacity>

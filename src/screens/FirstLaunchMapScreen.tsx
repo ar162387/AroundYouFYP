@@ -10,7 +10,7 @@ import {
   Animated,
   ScrollView,
   PermissionsAndroid,
-  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
 import { useNavigation, useRoute, RouteProp as RNRouteProp } from '@react-navigation/native';
@@ -18,7 +18,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import AddressSearchMap from '../components/maps/AddressSearchMap';
 import { useLocationStore, ConfirmedLocation } from '../stores/locationStore';
-import { useGeoapifyAutocomplete, useReverseGeocode, SearchResult } from '../hooks/useLocationQueries';
+import { useGeoapifyAutocomplete, SearchResult } from '../hooks/useLocationQueries';
+import LocationMarkerIcon from '../icons/LocationMarkerIcon';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'FirstLaunchMap'>;
 type FirstLaunchMapRouteProp = RNRouteProp<RootStackParamList, 'FirstLaunchMap'>;
@@ -47,9 +48,10 @@ export default function FirstLaunchMapScreen() {
   // Debounce/timeout refs
   const reverseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const regionChangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const moveEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticMoveRef = useRef<boolean>(false);
   const lastRegionRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const lastReverseCoordsRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  const reverseRequestIdRef = useRef<number>(0);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,17 +72,13 @@ export default function FirstLaunchMapScreen() {
     region?: string;
     streetLine?: string;
   } | null>(null);
+  const [isReverseGeocoding, setIsReverseGeocoding] = useState(false);
 
   // React Query hooks
   const { data: searchResults = [], isLoading: isSearching } = useGeoapifyAutocomplete(
     searchQuery,
     searchQuery.trim().length >= 2 && showSearchResults,
     mapRegion
-  );
-
-  const { data: reverseData } = useReverseGeocode(
-    lastRegionRef.current || mapRegion,
-    false // Don't auto-fetch, we'll trigger manually
   );
 
   /**
@@ -97,6 +95,7 @@ export default function FirstLaunchMapScreen() {
         longitudeDelta: 0.01,
       });
       lastRegionRef.current = PAKISTAN_CENTER;
+      endDragging(PAKISTAN_CENTER, true);
       return;
     }
 
@@ -158,7 +157,7 @@ export default function FirstLaunchMapScreen() {
           }, 600);
 
           // Trigger reverse geocode
-          endDragging(position);
+          endDragging(position, true);
         } else if (isMounted) {
           // Fallback to Pakistan
           setMapRegion({
@@ -209,12 +208,11 @@ export default function FirstLaunchMapScreen() {
   /**
    * MAP DRAG HANDLERS
    */
-  const endDragging = (regionHint?: { latitude: number; longitude: number }) => {
-    if (moveEndTimeoutRef.current) {
-      clearTimeout(moveEndTimeoutRef.current);
-      moveEndTimeoutRef.current = null;
-    }
-    if (!draggingRef.current && !isMoving) return;
+  const endDragging = (
+    regionHint?: { latitude: number; longitude: number },
+    force: boolean = false
+  ) => {
+    if (!force && !draggingRef.current && !isMoving) return;
 
     const finalCoords = regionHint || lastRegionRef.current || {
       latitude: mapRegion.latitude,
@@ -233,8 +231,22 @@ export default function FirstLaunchMapScreen() {
     setIsMoving(false);
     animateMarkerDown();
 
+    const previousCoords = lastReverseCoordsRef.current;
+    const hasMovedEnough =
+      !previousCoords ||
+      Math.abs(previousCoords.latitude - finalCoords.latitude) > 0.00005 ||
+      Math.abs(previousCoords.longitude - finalCoords.longitude) > 0.00005;
+
+    if (!hasMovedEnough && reverseGeocode) {
+      setIsReverseGeocoding(false);
+      return;
+    }
+
     // Debounced reverse geocoding
     if (reverseDebounceRef.current) clearTimeout(reverseDebounceRef.current);
+    setIsReverseGeocoding(true);
+    const requestId = Date.now();
+    reverseRequestIdRef.current = requestId;
     reverseDebounceRef.current = setTimeout(async () => {
       try {
         // Use React Query's refetch mechanism or fetch directly
@@ -252,14 +264,26 @@ export default function FirstLaunchMapScreen() {
           const state = result?.state || '';
           const streetLine = [houseNumber, street].filter(Boolean).join(' ') || district || city || 'Street address';
           const full = result?.formatted || [streetLine, city, state].filter(Boolean).join(', ');
-          setReverseGeocode({
-            formatted: full,
-            city: (city || district || '') as string,
-            region: (state || '') as string,
-            streetLine,
-          });
+          if (reverseRequestIdRef.current === requestId) {
+            setReverseGeocode({
+              formatted: full,
+              city: (city || district || '') as string,
+              region: (state || '') as string,
+              streetLine,
+            });
+            lastReverseCoordsRef.current = finalCoords;
+            setIsReverseGeocoding(false);
+          }
+        } else if (reverseRequestIdRef.current === requestId) {
+          setReverseGeocode(null);
+          setIsReverseGeocoding(false);
         }
-      } catch (_) {}
+      } catch (_) {
+        if (reverseRequestIdRef.current === requestId) {
+          setReverseGeocode(null);
+          setIsReverseGeocoding(false);
+        }
+      }
     }, 1000);
   };
 
@@ -268,6 +292,12 @@ export default function FirstLaunchMapScreen() {
       draggingRef.current = true;
       setIsMoving(true);
       animateMarkerUp();
+      if (reverseDebounceRef.current) {
+        clearTimeout(reverseDebounceRef.current);
+        reverseDebounceRef.current = null;
+      }
+      reverseRequestIdRef.current += 1;
+      setIsReverseGeocoding(true);
     }
   };
 
@@ -329,10 +359,12 @@ export default function FirstLaunchMapScreen() {
         }
       }, 150);
     } else if (draggingRef.current && !programmaticMoveRef.current && Platform.OS === 'ios') {
-      endDragging(lastRegionRef.current || {
+      endDragging(
+        lastRegionRef.current || {
         latitude: mapRegion.latitude,
         longitude: mapRegion.longitude,
-      });
+        }
+      );
     }
   };
 
@@ -341,6 +373,12 @@ export default function FirstLaunchMapScreen() {
       draggingRef.current = true;
       setIsMoving(true);
       animateMarkerUp();
+      if (reverseDebounceRef.current) {
+        clearTimeout(reverseDebounceRef.current);
+        reverseDebounceRef.current = null;
+      }
+      reverseRequestIdRef.current += 1;
+      setIsReverseGeocoding(true);
     }
   };
 
@@ -391,6 +429,9 @@ export default function FirstLaunchMapScreen() {
       region: undefined,
       streetLine,
     });
+    lastReverseCoordsRef.current = coords;
+    setIsReverseGeocoding(false);
+    reverseRequestIdRef.current += 1;
   };
 
   /**
@@ -440,6 +481,12 @@ export default function FirstLaunchMapScreen() {
         draggingRef.current = true;
         setIsMoving(true);
         animateMarkerUp();
+        if (reverseDebounceRef.current) {
+          clearTimeout(reverseDebounceRef.current);
+          reverseDebounceRef.current = null;
+        }
+        reverseRequestIdRef.current += 1;
+        setIsReverseGeocoding(true);
 
         mapRef.current?.animateCamera?.(
           { center: position, zoom: 16 },
@@ -451,7 +498,7 @@ export default function FirstLaunchMapScreen() {
           setIsMoving(false);
           animateMarkerDown();
           programmaticMoveRef.current = false;
-          endDragging(position);
+          endDragging(position, true);
         }, 600);
       }
     } catch (_) {}
@@ -462,6 +509,9 @@ export default function FirstLaunchMapScreen() {
    * CONFIRM LOCATION
    */
   const handleConfirmLocation = () => {
+    if (isReverseGeocoding || !reverseGeocode) {
+      return;
+    }
     const coords = lastRegionRef.current || {
       latitude: mapRegion.latitude,
       longitude: mapRegion.longitude,
@@ -480,6 +530,11 @@ export default function FirstLaunchMapScreen() {
     markLocationSetupComplete();
     navigation.replace('Home');
   };
+
+  const confirmDisabled = isReverseGeocoding || !reverseGeocode;
+  const buttonAddressLabel = isReverseGeocoding
+    ? 'Fetching address...'
+    : reverseGeocode?.streetLine || reverseGeocode?.city || 'Selected location';
 
   return (
     <View className="flex-1 bg-white">
@@ -529,14 +584,16 @@ export default function FirstLaunchMapScreen() {
             className="bg-white rounded-xl mt-2 max-h-64 shadow-lg"
             keyboardShouldPersistTaps="handled"
           >
-            {searchResults.map((item) => (
+            {searchResults.map((item, index) => (
               <TouchableOpacity
-                key={item.id}
+                key={`${item.id}-${index}`}
                 className="flex-row items-start py-3 px-4 border-b border-gray-100"
                 onPress={() => handleSelectResult(item)}
                 activeOpacity={0.7}
               >
-                <Text className="text-lg mr-3 mt-0.5">📍</Text>
+              <View className="mr-3 mt-0.5">
+                <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+              </View>
                 <View className="flex-1">
                   <Text className="text-base font-semibold text-gray-900">{item.name}</Text>
                   <Text className="text-sm text-gray-600 mt-0.5" numberOfLines={2}>
@@ -548,7 +605,7 @@ export default function FirstLaunchMapScreen() {
           </ScrollView>
         )}
 
-        {isSearching && (
+        {searchQuery.trim().length >= 2 && isSearching && (
           <View className="bg-white rounded-xl mt-2 py-4 px-4 items-center">
             <Text className="text-gray-500">Searching...</Text>
           </View>
@@ -569,14 +626,27 @@ export default function FirstLaunchMapScreen() {
 
         {/* Confirm Location Button */}
         <TouchableOpacity
-          className="bg-blue-600 rounded-xl py-4 px-6 items-center shadow-lg"
+          className={`rounded-xl py-4 px-6 items-center shadow-lg ${
+            confirmDisabled ? 'bg-blue-300' : 'bg-blue-600'
+          }`}
           onPress={handleConfirmLocation}
+          disabled={confirmDisabled}
           activeOpacity={0.8}
         >
-          <Text className="text-white font-bold text-lg">Confirm Location</Text>
-          {reverseGeocode && (
-            <Text className="text-white/80 text-sm mt-1" numberOfLines={1}>
-              {reverseGeocode.streetLine || reverseGeocode.city || 'Selected location'}
+          <View className="flex-row items-center">
+            {isReverseGeocoding && (
+              <ActivityIndicator color="#FFFFFF" size="small" style={{ marginRight: 8 }} />
+            )}
+            <Text className="text-white font-bold text-lg">
+              {confirmDisabled && !isReverseGeocoding ? 'Set a location first' : 'Confirm Location'}
+            </Text>
+          </View>
+          {(reverseGeocode || isReverseGeocoding) && buttonAddressLabel.length > 0 && (
+            <Text
+              className={`text-white/80 text-sm mt-1 ${isReverseGeocoding ? 'italic' : ''}`}
+              numberOfLines={1}
+            >
+              {buttonAddressLabel}
             </Text>
           )}
         </TouchableOpacity>

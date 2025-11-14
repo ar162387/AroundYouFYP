@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import type { OrderStatus } from '../../types/orders';
 import Config from 'react-native-config';
 
 export type ShopType = 'Grocery' | 'Meat' | 'Vegetable' | 'Stationery' | 'Dairy';
@@ -377,18 +378,58 @@ export async function getMerchantShops(
       return { shops: [], error: { message: error.message } };
     }
 
-    // Calculate stats for each shop (this would typically come from orders table)
-    // For now, we'll use placeholder values - you'll need to implement actual order stats
-    // TODO: Join with orders table to calculate:
-    // - orders_today: COUNT(*) WHERE DATE(created_at) = CURRENT_DATE
-    // - orders_cancelled_today: COUNT(*) WHERE DATE(created_at) = CURRENT_DATE AND status = 'cancelled'
-    // - revenue_today: SUM(total_amount) WHERE DATE(created_at) = CURRENT_DATE AND status = 'completed'
-    const shopsWithStats: MerchantShop[] = (shops || []).map((shop) => ({
-      ...shop,
-      orders_today: 0, // TODO: Calculate from orders table
-      orders_cancelled_today: 0, // TODO: Calculate from orders table
-      revenue_today: 0, // TODO: Calculate from orders table
-    }));
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+    const shopsWithStats: MerchantShop[] = await Promise.all(
+      (shops || []).map(async (shop) => {
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('orders')
+          .select('status,total_cents')
+          .eq('shop_id', shop.id)
+          .gte('placed_at', startOfToday.toISOString())
+          .lt('placed_at', startOfTomorrow.toISOString());
+
+        if (ordersError || !ordersData) {
+          if (ordersError) {
+            console.error('Error loading order stats for shop', { shopId: shop.id, error: ordersError });
+          }
+
+          return {
+            ...shop,
+            orders_today: 0,
+            orders_cancelled_today: 0,
+            revenue_today: 0,
+          };
+        }
+
+        const orders = ordersData as Array<{ status: OrderStatus; total_cents: number | null }>;
+
+        let ordersToday = 0;
+        let cancelledToday = 0;
+        let revenueCents = 0;
+
+        orders.forEach((order) => {
+          ordersToday += 1;
+          if (order.status === 'cancelled') {
+            cancelledToday += 1;
+            return;
+          }
+          if (order.status === 'delivered' && typeof order.total_cents === 'number') {
+            revenueCents += order.total_cents;
+          }
+        });
+
+        return {
+          ...shop,
+          orders_today: ordersToday,
+          orders_cancelled_today: cancelledToday,
+          revenue_today: revenueCents / 100,
+        };
+      })
+    );
 
     return { shops: shopsWithStats, error: null };
   } catch (error: any) {

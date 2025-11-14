@@ -37,6 +37,7 @@ import EditShopScreen from '../screens/merchant/EditShopScreen';
 import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
 import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPortalScreen';
 import ManageDeliveryAreasScreen from '../screens/merchant/shop/ManageDeliveryAreasScreen';
+import MerchantOrderScreen from '../screens/merchant/orders/MerchantOrderScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -264,6 +265,14 @@ export default function AppNavigator() {
         <Stack.Screen
           name="MerchantShopPortal"
           component={MerchantShopPortalScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="MerchantOrder"
+          component={MerchantOrderScreen}
           options={{
             headerShown: false,
             animation: 'slide_from_right',

@@ -13,10 +13,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
-import { useOrder, useOrderTimer, useCancelOrder } from '../../hooks/consumer/useOrders';
-import { getOrderStatusDisplay, formatDuration, formatPrice } from '../../types/orders';
+import { useOrder, useCancelOrder } from '../../hooks/consumer/useOrders';
+import { getOrderStatusDisplay, formatPrice } from '../../types/orders';
 import BackIcon from '../../icons/BackIcon';
 import DeliveryRunnerIcon from '../../icons/DeliveryRunnerIcon';
+import {
+  OrderPendingIcon,
+  OrderConfirmedIcon,
+  OrderOutForDeliveryIcon,
+  OrderDeliveredIcon,
+  OrderCancelledIcon,
+} from '../../icons/OrderStatusIcons';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'OrderStatus'>;
@@ -27,33 +34,9 @@ export default function OrderStatusScreen() {
   const { orderId } = route.params;
 
   const { data: order, isLoading } = useOrder(orderId);
-  const timerState = useOrderTimer(order);
   const cancelOrderMutation = useCancelOrder();
 
-  // Animated value for status icon
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    // Pulse animation for active orders
-    if (timerState.isActive) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.2,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [timerState.isActive, pulseAnim]);
 
   const handleCancelOrder = () => {
     Alert.alert(
@@ -84,13 +67,34 @@ export default function OrderStatusScreen() {
     Linking.openURL(`tel:${phoneNumber}`);
   };
 
-  const handleGetDirections = () => {
-    if (order?.delivery_address) {
-      const { latitude, longitude } = order.delivery_address;
-      const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
-      Linking.openURL(url);
+  useEffect(() => {
+    let animation: Animated.CompositeAnimation | undefined;
+
+    if (order && order.status !== 'delivered' && order.status !== 'cancelled') {
+      animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+
+      animation.start();
+    } else {
+      pulseAnim.setValue(1);
     }
-  };
+
+    return () => {
+      animation?.stop();
+    };
+  }, [order?.status, pulseAnim]);
 
   if (isLoading) {
     return (
@@ -153,7 +157,7 @@ export default function OrderStatusScreen() {
               className="w-24 h-24 rounded-full items-center justify-center mb-4"
               style={{ backgroundColor: `${statusDisplay.color}20` }}
             >
-              <Text className="text-5xl">{getStatusIcon(order.status)}</Text>
+              {getStatusIcon(order.status, statusDisplay.color)}
             </View>
           </Animated.View>
 
@@ -167,49 +171,6 @@ export default function OrderStatusScreen() {
             {statusDisplay.description}
           </Text>
 
-          {/* Timer */}
-          {statusDisplay.showTimer && timerState.isActive && (
-            <View className="bg-gray-50 rounded-xl px-6 py-3">
-              <Text className="text-gray-500 text-xs text-center mb-1">
-                {timerState.stage === 'confirmation' && 'Waiting for confirmation'}
-                {timerState.stage === 'preparation' && 'Preparing your order'}
-                {timerState.stage === 'delivery' && 'On the way'}
-              </Text>
-              <Text className="text-gray-900 text-2xl font-bold text-center">
-                {formatDuration(timerState.elapsedSeconds)}
-              </Text>
-            </View>
-          )}
-
-          {/* Completed Timings */}
-          {order.status === 'delivered' && (
-            <View className="w-full mt-4 space-y-2">
-              {order.confirmation_time_seconds && (
-                <View className="flex-row justify-between">
-                  <Text className="text-gray-600">Confirmation time:</Text>
-                  <Text className="text-gray-900 font-semibold">
-                    {formatDuration(order.confirmation_time_seconds)}
-                  </Text>
-                </View>
-              )}
-              {order.preparation_time_seconds && (
-                <View className="flex-row justify-between">
-                  <Text className="text-gray-600">Preparation time:</Text>
-                  <Text className="text-gray-900 font-semibold">
-                    {formatDuration(order.preparation_time_seconds)}
-                  </Text>
-                </View>
-              )}
-              {order.delivery_time_seconds && (
-                <View className="flex-row justify-between">
-                  <Text className="text-gray-600">Delivery time:</Text>
-                  <Text className="text-gray-900 font-semibold">
-                    {formatDuration(order.delivery_time_seconds)}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
         </View>
 
         {/* Delivery Runner Info (if out for delivery or delivered) */}
@@ -260,12 +221,6 @@ export default function OrderStatusScreen() {
               <Text className="text-gray-700 text-sm">{order.delivery_address.landmark}</Text>
             </View>
           )}
-          <TouchableOpacity
-            onPress={handleGetDirections}
-            className="mt-3 bg-blue-50 px-4 py-2 rounded-lg self-start"
-          >
-            <Text className="text-blue-600 font-semibold">Get Directions</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Special Instructions */}
@@ -346,7 +301,7 @@ export default function OrderStatusScreen() {
         </View>
 
         {/* Cancel Order Button */}
-        {statusDisplay.allowCancel && !cancelOrderMutation.isPending && (
+        {statusDisplay.allowCancel && !cancelOrderMutation.isLoading && (
           <TouchableOpacity
             onPress={handleCancelOrder}
             className="bg-red-50 border border-red-200 rounded-xl p-4 items-center mb-4"
@@ -356,7 +311,7 @@ export default function OrderStatusScreen() {
           </TouchableOpacity>
         )}
 
-        {cancelOrderMutation.isPending && (
+        {cancelOrderMutation.isLoading && (
           <View className="bg-gray-50 rounded-xl p-4 items-center mb-4">
             <ActivityIndicator size="small" color="#EF4444" />
             <Text className="text-gray-600 text-sm mt-2">Cancelling order...</Text>
@@ -379,20 +334,31 @@ export default function OrderStatusScreen() {
   );
 }
 
-function getStatusIcon(status: string): string {
+function getStatusIcon(status: string, color: string): React.ReactNode {
+  const secondaryColor = withAlpha(color, '20');
+
   switch (status) {
     case 'pending':
-      return '⏳';
+      return <OrderPendingIcon size={72} primaryColor={color} secondaryColor={secondaryColor} />;
     case 'confirmed':
-      return '👨‍🍳';
+      return <OrderConfirmedIcon size={72} primaryColor={color} secondaryColor={secondaryColor} />;
     case 'out_for_delivery':
-      return '🚚';
+      return (
+        <OrderOutForDeliveryIcon size={72} primaryColor={color} secondaryColor={secondaryColor} />
+      );
     case 'delivered':
-      return '✅';
+      return <OrderDeliveredIcon size={72} primaryColor={color} secondaryColor={secondaryColor} />;
     case 'cancelled':
-      return '❌';
+      return <OrderCancelledIcon size={72} primaryColor={color} secondaryColor={secondaryColor} />;
     default:
-      return '📦';
+      return <OrderPendingIcon size={72} primaryColor={color} secondaryColor={secondaryColor} />;
   }
+}
+
+function withAlpha(color: string, alphaHex: string): string {
+  if (color.startsWith('#') && color.length === 7) {
+    return `${color}${alphaHex}`;
+  }
+  return color;
 }
 

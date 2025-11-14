@@ -12,6 +12,7 @@ const Tab = createBottomTabNavigator();
 export default function MerchantDashboard() {
   return (
     <Tab.Navigator
+      initialRouteName="MerchantShops"
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: '#2563eb',

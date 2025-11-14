@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -30,25 +30,81 @@ export default function MerchantShopPortalScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { shop } = route.params;
 
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
+  const activeIndexRef = useRef(0);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const isProgrammaticScrollRef = useRef(false);
 
-  const TabContent = useMemo(() => {
-    switch (activeTab) {
-      case 'inventory':
-        return <InventorySection shop={shop} />;
-      case 'orders':
-        return <OrdersSection shop={shop} />;
-      case 'delivery':
-        return <DeliverySection shop={shop} />;
-      case 'settings':
-        return <SettingsSection shop={shop} />;
-      case 'dashboard':
-      default:
-        return <DashboardSection shop={shop} />;
+  const activeIndex = useMemo(() => TABS.findIndex((tab) => tab.key === activeTab), [activeTab]);
+
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  useEffect(() => {
+    if (!scrollRef.current) {
+      return;
     }
-  }, [activeTab, shop]);
+
+    scrollRef.current.scrollTo({
+      x: activeIndex * screenWidth,
+      animated: true,
+    });
+  }, [activeIndex, screenWidth]);
+
+  const handleMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const nextIndex = Math.round(offsetX / screenWidth);
+      const previousIndex = activeIndexRef.current;
+      activeIndexRef.current = nextIndex;
+
+      if (isProgrammaticScrollRef.current) {
+        isProgrammaticScrollRef.current = false;
+        return;
+      }
+
+      if (nextIndex !== previousIndex && nextIndex >= 0 && nextIndex < TABS.length) {
+        setActiveTab(TABS[nextIndex].key);
+      }
+    },
+    [screenWidth]
+  );
+
+  const handleTabPress = useCallback(
+    (tabKey: TabKey, index: number) => {
+      activeIndexRef.current = index;
+      isProgrammaticScrollRef.current = true;
+      setActiveTab(tabKey);
+      scrollRef.current?.scrollTo({
+        x: index * screenWidth,
+        animated: true,
+      });
+    },
+    [screenWidth]
+  );
+
+  const renderSection = useCallback(
+    (tabKey: TabKey) => {
+      switch (tabKey) {
+        case 'inventory':
+          return <InventorySection shop={shop} />;
+        case 'orders':
+          return <OrdersSection shop={shop} />;
+        case 'delivery':
+          return <DeliverySection shop={shop} />;
+        case 'settings':
+          return <SettingsSection shop={shop} />;
+        case 'dashboard':
+        default:
+          return <DashboardSection shop={shop} onShowOrders={() => setActiveTab('orders')} />;
+      }
+    },
+    [setActiveTab, shop]
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
@@ -95,13 +151,15 @@ export default function MerchantShopPortalScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingRight: 20 }}
             >
-              {TABS.map((tab) => {
+              {TABS.map((tab, index) => {
                 const isActive = activeTab === tab.key;
                 return (
                   <TouchableOpacity
                     key={tab.key}
-                    className={`mr-3 px-4 py-2 rounded-full border ${isActive ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-200'}`}
-                    onPress={() => setActiveTab(tab.key)}
+                    className={`mr-3 px-4 py-2 rounded-full border ${
+                      isActive ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-200'
+                    }`}
+                    onPress={() => handleTabPress(tab.key, index)}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: isActive }}
                   >
@@ -114,9 +172,30 @@ export default function MerchantShopPortalScreen() {
             </ScrollView>
           </View>
 
-          <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 40 }}>
-            {TabContent}
-          </ScrollView>
+          <View className="flex-1 overflow-hidden">
+            <ScrollView
+              ref={scrollRef}
+              horizontal
+              pagingEnabled
+              scrollEventThrottle={16}
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleMomentumScrollEnd}
+              decelerationRate="fast"
+              bounces={false}
+            >
+              {TABS.map((tab) => (
+                <View key={tab.key} style={{ width: screenWidth, flex: 1 }}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 32, paddingTop: 24 }}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {renderSection(tab.key)}
+                  </ScrollView>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
         </View>
       </View>
     </SafeAreaView>

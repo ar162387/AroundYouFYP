@@ -66,9 +66,12 @@ export default function ProfileScreen() {
       }
 
       if (merchant) {
-        // Merchant account exists, go to dashboard
-        console.log('Merchant account found, navigating to dashboard');
-        navigation.navigate('MerchantDashboard');
+        // Merchant account exists, reset stack to merchant experience
+        console.log('Merchant account found, resetting navigation to MerchantDashboard');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MerchantDashboard' }],
+        });
       } else {
         // No merchant account, show registration survey
         console.log('No merchant account found, navigating to registration survey');

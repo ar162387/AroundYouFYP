@@ -20,6 +20,7 @@ import { useLocationStore } from '../../stores/locationStore';
 import { useGeoapifyAutocomplete, SearchResult } from '../../hooks/useLocationQueries';
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShopAddressMap'>;
 type ShopAddressMapRouteProp = RNRouteProp<RootStackParamList, 'ShopAddressMap'>;
@@ -481,7 +482,9 @@ export default function ShopAddressMapScreen() {
                   onPress={() => handleSelectResult(item)}
                   activeOpacity={0.7}
                 >
-                  <Text className="text-lg mr-3 mt-0.5">📍</Text>
+                <View className="mr-3 mt-0.5">
+                  <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+                </View>
                   <View className="flex-1">
                     <Text className="text-base font-semibold text-gray-900">{item.name}</Text>
                     <Text className="text-sm text-gray-600 mt-0.5" numberOfLines={2}>

@@ -20,6 +20,7 @@ import {
 import {
   OrderWithAll,
   PlaceOrderRequest,
+  PlaceOrderResponse,
   OrderCalculation,
   OrderTimerState,
   getOrderStage,
@@ -48,9 +49,7 @@ export const orderKeys = {
  * Get all orders for the current user
  */
 export function useUserOrders() {
-  const query = useQuery({
-    queryKey: orderKeys.list(),
-    queryFn: getUserOrders,
+  const query = useQuery<OrderWithAll[]>(orderKeys.list(), getUserOrders, {
     staleTime: 30000, // 30 seconds
   });
 
@@ -63,19 +62,21 @@ export function useUserOrders() {
 export function useOrder(orderId: string | undefined) {
   const queryClient = useQueryClient();
   
-  const query = useQuery({
-    queryKey: orderKeys.detail(orderId!),
-    queryFn: () => getOrderById(orderId!),
-    enabled: !!orderId,
-    staleTime: 0, // Always fetch fresh data
-  });
+  const query = useQuery<OrderWithAll | null>(
+    orderKeys.detail(orderId!),
+    () => getOrderById(orderId!),
+    {
+      enabled: !!orderId,
+      staleTime: 0, // Always fetch fresh data
+    }
+  );
 
   // Subscribe to real-time updates
   useEffect(() => {
     if (!orderId) return;
 
     const unsubscribe = subscribeToOrder(orderId, (updatedOrder) => {
-      queryClient.setQueryData(orderKeys.detail(orderId), (old: any) => {
+      (queryClient as any).setQueryData(orderKeys.detail(orderId), (old: any) => {
         if (!old) return updatedOrder;
         return { ...old, ...updatedOrder };
       });
@@ -93,19 +94,17 @@ export function useOrder(orderId: string | undefined) {
 export function useActiveOrder() {
   const queryClient = useQueryClient();
   
-  const query = useQuery({
-    queryKey: orderKeys.active(),
-    queryFn: getActiveOrder,
+  const query = useQuery<OrderWithAll | null>(orderKeys.active(), getActiveOrder, {
     staleTime: 0,
     refetchInterval: 5000, // Refetch every 5 seconds as backup
-  });
+  } as any);
 
   // Subscribe to real-time updates for all user orders
   useEffect(() => {
     const unsubscribe = subscribeToUserOrders(() => {
       // Refetch active order when any order changes
-      queryClient.invalidateQueries({ queryKey: orderKeys.active() });
-      queryClient.invalidateQueries({ queryKey: orderKeys.list() });
+      queryClient.invalidateQueries(orderKeys.active());
+      queryClient.invalidateQueries(orderKeys.list());
     });
 
     return unsubscribe;
@@ -122,12 +121,14 @@ export function useOrderCalculation(
   addressId: string | undefined,
   items: Array<{ merchant_item_id: string; quantity: number }>
 ) {
-  return useQuery<OrderCalculation>({
-    queryKey: orderKeys.calculation(shopId!, addressId!, items),
-    queryFn: () => calculateOrderTotals(shopId!, items, addressId!),
-    enabled: !!shopId && !!addressId && items.length > 0,
-    staleTime: 60000, // 1 minute
-  });
+  return useQuery<OrderCalculation>(
+    orderKeys.calculation(shopId!, addressId!, items),
+    () => calculateOrderTotals(shopId!, items, addressId!),
+    {
+      enabled: !!shopId && !!addressId && items.length > 0,
+      staleTime: 60000, // 1 minute
+    }
+  );
 }
 
 // ============================================================================
@@ -140,30 +141,39 @@ export function useOrderCalculation(
 export function usePlaceOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: (request: PlaceOrderRequest) => placeOrder(request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: orderKeys.list() });
-      queryClient.invalidateQueries({ queryKey: orderKeys.active() });
-    },
-  });
+  return useMutation(
+    (request: PlaceOrderRequest) => placeOrder(request),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(orderKeys.list());
+        queryClient.invalidateQueries(orderKeys.active());
+      },
+    }
+  );
 }
 
 /**
  * Cancel an order
  */
+type CancelOrderPayload = { orderId: string; reason?: string };
+type CancelOrderResult = { success: boolean; message?: string };
+
 export function useCancelOrder() {
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: ({ orderId, reason }: { orderId: string; reason?: string }) =>
-      cancelOrderService(orderId, reason),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: orderKeys.list() });
-      queryClient.invalidateQueries({ queryKey: orderKeys.detail(variables.orderId) });
-      queryClient.invalidateQueries({ queryKey: orderKeys.active() });
-    },
-  });
+  return useMutation(
+    ({ orderId, reason }: CancelOrderPayload) => cancelOrderService(orderId, reason),
+    {
+      onSuccess: (_result, variables) => {
+        const payload = variables as CancelOrderPayload | undefined;
+        queryClient.invalidateQueries(orderKeys.list());
+        if (payload?.orderId) {
+          queryClient.invalidateQueries(orderKeys.detail(payload.orderId));
+        }
+        queryClient.invalidateQueries(orderKeys.active());
+      },
+    }
+  );
 }
 
 // ============================================================================
@@ -241,7 +251,7 @@ export function useOrderTimer(order: OrderWithAll | null | undefined): OrderTime
 export function useOrdersCountByStatus() {
   const { data: orders } = useUserOrders();
 
-  const counts = {
+  const counts: Record<'pending' | 'confirmed' | 'out_for_delivery' | 'delivered' | 'cancelled', number> = {
     pending: 0,
     confirmed: 0,
     out_for_delivery: 0,
@@ -249,8 +259,11 @@ export function useOrdersCountByStatus() {
     cancelled: 0,
   };
 
-  orders?.forEach((order) => {
-    counts[order.status]++;
+  orders?.forEach((orderItem) => {
+    const status = orderItem.status as keyof typeof counts;
+    if (status in counts) {
+      counts[status] += 1;
+    }
   });
 
   return counts;

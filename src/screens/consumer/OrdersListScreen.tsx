@@ -14,6 +14,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useUserOrders } from '../../hooks/consumer/useOrders';
 import { OrderWithAll, getOrderStatusDisplay, formatPrice, formatDuration } from '../../types/orders';
 import BackIcon from '../../icons/BackIcon';
+import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -169,10 +170,15 @@ function OrderCard({ order, navigation }: { order: OrderWithAll; navigation: Nav
       )}
 
       <View className="mb-3">
-        <Text className="text-gray-700 text-sm">
-          📍 {order.delivery_address.street_address}
-          {order.delivery_address.landmark && ` (${order.delivery_address.landmark})`}
-        </Text>
+        <View className="flex-row items-start">
+          <View className="mr-2 mt-0.5">
+            <LocationMarkerIcon size={18} color="#1D4ED8" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+          </View>
+          <Text className="text-gray-700 text-sm flex-1">
+            {order.delivery_address.street_address}
+            {order.delivery_address.landmark && ` (${order.delivery_address.landmark})`}
+          </Text>
+        </View>
       </View>
 
       {/* Items Preview */}

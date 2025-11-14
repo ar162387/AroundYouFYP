@@ -4,6 +4,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import FavoriteIcon from '../icons/FavoriteIcon';
 import CartIcon from '../icons/CartIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import LocationMarkerIcon from '../icons/LocationMarkerIcon';
 
 interface HeaderProps {
   onFavPress?: () => void;
@@ -35,7 +36,7 @@ export default function Header({
           activeOpacity={0.7}
         >
           <View className="flex-row items-center">
-            <Text className="text-base">📍</Text>
+            <LocationMarkerIcon size={18} color="#ffffff" innerColor="#1e3a8a" accentColor="rgba(255,255,255,0.2)" />
             <Text numberOfLines={1} className="ml-1 text-white text-base font-semibold">
               {locationLabel || 'Select your address'}
             </Text>

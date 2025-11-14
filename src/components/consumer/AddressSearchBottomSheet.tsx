@@ -10,6 +10,7 @@ import {
   PanResponderGestureState,
 } from 'react-native';
 import * as addressService from '../../services/consumer/addressService';
+import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 
 export type SheetMode = 'search' | 'confirm' | 'pinpoint' | 'details';
 
@@ -163,7 +164,9 @@ export default function AddressSearchBottomSheet({
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text className="text-lg mr-3 mt-0.5">📍</Text>
+                <View className="mr-3 mt-0.5">
+                  <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+                </View>
                     <View className="flex-1">
                       <Text className="text-base font-semibold text-gray-900">
                         {item.name}

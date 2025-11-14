@@ -7,6 +7,7 @@ import { useUserLocation } from '../../hooks/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useAuth } from '../../context/AuthContext';
 import PinMarker from '../../icons/PinMarker';
+import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 import type { RootStackParamList } from '../../navigation/types';
 import * as addressService from '../../services/consumer/addressService';
 import AddressListSkeleton from '../../skeleton/AddressListSkeleton';
@@ -143,7 +144,9 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
               onPress={handleUseCurrentLocation}
               disabled={!canUseCurrent}
             >
-              <Text className="text-xl mr-3">📍</Text>
+              <View className="mr-3">
+                <LocationMarkerIcon size={24} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+              </View>
               <Text className="text-base font-medium">
                 {canUseCurrent ? 'Use my current location' : 'Use my current location (Location unavailable)'}
               </Text>
@@ -182,7 +185,7 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
               </View>
             ) : (
               <View className="h-28 bg-pink-50 items-center justify-center">
-                <Text className="text-2xl">📍</Text>
+                <LocationMarkerIcon size={32} color="#DB2777" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.35)" />
                 <Text className="text-pink-500 text-xs mt-1">Map preview</Text>
               </View>
             )}

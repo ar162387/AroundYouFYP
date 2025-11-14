@@ -4,7 +4,15 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { useActiveOrder, useOrderTimer } from '../../hooks/consumer/useOrders';
-import { formatDuration, getOrderStatusDisplay } from '../../types/orders';
+import { getOrderStatusDisplay } from '../../types/orders';
+import {
+  OrderPendingIcon,
+  OrderConfirmedIcon,
+  OrderOutForDeliveryIcon,
+  OrderDeliveredIcon,
+  OrderCancelledIcon,
+} from '../../icons/OrderStatusIcons';
+import DeliveryRunnerIcon from '../../icons/DeliveryRunnerIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -18,7 +26,7 @@ export default function ActiveOrderBanner() {
 
   React.useEffect(() => {
     if (order && timerState.isActive) {
-      Animated.loop(
+      const animation = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
             toValue: 1.05,
@@ -31,10 +39,16 @@ export default function ActiveOrderBanner() {
             useNativeDriver: true,
           }),
         ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
+      );
+
+      animation.start();
+
+      return () => {
+        animation.stop();
+      };
     }
+
+    pulseAnim.setValue(1);
   }, [order, timerState.isActive, pulseAnim]);
 
   // Don't show banner if no active order, loading, or order is terminal
@@ -58,30 +72,30 @@ export default function ActiveOrderBanner() {
       >
         <View className="px-4 py-3">
           <View className="flex-row items-center justify-between">
-            <View className="flex-1 mr-3">
-              <View className="flex-row items-center mb-1">
-                <Text className="text-white text-sm font-bold mr-2">
-                  {getStatusEmoji(order.status)} {statusDisplay.title}
+            <View className="flex-row items-center flex-1 mr-3">
+              <View className="w-12 h-12 bg-white/15 rounded-full items-center justify-center mr-3">
+                {renderStatusIcon(order.status)}
+              </View>
+              <View className="flex-1">
+                <View className="flex-row items-center mb-1">
+                  <Text className="text-white text-sm font-bold mr-2">{statusDisplay.title}</Text>
+                  {/* Timer removed per request */}
+                </View>
+
+                <Text className="text-white/90 text-xs" numberOfLines={1}>
+                  {order.shop.name}
                 </Text>
-                {timerState.isActive && (
-                  <View className="bg-white/20 px-2 py-0.5 rounded-full">
-                    <Text className="text-white text-xs font-semibold">
-                      {formatDuration(timerState.elapsedSeconds)}
+
+                {/* Show runner info if out for delivery */}
+                {order.delivery_runner && order.status === 'out_for_delivery' && (
+                  <View className="flex-row items-center mt-1">
+                    <DeliveryRunnerIcon size={12} color="#FFFFFF" />
+                    <Text className="text-white/90 text-xs ml-1">
+                      {order.delivery_runner.name} • {order.delivery_runner.phone_number}
                     </Text>
                   </View>
                 )}
               </View>
-              
-              <Text className="text-white/90 text-xs" numberOfLines={1}>
-                {order.shop.name}
-              </Text>
-              
-              {/* Show runner info if out for delivery */}
-              {order.delivery_runner && order.status === 'out_for_delivery' && (
-                <Text className="text-white/90 text-xs mt-1">
-                  🚚 {order.delivery_runner.name} • {order.delivery_runner.phone_number}
-                </Text>
-              )}
             </View>
 
             {/* Arrow */}
@@ -95,7 +109,7 @@ export default function ActiveOrderBanner() {
             <View
               className="h-full bg-white rounded-full"
               style={{
-                width: getProgressPercentage(order.status),
+                width: `${getProgressPercentage(order.status)}%`,
               }}
             />
           </View>
@@ -105,31 +119,38 @@ export default function ActiveOrderBanner() {
   );
 }
 
-function getStatusEmoji(status: string): string {
+function renderStatusIcon(status: string): React.ReactNode {
+  const primary = '#FFFFFF';
+  const secondary = '#FFFFFF33';
+
   switch (status) {
     case 'pending':
-      return '⏳';
+      return <OrderPendingIcon size={44} primaryColor={primary} secondaryColor={secondary} />;
     case 'confirmed':
-      return '👨‍🍳';
+      return <OrderConfirmedIcon size={44} primaryColor={primary} secondaryColor={secondary} />;
     case 'out_for_delivery':
-      return '🚚';
+      return <OrderOutForDeliveryIcon size={44} primaryColor={primary} secondaryColor={secondary} />;
+    case 'delivered':
+      return <OrderDeliveredIcon size={44} primaryColor={primary} secondaryColor={secondary} />;
+    case 'cancelled':
+      return <OrderCancelledIcon size={44} primaryColor={primary} secondaryColor={secondary} />;
     default:
-      return '📦';
+      return <OrderPendingIcon size={44} primaryColor={primary} secondaryColor={secondary} />;
   }
 }
 
-function getProgressPercentage(status: string): string {
+function getProgressPercentage(status: string): number {
   switch (status) {
     case 'pending':
-      return '25%';
+      return 25;
     case 'confirmed':
-      return '50%';
+      return 50;
     case 'out_for_delivery':
-      return '75%';
+      return 75;
     case 'delivered':
-      return '100%';
+      return 100;
     default:
-      return '0%';
+      return 0;
   }
 }
 
