@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase, executeWithRetry, isTimeoutOrConnectionError, resetSupabaseConnection } from '../supabase';
 import type { Shop } from '../supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { DeliveryLogic } from '../merchant/deliveryLogicService';
@@ -54,18 +54,24 @@ export async function findShopsByLocation(
     const pointWkt = `POINT(${longitude} ${latitude})`;
     
     console.log('Calling RPC find_shops_by_location with:', pointWkt);
-    const { data, error } = await supabase.rpc('find_shops_by_location', {
-      point_wkt: pointWkt,
+    
+    // Use executeWithRetry to automatically handle timeout errors
+    const result = await executeWithRetry(async (client) => {
+      const { data, error } = await client.rpc('find_shops_by_location', {
+        point_wkt: pointWkt,
+      });
+      return { data, error };
     });
+
+    const { data, error } = result;
 
     if (error) {
       console.error('Error finding shops by location:', error);
       console.error('Error details:', JSON.stringify(error, null, 2));
       
-      // If the RPC function doesn't exist, try a direct query as fallback
-      if (error.code === '42883' || error.message?.includes('function') || error.message?.includes('does not exist')) {
-        console.warn('RPC function not found, trying direct query fallback');
-        return await findShopsByLocationFallback(latitude, longitude);
+      // If it's a timeout error even after retry, return it but log for monitoring
+      if (isTimeoutOrConnectionError(error)) {
+        console.error('Timeout error persisted after retry - connection may need manual reset');
       }
       
       return { data: null, error };
@@ -83,7 +89,7 @@ export async function findShopsByLocation(
       name: row.name,
       image_url: row.image_url || '',
       rating: 0, // N/A for now
-      orders: undefined, // N/A for now
+      orders: row.delivered_orders_count !== undefined ? Number(row.delivered_orders_count) : 0,
       delivery_fee: 0, // Will be calculated based on distance and delivery logic
       delivery_time: undefined, // N/A for now
       tags: row.tags || [],
@@ -92,62 +98,26 @@ export async function findShopsByLocation(
       longitude: row.longitude,
       is_open: row.is_open,
       created_at: row.created_at,
+      shop_type: row.shop_type || undefined,
+      minimumOrderValue: undefined, // Will be set by calculateShopsDeliveryFees
     }));
 
     return { data: shops, error: null };
   } catch (error: any) {
     console.error('Exception finding shops by location:', error);
-    return { data: null, error: error as PostgrestError };
-  }
-}
-
-/**
- * Fallback method if RPC function doesn't exist
- * This queries all open shops (less efficient but works without the function)
- */
-async function findShopsByLocationFallback(
-  latitude: number,
-  longitude: number
-): Promise<ServiceResult<ConsumerShop[]>> {
-  try {
-    console.log('Using fallback query method');
-    // Just get all open shops for now - the delivery area check would need to be done client-side
-    // or we need the migration to be applied
-    const { data, error } = await supabase
-      .from('shops')
-      .select('id, name, image_url, tags, address, latitude, longitude, is_open, created_at')
-      .eq('is_open', true)
-      .order('created_at', { ascending: false })
-      .limit(50);
-
-    if (error) {
-      console.error('Fallback query error:', error);
-      return { data: null, error };
+    
+    // Check if it's a timeout error and try to reset connection for future requests
+    if (isTimeoutOrConnectionError(error)) {
+      console.warn('Timeout exception detected, resetting connection for future requests...');
+      resetSupabaseConnection().catch((resetError) => {
+        console.error('Failed to reset connection after timeout exception:', resetError);
+      });
     }
-
-    const shops: ConsumerShop[] = (data || []).map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      image_url: row.image_url || '',
-      rating: 0,
-      orders: undefined,
-      delivery_fee: 0, // Will be calculated based on distance and delivery logic
-      delivery_time: undefined,
-      tags: row.tags || [],
-      address: row.address,
-      latitude: row.latitude,
-      longitude: row.longitude,
-      is_open: row.is_open,
-      created_at: row.created_at,
-    }));
-
-    console.log('Fallback returned shops:', shops.length);
-    return { data: shops, error: null };
-  } catch (error: any) {
-    console.error('Exception in fallback:', error);
+    
     return { data: null, error: error as PostgrestError };
   }
 }
+
 
 /**
  * Fetch detailed shop information including delivery logic

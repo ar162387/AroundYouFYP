@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,14 +13,19 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { useUserOrders } from '../../hooks/consumer/useOrders';
 import { OrderWithAll, getOrderStatusDisplay, formatPrice, formatDuration } from '../../types/orders';
+import { getReviewByOrder, getReview } from '../../services/consumer/reviewService';
 import BackIcon from '../../icons/BackIcon';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
+import StarIcon from '../../icons/StarIcon';
+import ReviewBottomSheet from '../../components/consumer/ReviewBottomSheet';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function OrdersListScreen() {
   const navigation = useNavigation<Nav>();
   const { data: orders, isLoading, refetch, isRefetching } = useUserOrders();
+  const [reviewSheetVisible, setReviewSheetVisible] = useState(false);
+  const [reviewSheetShop, setReviewSheetShop] = useState<{ id: string; name: string; orderId?: string } | null>(null);
 
   if (isLoading) {
     return (
@@ -96,14 +101,53 @@ export default function OrdersListScreen() {
         }
       >
         {orders.map((order) => (
-          <OrderCard key={order.id} order={order} navigation={navigation} />
+          <OrderCard
+            key={order.id}
+            order={order}
+            navigation={navigation}
+            onReviewPress={(shopId, shopName, orderId) => {
+              setReviewSheetShop({ id: shopId, name: shopName, orderId });
+              setReviewSheetVisible(true);
+            }}
+            onReviewSubmitted={() => {
+              setReviewSheetVisible(false);
+              setReviewSheetShop(null);
+              refetch();
+            }}
+          />
         ))}
       </ScrollView>
+      
+      {/* Review Bottom Sheet */}
+      {reviewSheetShop && (
+        <ReviewBottomSheet
+          visible={reviewSheetVisible}
+          onClose={() => {
+            setReviewSheetVisible(false);
+            setReviewSheetShop(null);
+          }}
+          shopId={reviewSheetShop.id}
+          shopName={reviewSheetShop.name}
+          orderId={reviewSheetShop.orderId}
+          onReviewSubmitted={() => {
+            setReviewSheetVisible(false);
+            setReviewSheetShop(null);
+            refetch();
+          }}
+        />
+      )}
     </View>
   );
 }
 
-function OrderCard({ order, navigation }: { order: OrderWithAll; navigation: Nav }) {
+interface OrderCardProps {
+  order: OrderWithAll;
+  navigation: Nav;
+  onReviewPress: (shopId: string, shopName: string, orderId: string) => void;
+  onReviewSubmitted: () => void;
+}
+
+function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: OrderCardProps) {
   const statusDisplay = getOrderStatusDisplay(order.status);
   const placedDate = new Date(order.placed_at);
   const now = new Date();
@@ -124,6 +168,44 @@ function OrderCard({ order, navigation }: { order: OrderWithAll; navigation: Nav
   // Get order items preview (max 5 items)
   const itemsPreview = order.order_items.slice(0, 5);
   const remainingCount = order.order_items.length - 5;
+
+  // Check if this order has been reviewed
+  const [reviewRating, setReviewRating] = useState<number | null>(null);
+  const [isCheckingReview, setIsCheckingReview] = useState(true);
+
+  useEffect(() => {
+    const checkReview = async () => {
+      if (order.status !== 'delivered') {
+        setReviewRating(null);
+        setIsCheckingReview(false);
+        return;
+      }
+
+      setIsCheckingReview(true);
+      // First try to get review by order_id, then by shop_id
+      const { data: orderReview } = await getReviewByOrder(order.id);
+      if (orderReview) {
+        setReviewRating(orderReview.rating);
+      } else {
+        const { data: shopReview } = await getReview(order.shop_id);
+        if (shopReview) {
+          setReviewRating(shopReview.rating);
+        } else {
+          setReviewRating(null);
+        }
+      }
+      setIsCheckingReview(false);
+    };
+
+    checkReview();
+  }, [order.id, order.shop_id, order.status]);
+
+  const handleStarsPress = (e: any) => {
+    e.stopPropagation();
+    if (order.status === 'delivered') {
+      onReviewPress(order.shop_id, order.shop.name, order.id);
+    }
+  };
 
   return (
     <TouchableOpacity
@@ -229,6 +311,30 @@ function OrderCard({ order, navigation }: { order: OrderWithAll; navigation: Nav
             )}
           </Text>
         </View>
+      )}
+
+      {/* Rating Stars (for delivered orders) */}
+      {order.status === 'delivered' && !isCheckingReview && (
+        <TouchableOpacity
+          onPress={handleStarsPress}
+          className="mt-3 pt-3 border-t border-gray-100"
+          activeOpacity={0.7}
+        >
+          <View className="flex-row items-center justify-between">
+            <Text className="text-gray-700 text-sm font-medium mr-3">Rate this order:</Text>
+            <View className="flex-row items-center">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <View key={star} className="mx-0.5">
+                  <StarIcon
+                    size={20}
+                    color="#FCD34D"
+                    filled={reviewRating !== null ? star <= reviewRating : false}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );

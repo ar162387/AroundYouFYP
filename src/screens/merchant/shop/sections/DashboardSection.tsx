@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 import OrdersRevenueLineChart from '../../../../components/merchant/charts/OrdersRevenueLineChart';
@@ -6,6 +6,8 @@ import { useShopOrderTimeSeries, useShopOrderAnalytics } from '../../../../hooks
 import { formatDuration } from '../../../../types/orders';
 import OrdersTrendIcon from '../../../../icons/OrdersTrendIcon';
 import RevenueFlowIcon from '../../../../icons/RevenueFlowIcon';
+import { getShopReviews, getShopReviewStats, ReviewWithUser } from '../../../../services/consumer/reviewService';
+import StarIcon from '../../../../icons/StarIcon';
 
 type DashboardSectionProps = {
   shop: MerchantShop;
@@ -280,32 +282,72 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
     }
   }, [range]);
 
-  const reviews = useMemo(
-    () => [
-      {
-        id: '1',
-        rating: 5,
-        customer: 'Nadia Khan',
-        review: 'Delivery was super fast and everything was fresh. Keep it up!',
-        timestamp: 'Oct 28, 10:24 AM',
-      },
-      {
-        id: '2',
-        rating: 4,
-        customer: 'Imran Ahmad',
-        review: 'Great experience overall. Would love more vegetarian options.',
-        timestamp: 'Oct 27, 06:10 PM',
-      },
-      {
-        id: '3',
-        rating: 5,
-        customer: 'Sara Malik',
-        review: 'Customer support was very helpful with my order modifications.',
-        timestamp: 'Oct 25, 01:45 PM',
-      },
-    ],
-    []
-  );
+  // Fetch reviews data
+  const [reviewsData, setReviewsData] = useState<ReviewWithUser[]>([]);
+  const [reviewStats, setReviewStats] = useState<{ average_rating: number; total_reviews: number } | null>(null);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+
+  useEffect(() => {
+    const fetchReviews = async () => {
+      setIsLoadingReviews(true);
+      try {
+        const [reviewsResult, statsResult] = await Promise.all([
+          getShopReviews(shop.id),
+          getShopReviewStats(shop.id),
+        ]);
+
+        if (reviewsResult.data) {
+          setReviewsData(reviewsResult.data);
+        }
+
+        if (statsResult.data) {
+          setReviewStats(statsResult.data);
+        }
+      } catch (error) {
+        console.error('Error fetching reviews:', error);
+      } finally {
+        setIsLoadingReviews(false);
+      }
+    };
+
+    fetchReviews();
+  }, [shop.id]);
+
+  // Get 3 random reviews
+  const randomReviews = useMemo(() => {
+    if (reviewsData.length === 0) return [];
+    
+    // Shuffle array and take first 3
+    const shuffled = [...reviewsData].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }, [reviewsData]);
+
+  const formatReviewDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMs = now.getTime() - date.getTime();
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+    if (diffInDays === 0) {
+      return `Today at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (diffInDays === 1) {
+      return `Yesterday at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (diffInDays < 7) {
+      return `${diffInDays} days ago`;
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+  };
+
+  const getUserDisplayName = (review: ReviewWithUser) => {
+    return review.user?.name || review.user?.email || 'User';
+  };
 
   const metricCards = useMemo(() => {
     return [
@@ -583,41 +625,72 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
 
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
         <Text className="text-lg font-semibold text-gray-900">Reviews</Text>
-        <Text className="text-sm text-gray-500 mt-2">
-          Surface sentiment and act on feedback once reviews API is available.
-        </Text>
 
-        <View className="mt-5 bg-blue-50 border border-blue-200 rounded-2xl p-4">
-          <Text className="text-xs uppercase font-semibold text-blue-700">Average rating</Text>
-          <View className="flex-row items-end mt-2">
-            <Text className="text-4xl font-bold text-blue-900">4.8</Text>
-            <Text className="text-sm text-blue-600 ml-2">/ 5.0 (placeholder)</Text>
+        {isLoadingReviews ? (
+          <View className="mt-5 items-center py-8">
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text className="text-gray-500 mt-2">Loading reviews...</Text>
           </View>
-          <Text className="text-xs text-blue-600 mt-2">Connect to customer experience service to make this live.</Text>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="mt-5"
-          contentContainerStyle={{ paddingRight: 12 }}
-        >
-          {reviews.map((review) => (
-            <View
-              key={review.id}
-              className="w-64 bg-white border border-gray-100 rounded-2xl p-4 mr-4 shadow-sm"
-            >
-              <View className="flex-row items-center">
-                <Text className="text-lg text-yellow-500 mr-2">{'★'.repeat(review.rating)}</Text>
-                <Text className="text-sm text-gray-500">{review.timestamp}</Text>
+        ) : (
+          <>
+            <View className="mt-5 bg-blue-50 border border-blue-200 rounded-2xl p-4">
+              <Text className="text-xs uppercase font-semibold text-blue-700">Average rating</Text>
+              <View className="flex-row items-end mt-2">
+                <Text className="text-4xl font-bold text-blue-900">
+                  {reviewStats?.average_rating.toFixed(1) || '0.0'}
+                </Text>
+                <Text className="text-sm text-blue-600 ml-2">/ 5.0</Text>
+                {reviewStats && reviewStats.total_reviews > 0 && (
+                  <Text className="text-sm text-blue-600 ml-2">
+                    ({reviewStats.total_reviews} {reviewStats.total_reviews === 1 ? 'review' : 'reviews'})
+                  </Text>
+                )}
               </View>
-              <Text className="text-base font-semibold text-gray-900 mt-3">{review.customer}</Text>
-              <Text className="text-sm text-gray-600 mt-2" numberOfLines={4}>
-                {review.review}
-              </Text>
+              {reviewStats && reviewStats.total_reviews === 0 && (
+                <Text className="text-xs text-blue-600 mt-2">No reviews yet</Text>
+              )}
             </View>
-          ))}
-        </ScrollView>
+
+            {randomReviews.length > 0 ? (
+              <View className="mt-5 space-y-4">
+                {randomReviews.map((review) => (
+                  <View
+                    key={review.id}
+                    className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm"
+                  >
+                    <View className="flex-row items-center justify-between mb-2">
+                      <View className="flex-row items-center">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <View key={star} className="mr-1">
+                            <StarIcon
+                              size={18}
+                              color="#FCD34D"
+                              filled={star <= review.rating}
+                            />
+                          </View>
+                        ))}
+                      </View>
+                      <Text className="text-sm text-gray-500">{formatReviewDate(review.created_at)}</Text>
+                    </View>
+                    <Text className="text-base font-semibold text-gray-900 mt-2">
+                      {getUserDisplayName(review)}
+                    </Text>
+                    {review.review_text && (
+                      <Text className="text-sm text-gray-600 mt-2" numberOfLines={4}>
+                        {review.review_text}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            ) : reviewStats && reviewStats.total_reviews === 0 ? (
+              <View className="mt-5 bg-gray-50 border border-gray-200 rounded-2xl p-6 items-center">
+                <Text className="text-4xl mb-2">⭐</Text>
+                <Text className="text-gray-600 text-sm text-center">No reviews yet</Text>
+              </View>
+            ) : null}
+          </>
+        )}
       </View>
     </View>
   );

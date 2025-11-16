@@ -12,6 +12,7 @@ import InventorySection from './sections/InventorySection';
 import OrdersSection from './sections/OrdersSection';
 import DeliverySection from './sections/DeliverySection';
 import SettingsSection from './sections/SettingsSection';
+import ReviewsSection from './sections/ReviewsSection';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'MerchantShopPortal'>;
@@ -21,6 +22,7 @@ const TABS = [
   { key: 'inventory', label: 'Inventory' },
   { key: 'orders', label: 'Orders' },
   { key: 'delivery', label: 'Delivery' },
+  { key: 'reviews', label: 'Reviews' },
   { key: 'settings', label: 'Settings' },
 ] as const;
 
@@ -96,6 +98,8 @@ export default function MerchantShopPortalScreen() {
           return <OrdersSection shop={shop} />;
         case 'delivery':
           return <DeliverySection shop={shop} />;
+        case 'reviews':
+          return <ReviewsSection shop={shop} />;
         case 'settings':
           return <SettingsSection shop={shop} />;
         case 'dashboard':

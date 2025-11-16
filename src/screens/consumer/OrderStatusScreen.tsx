@@ -33,7 +33,7 @@ export default function OrderStatusScreen() {
   const route = useRoute<Route>();
   const { orderId } = route.params;
 
-  const { data: order, isLoading } = useOrder(orderId);
+  const { data: order, isLoading, refetch } = useOrder(orderId);
   const cancelOrderMutation = useCancelOrder();
 
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -48,14 +48,21 @@ export default function OrderStatusScreen() {
           text: 'Yes, Cancel',
           style: 'destructive',
           onPress: async () => {
-            const result = await cancelOrderMutation.mutateAsync({
-              orderId,
-              reason: 'Cancelled by customer',
-            });
-            if (result.success) {
-              Alert.alert('Order Cancelled', 'Your order has been cancelled.');
-            } else {
-              Alert.alert('Error', result.message || 'Failed to cancel order');
+            try {
+              const result = await cancelOrderMutation.mutateAsync({
+                orderId,
+                reason: 'Cancelled by customer',
+              });
+              if (result.success) {
+                // Refetch order to get updated status immediately
+                await refetch();
+                Alert.alert('Order Cancelled', 'Your order has been cancelled.');
+              } else {
+                Alert.alert('Error', result.message || 'Failed to cancel order');
+              }
+            } catch (error) {
+              console.error('Error cancelling order:', error);
+              Alert.alert('Error', 'Failed to cancel order. Please try again.');
             }
           },
         },
@@ -173,8 +180,8 @@ export default function OrderStatusScreen() {
 
         </View>
 
-        {/* Delivery Runner Info (if out for delivery or delivered) */}
-        {order.delivery_runner && (order.status === 'out_for_delivery' || order.status === 'delivered') && (
+        {/* Delivery Runner Info (only when out for delivery) */}
+        {order.delivery_runner && order.status === 'out_for_delivery' && (
           <View className="bg-white rounded-xl p-4 mb-4">
             <View className="flex-row items-center mb-3">
               <DeliveryRunnerIcon size={20} color="#111827" />

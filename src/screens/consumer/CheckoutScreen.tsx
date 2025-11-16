@@ -288,7 +288,7 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
-    if (isPlacingOrder) {
+    if (isPlacingOrder || placeOrderMutation.isPending) {
       return;
     }
 
@@ -336,11 +336,51 @@ export default function CheckoutScreen() {
           ],
         });
       } else {
-        Alert.alert('Order Failed', response.message || 'Could not place your order. Please try again.');
+        // Check if it's a duplicate order error
+        const errorMessage = response.message || 'Could not place your order. Please try again.';
+        if (errorMessage.includes('duplicate') || errorMessage.includes('23505')) {
+          Alert.alert(
+            'Order Processing',
+            'Your order is being processed. Please wait a moment and check your orders.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Navigate to orders list to see if order was created
+                  navigation.navigate('OrdersList' as any);
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert('Order Failed', errorMessage);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error placing order:', error);
-      Alert.alert('Error', 'Failed to place order. Please check your connection and try again.');
+      
+      // Check for duplicate key error
+      const errorCode = error?.code || error?.error?.code;
+      const errorMessage = error?.message || error?.error?.message || '';
+      
+      if (errorCode === '23505' || errorMessage.includes('duplicate key')) {
+        Alert.alert(
+          'Order Processing',
+          'Your order is being processed. Please wait a moment and check your orders.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate to orders list to see if order was created
+                navigation.navigate('OrdersList' as any);
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Error', 'Failed to place order. Please check your connection and try again.');
+      }
+    } finally {
       setIsPlacingOrder(false);
     }
   };

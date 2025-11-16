@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import type { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
+import GoogleIcon from '../icons/GoogleIcon';
 
 type SignUpScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 type SignUpScreenRouteProp = RouteProp<RootStackParamList, 'SignUp'>;
@@ -193,8 +194,8 @@ export default function SignUpScreen({ navigation, route }: Props) {
               disabled={loading}
               activeOpacity={0.8}
             >
-              <Text className="text-xl mr-3">🔴</Text>
-              <Text className="text-gray-900 text-base font-semibold">Continue with Google</Text>
+              <GoogleIcon size={20} />
+              <Text className="text-gray-900 text-base font-semibold ml-3">Continue with Google</Text>
             </TouchableOpacity>
 
             {/* Sign In Link */}

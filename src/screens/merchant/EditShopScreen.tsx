@@ -19,16 +19,18 @@ import { useAuth } from '../../context/AuthContext';
 import { updateShop, uploadShopImage, type ShopType, type CreateShopData, type MerchantShop } from '../../services/merchant/shopService';
 import LinearGradient from 'react-native-linear-gradient';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
+import ShopTypeImage from '../../icons/shopTypeRemote';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'EditShop'>;
 type EditShopRouteProp = RNRouteProp<RootStackParamList, 'EditShop'>;
 
-const SHOP_TYPES: { label: string; value: ShopType; emoji: string }[] = [
-  { label: 'Grocery', value: 'Grocery', emoji: '🛒' },
-  { label: 'Meat', value: 'Meat', emoji: '🥩' },
-  { label: 'Vegetable', value: 'Vegetable', emoji: '🥬' },
-  { label: 'Stationery', value: 'Stationery', emoji: '📚' },
-  { label: 'Dairy', value: 'Dairy', emoji: '🥛' },
+const SHOP_TYPES: { label: string; value: ShopType }[] = [
+  { label: 'Grocery', value: 'Grocery' },
+  { label: 'Meat', value: 'Meat' },
+  { label: 'Vegetable', value: 'Vegetable' },
+  { label: 'Stationery', value: 'Stationery' },
+  { label: 'Dairy', value: 'Dairy' },
+  { label: 'Pharmacy', value: 'Pharmacy' },
 ];
 
 const EXAMPLE_TAGS = [
@@ -391,9 +393,14 @@ export default function EditShopScreen() {
                 activeOpacity={0.7}
               >
                 <View className="flex-row items-center">
-                  <Text className="text-2xl mr-2">{type.emoji}</Text>
+                  <ShopTypeImage
+                    type={type.value}
+                    size={24}
+                    borderColor={shopType === type.value ? '#2563eb' : '#E5E7EB'}
+                    backgroundColor={shopType === type.value ? '#DBEAFE' : '#F3F4F6'}
+                  />
                   <Text
-                    className={`text-base font-medium ${
+                    className={`text-base font-medium ml-2 ${
                       shopType === type.value ? 'text-blue-600' : 'text-gray-700'
                     }`}
                   >

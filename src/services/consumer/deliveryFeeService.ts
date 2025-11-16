@@ -95,6 +95,7 @@ export async function calculateShopsDeliveryFees(
       ...shop,
       delivery_fee: baseFee,
       distanceInMeters,
+      minimumOrderValue: deliveryLogic.minimumOrderValue,
     };
   });
 }

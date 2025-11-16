@@ -15,7 +15,7 @@ import type { RootStackParamList } from './types';
 import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/consumer/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import SearchScreen from '../screens/SearchScreen';
+import SearchScreen from '../screens/consumer/SearchScreen';
 import ShopScreen from '../screens/consumer/ShopScreen';
 import CategoryItemsScreen from '../screens/consumer/CategoryItemsScreen';
 import AddressSearchScreen from '../screens/consumer/AddressSearchScreen';

@@ -2,7 +2,7 @@ import { supabase } from '../supabase';
 import type { OrderStatus } from '../../types/orders';
 import Config from 'react-native-config';
 
-export type ShopType = 'Grocery' | 'Meat' | 'Vegetable' | 'Stationery' | 'Dairy';
+export type ShopType = 'Grocery' | 'Meat' | 'Vegetable' | 'Stationery' | 'Dairy' | 'Pharmacy';
 
 export interface CreateShopData {
   name: string;

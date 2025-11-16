@@ -250,6 +250,8 @@ export async function placeOrder(
     };
 
     // Create order
+    // Note: With sequence-based order numbers (migration 032), race conditions are eliminated
+    // but we keep retry logic as a safety net
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .insert({
@@ -270,7 +272,76 @@ export async function placeOrder(
       .select()
       .single();
 
-    if (orderError) throw orderError;
+    if (orderError) {
+      console.error('Order insert error details:', {
+        code: orderError.code,
+        message: orderError.message,
+        details: orderError.details,
+        hint: orderError.hint,
+        shopId: request.shop_id,
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      });
+      
+      // Check for duplicate key error (race condition in order number generation)
+      if (orderError.code === '23505' || orderError.message?.includes('duplicate key')) {
+        // The insert failed due to duplicate order number
+        console.error('⚠️ DUPLICATE ORDER NUMBER DETECTED:', {
+          shopId: request.shop_id,
+          attemptedAt: new Date().toISOString(),
+          errorCode: orderError.code,
+          errorMessage: orderError.message,
+          errorDetails: orderError.details,
+          errorHint: orderError.hint,
+        });
+        
+        // Debug: Check if migration was applied by testing function signature
+        try {
+          // Try calling with shop_id (new version)
+          const { data: testOrderNumber, error: rpcError } = await supabase.rpc('generate_order_number', {
+            shop_id_param: request.shop_id,
+          });
+          
+          if (rpcError) {
+            console.error('⚠️ MIGRATION ISSUE: generate_order_number function may not have shop_id parameter:', rpcError.message);
+            console.error('⚠️ SOLUTION: Apply migration 029_fix_order_number_race_condition.sql');
+          } else {
+            console.log('✅ Function test - Generated order number would be:', testOrderNumber);
+          }
+        } catch (debugError) {
+          console.error('Error checking function signature:', debugError);
+        }
+        
+        // Try to get existing orders for this shop today to debug
+        const today = new Date().toISOString().split('T')[0];
+        const { data: existingOrders, error: countError } = await supabase
+          .from('orders')
+          .select('id, order_number, created_at, status')
+          .eq('shop_id', request.shop_id)
+          .gte('created_at', today)
+          .order('created_at', { ascending: false })
+          .limit(20);
+        
+        if (!countError && existingOrders) {
+          console.log('📋 Recent orders for this shop today:', existingOrders);
+          console.log('📊 Order number patterns:', existingOrders.map(o => o.order_number));
+          
+          // Check for duplicates
+          const orderNumbers = existingOrders.map(o => o.order_number);
+          const duplicates = orderNumbers.filter((num, idx) => orderNumbers.indexOf(num) !== idx);
+          if (duplicates.length > 0) {
+            console.error('⚠️ FOUND DUPLICATE ORDER NUMBERS IN DATABASE:', duplicates);
+          }
+        } else if (countError) {
+          console.error('Error fetching recent orders:', countError);
+        }
+        
+        // Enhanced error message
+        const errorMsg = `Order number conflict occurred. This might indicate:\n1. The database migration hasn't been applied (migration 029)\n2. A race condition in order number generation\n3. Multiple simultaneous order placements\n\nPlease try placing your order again. If the issue persists, check if migration 029_fix_order_number_race_condition.sql has been applied.`;
+        throw new Error(errorMsg);
+      }
+      throw orderError;
+    }
 
     // Create order items
     const orderItemsToInsert = request.items.map((item) => {
@@ -492,24 +563,57 @@ export async function cancelOrder(
     } = await supabase.auth.getUser();
     if (!user) throw new Error('User not authenticated');
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .update({
         status: 'cancelled',
         cancellation_reason: reason || 'Cancelled by customer',
         cancelled_by: user.id,
+        cancelled_at: new Date().toISOString(), // Explicitly set cancelled_at timestamp
       })
       .eq('id', orderId)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .select();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Error cancelling order:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        orderId,
+        userId: user.id,
+      });
+      
+      // Check for RLS policy violation
+      if (error.code === '42501' || error.message?.includes('permission denied')) {
+        throw new Error('Permission denied: You do not have permission to cancel this order. Please contact support.');
+      }
+      
+      throw error;
+    }
+
+    // Verify the update actually happened (RLS might silently block it)
+    if (!data || data.length === 0) {
+      console.error('Order cancellation failed: No rows updated. This may indicate an RLS policy issue.');
+      throw new Error('Failed to cancel order: No rows were updated. This may be a permissions issue.');
+    }
 
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error cancelling order:', error);
+    
+    // Provide more detailed error message
+    let errorMessage = 'Failed to cancel order';
+    if (error?.message) {
+      errorMessage = error.message;
+    } else if (error?.code) {
+      errorMessage = `Database error: ${error.code}`;
+    }
+    
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Failed to cancel order',
+      message: errorMessage,
     };
   }
 }
