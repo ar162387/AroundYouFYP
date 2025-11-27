@@ -21,6 +21,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 
 import type { RootStackParamList } from '../../../navigation/types';
 import type { MerchantShop } from '../../../services/merchant/shopService';
@@ -67,6 +68,7 @@ function normalizeAreas(areas: LocalArea[]) {
 }
 
 export default function ManageDeliveryAreasScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Navigation>();
   const { shop } = useRoute<ManageDeliveryAreasRoute>().params;
@@ -165,18 +167,22 @@ export default function ManageDeliveryAreasScreen() {
 
   const handleBack = useCallback(() => {
     if (isEditing || hasChanges) {
-      Alert.alert('Discard delivery changes?', 'Any unsaved delivery zones will be lost.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      Alert.alert(
+        t('merchant.delivery.manageAreas.discardTitle'),
+        t('merchant.delivery.manageAreas.discardMessage'),
+        [
+          { text: t('merchant.delivery.manageAreas.keepIt'), style: 'cancel' },
+          {
+            text: t('merchant.delivery.manageAreas.discard'),
+            style: 'destructive',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
       return;
     }
     navigation.goBack();
-  }, [isEditing, hasChanges, navigation]);
+  }, [isEditing, hasChanges, navigation, t]);
 
   const handleMapPress = useCallback(
     (event: MapPressEvent) => {
@@ -257,15 +263,18 @@ export default function ManageDeliveryAreasScreen() {
 
   const completePolygon = useCallback(() => {
     if (editingVertices.length < 3) {
-      Alert.alert('Need more points', 'Tap at least three points on the map to form a delivery area.');
+      Alert.alert(
+        t('merchant.delivery.manageAreas.needMorePoints'),
+        t('merchant.delivery.manageAreas.needMorePointsMessage')
+      );
       return;
     }
 
     const existingPolygons = areas.map((area) => area.coordinates);
     if (overlapsExisting(editingVertices, existingPolygons)) {
       Alert.alert(
-        'Zones overlapping',
-        'Delivery zones cannot overlap. Try adjusting the new area so that it has a clear boundary.'
+        t('merchant.delivery.manageAreas.zonesOverlapping'),
+        t('merchant.delivery.manageAreas.zonesOverlappingMessage')
       );
       return;
     }
@@ -283,16 +292,16 @@ export default function ManageDeliveryAreasScreen() {
     });
     setEditingVertices([]);
     setIsEditing(false);
-  }, [editingVertices, areas]);
+  }, [editingVertices, areas, t]);
 
   const confirmDeleteArea = useCallback((area: LocalArea) => {
     Alert.alert(
-      'Remove delivery area?',
-      'Riders will no longer see orders from this zone. This action happens once you save.',
+      t('merchant.delivery.manageAreas.removeAreaTitle'),
+      t('merchant.delivery.manageAreas.removeAreaMessage'),
       [
-        { text: 'Keep it', style: 'cancel' },
+        { text: t('merchant.delivery.manageAreas.keepIt'), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('merchant.delivery.manageAreas.remove'),
           style: 'destructive',
           onPress: () => {
             setAreas((prev) => prev.filter((item) => item !== area));
@@ -300,11 +309,14 @@ export default function ManageDeliveryAreasScreen() {
         },
       ]
     );
-  }, []);
+  }, [t]);
 
   const handleSave = useCallback(async () => {
     if (isEditing) {
-      Alert.alert('Finish or cancel polygon', 'Complete the delivery area before saving.');
+      Alert.alert(
+        t('merchant.delivery.manageAreas.finishOrCancel'),
+        t('merchant.delivery.manageAreas.finishOrCancelMessage')
+      );
       return;
     }
 
@@ -325,12 +337,15 @@ export default function ManageDeliveryAreasScreen() {
       setAreas(nextAreas);
       const snapshot = JSON.stringify(normalizeAreas(nextAreas));
       setPersistedSnapshot(snapshot);
-      Alert.alert('Delivery areas saved', 'Your service areas are ready for riders.');
+      Alert.alert(
+        t('merchant.delivery.manageAreas.saved'),
+        t('merchant.delivery.manageAreas.savedMessage')
+      );
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Please check your connection and try again.';
-      Alert.alert('Failed to save', message);
+      const message = error instanceof Error ? error.message : t('merchant.delivery.manageAreas.failedToSaveMessage');
+      Alert.alert(t('merchant.delivery.manageAreas.failedToSave'), message);
     }
-  }, [areas, isEditing, saveMutation]);
+  }, [areas, isEditing, saveMutation, t]);
 
   const getZoneColor = useCallback((index: number) => {
     const strokeColors = ['#1d4ed8', '#15803d', '#c2410c', '#7c3aed'];
@@ -442,7 +457,7 @@ export default function ManageDeliveryAreasScreen() {
                 </View>
                 {showShopCallout && !showShopNameLabel && (
                   <View style={styles.shopCallout}>
-                    <Text style={styles.shopCalloutText}>Your shop</Text>
+                    <Text style={styles.shopCalloutText}>{t('merchant.delivery.manageAreas.yourShop')}</Text>
                     <View style={styles.shopCalloutArrow} />
                   </View>
                 )}
@@ -477,7 +492,7 @@ export default function ManageDeliveryAreasScreen() {
               key={`editing-vertex-${index}`}
               coordinate={vertex}
               pinColor="#2563eb"
-              title={`Point ${index + 1}`}
+              title={`${t('merchant.delivery.manageAreas.dropPoints')} ${index + 1}`}
               zIndex={150 + index}
             />
           ))}
@@ -489,15 +504,15 @@ export default function ManageDeliveryAreasScreen() {
           onPress={handleBack}
           style={styles.backButton}
           accessibilityRole="button"
-          accessibilityLabel="Go back"
+          accessibilityLabel={t('merchant.delivery.manageAreas.back')}
         >
-          <Text style={styles.backButtonText}>Back</Text>
+          <Text style={styles.backButtonText}>{t('merchant.delivery.manageAreas.back')}</Text>
         </TouchableOpacity>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>Create delivery zones</Text>
+          <Text style={styles.infoTitle}>{t('merchant.delivery.manageAreas.title')}</Text>
           <Text style={styles.infoBody}>
-            Tap "Add polygon" below, drop points around your service area, and complete the shape. Riders will only see orders inside these zones.
+            {t('merchant.delivery.manageAreas.description')}
           </Text>
         </View>
       </View>
@@ -508,15 +523,15 @@ export default function ManageDeliveryAreasScreen() {
             onPress={handleGeolocate}
             style={styles.geolocateButton}
             accessibilityRole="button"
-            accessibilityLabel="Center on shop location"
+            accessibilityLabel={t('merchant.delivery.manageAreas.centerOnShop')}
           >
             <GeolocateIcon size={20} color="#ffffff" />
           </TouchableOpacity>
         )}
         <View style={styles.bottomCard}>
-          <Text style={styles.bottomTitle}>Current delivery zones</Text>
+          <Text style={styles.bottomTitle}>{t('merchant.delivery.manageAreas.currentZones')}</Text>
           {areas.length === 0 ? (
-            <Text style={styles.bottomEmpty}>No zones yet. Add one to get started.</Text>
+            <Text style={styles.bottomEmpty}>{t('merchant.delivery.manageAreas.noZonesYet')}</Text>
           ) : (
             <View style={styles.zoneChips}>
               {areas.map((area, index) => {
@@ -534,8 +549,12 @@ export default function ManageDeliveryAreasScreen() {
           )}
           {isEditing ? (
             <View style={styles.editingHint}>
-              <Text style={styles.editingHintTitle}>Drop at least three points</Text>
-              <Text style={styles.editingHintBody}>{editingVertices.length} point{editingVertices.length === 1 ? '' : 's'} placed</Text>
+              <Text style={styles.editingHintTitle}>{t('merchant.delivery.manageAreas.dropPoints')}</Text>
+              <Text style={styles.editingHintBody}>
+                {editingVertices.length === 1
+                  ? t('merchant.delivery.manageAreas.pointsPlaced', { count: editingVertices.length })
+                  : t('merchant.delivery.manageAreas.pointsPlacedPlural', { count: editingVertices.length })}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -548,7 +567,7 @@ export default function ManageDeliveryAreasScreen() {
                 onPress={cancelPolygon}
                 accessibilityRole="button"
               >
-                <Text style={styles.actionButtonCancelText}>Cancel</Text>
+                <Text style={styles.actionButtonCancelText}>{t('merchant.delivery.manageAreas.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -560,7 +579,7 @@ export default function ManageDeliveryAreasScreen() {
                 disabled={editingVertices.length === 0}
                 accessibilityRole="button"
               >
-                <Text style={styles.undoText}>Undo point</Text>
+                <Text style={styles.undoText}>{t('merchant.delivery.manageAreas.undoPoint')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -572,7 +591,7 @@ export default function ManageDeliveryAreasScreen() {
                 disabled={editingVertices.length < 3}
                 accessibilityRole="button"
               >
-                <Text style={styles.doneText}>Done</Text>
+                <Text style={styles.doneText}>{t('merchant.delivery.manageAreas.done')}</Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -582,7 +601,7 @@ export default function ManageDeliveryAreasScreen() {
                 onPress={startPolygon}
                 accessibilityRole="button"
               >
-                <Text style={styles.addPolygonText}>Add polygon</Text>
+                <Text style={styles.addPolygonText}>{t('merchant.delivery.manageAreas.addDeliveryArea')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionButton, styles.saveButton, !hasChanges && styles.disabledSaveButton]}
@@ -593,7 +612,7 @@ export default function ManageDeliveryAreasScreen() {
                 {saveMutation.isLoading ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.saveText}>Save</Text>
+                  <Text style={styles.saveText}>{t('merchant.delivery.manageAreas.save')}</Text>
                 )}
               </TouchableOpacity>
             </>

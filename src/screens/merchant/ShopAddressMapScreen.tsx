@@ -21,6 +21,7 @@ import { useGeoapifyAutocomplete, SearchResult } from '../../hooks/useLocationQu
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
+import { useTranslation } from 'react-i18next';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShopAddressMap'>;
 type ShopAddressMapRouteProp = RNRouteProp<RootStackParamList, 'ShopAddressMap'>;
@@ -32,10 +33,12 @@ const PAKISTAN_CENTER = {
 };
 
 export default function ShopAddressMapScreen() {
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ur';
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ShopAddressMapRouteProp>();
   const insets = useSafeAreaInsets();
-  
+
   const confirmedLocation = useLocationStore((state) => state.confirmedLocation);
 
   // Map and UI refs
@@ -55,7 +58,7 @@ export default function ShopAddressMapScreen() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
-  
+
   // Map region state - initialize from route params, confirmed location, or default
   const [mapRegion, setMapRegion] = useState({
     latitude: route.params?.latitude || confirmedLocation?.coords?.latitude || PAKISTAN_CENTER.latitude,
@@ -91,7 +94,7 @@ export default function ShopAddressMapScreen() {
       };
       setMapRegion(coords);
       lastRegionRef.current = { latitude: route.params.latitude, longitude: route.params.longitude };
-      
+
       // Set initial reverse geocode from route params
       if (route.params.address) {
         setReverseGeocode({
@@ -108,10 +111,10 @@ export default function ShopAddressMapScreen() {
       };
       setMapRegion(coords);
       lastRegionRef.current = confirmedLocation.coords;
-      
+
       // Set initial reverse geocode
       setReverseGeocode({
-        formatted: confirmedLocation.address || confirmedLocation.streetLine || 'Selected location',
+        formatted: confirmedLocation.address || confirmedLocation.streetLine || t('merchant.addressMap.selectedLocation'),
         city: confirmedLocation.city,
         region: confirmedLocation.region,
         streetLine: confirmedLocation.streetLine,
@@ -192,7 +195,7 @@ export default function ShopAddressMapScreen() {
             streetLine,
           });
         }
-      } catch (_) {}
+      } catch (_) { }
     }, 1000);
   };
 
@@ -229,7 +232,7 @@ export default function ShopAddressMapScreen() {
               if (camera?.center) {
                 finalCoords = { latitude: camera.center.latitude, longitude: camera.center.longitude };
               }
-            } catch (_) {}
+            } catch (_) { }
           }
 
           if (!finalCoords && mapRef.current?.getCenter) {
@@ -238,7 +241,7 @@ export default function ShopAddressMapScreen() {
               if (center) {
                 finalCoords = { latitude: center.latitude, longitude: center.longitude };
               }
-            } catch (_) {}
+            } catch (_) { }
           }
 
           if (!finalCoords) {
@@ -387,7 +390,7 @@ export default function ShopAddressMapScreen() {
           endDragging(position);
         }, 600);
       }
-    } catch (_) {}
+    } catch (_) { }
     locatingRef.current = false;
   };
 
@@ -400,7 +403,7 @@ export default function ShopAddressMapScreen() {
       longitude: mapRegion.longitude,
     };
 
-    const address = reverseGeocode?.formatted || reverseGeocode?.streetLine || 'Selected location';
+    const address = reverseGeocode?.formatted || reverseGeocode?.streetLine || t('merchant.addressMap.selectedLocation');
 
     // Navigate based on returnTo param (for edit flow) or default to CreateShop
     if (route.params?.returnTo === 'EditShop' && route.params?.shop) {
@@ -439,17 +442,17 @@ export default function ShopAddressMapScreen() {
               className="mr-3"
               activeOpacity={0.7}
             >
-              <Text className="text-white text-2xl">←</Text>
+              <Text className="text-white text-2xl">{isRTL ? '→' : '←'}</Text>
             </TouchableOpacity>
-            <Text className="text-white text-xl font-bold flex-1">Select Shop Address</Text>
+            <Text className="text-white text-xl font-bold flex-1">{t('merchant.addressMap.title')}</Text>
           </View>
-          
+
           {/* Search Bar */}
           <View className="bg-white/95 rounded-xl px-4 py-3 flex-row items-center">
             <Text className="text-xl mr-3">🔍</Text>
             <TextInput
-              className="flex-1 text-base text-gray-900"
-              placeholder="Search for location..."
+              className={`flex-1 text-base text-gray-900 ${isRTL ? 'text-right' : 'text-left'}`}
+              placeholder={t('merchant.addressMap.searchPlaceholder')}
               placeholderTextColor="#9CA3AF"
               value={searchQuery}
               onChangeText={handleSearch}
@@ -482,9 +485,9 @@ export default function ShopAddressMapScreen() {
                   onPress={() => handleSelectResult(item)}
                   activeOpacity={0.7}
                 >
-                <View className="mr-3 mt-0.5">
-                  <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
-                </View>
+                  <View className="mr-3 mt-0.5">
+                    <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+                  </View>
                   <View className="flex-1">
                     <Text className="text-base font-semibold text-gray-900">{item.name}</Text>
                     <Text className="text-sm text-gray-600 mt-0.5" numberOfLines={2}>
@@ -498,7 +501,7 @@ export default function ShopAddressMapScreen() {
 
           {isSearching && (
             <View className="bg-white rounded-xl mt-2 py-4 px-4 items-center">
-              <Text className="text-gray-500">Searching...</Text>
+              <Text className="text-gray-500">{t('merchant.addressMap.searching')}</Text>
             </View>
           )}
         </LinearGradient>
@@ -534,10 +537,10 @@ export default function ShopAddressMapScreen() {
           onPress={handleConfirmLocation}
           activeOpacity={0.8}
         >
-          <Text className="text-white font-bold text-lg">Confirm Address</Text>
+          <Text className="text-white font-bold text-lg">{t('merchant.addressMap.confirm')}</Text>
           {reverseGeocode && (
             <Text className="text-white/80 text-sm mt-1" numberOfLines={1}>
-              {reverseGeocode.streetLine || reverseGeocode.city || 'Selected location'}
+              {reverseGeocode.streetLine || reverseGeocode.city || t('merchant.addressMap.selectedLocation')}
             </Text>
           )}
         </TouchableOpacity>

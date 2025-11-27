@@ -5,10 +5,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import * as merchantService from '../../services/merchant/merchantService';
+import { useTranslation } from 'react-i18next';
+import LanguageActionSheet from '../../components/LanguageActionSheet';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MerchantProfileScreen() {
+  const { t, i18n } = useTranslation();
+  const [languageSheetVisible, setLanguageSheetVisible] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [merchantAccount, setMerchantAccount] = useState<merchantService.MerchantAccount | null>(null);
@@ -168,7 +172,7 @@ export default function MerchantProfileScreen() {
     <View className="flex-1 bg-gray-50">
       {/* Header */}
       <View className="pt-12 pb-4 px-4 bg-white border-b border-gray-200">
-        <Text className="text-2xl font-bold text-gray-900">Profile</Text>
+        <Text className="text-2xl font-bold text-gray-900">{t('profile.title')}</Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
@@ -176,7 +180,7 @@ export default function MerchantProfileScreen() {
           <View className="px-4 mt-6">
             <View className="bg-white rounded-2xl p-6 mb-4">
               <Text className="text-gray-900 text-base text-center mb-4">
-                Please Sign Up / Login
+                {t('profile.notLoggedIn')}
               </Text>
             </View>
           </View>
@@ -184,24 +188,26 @@ export default function MerchantProfileScreen() {
           <>
             {/* User Info */}
             <View className="bg-white px-4 py-5 mt-3">
-              <Text className="text-gray-500 text-xs">Name</Text>
+              <Text className="text-gray-500 text-xs">{t('profile.name')}</Text>
               <Text className="text-gray-900 text-lg font-semibold mt-1">
-                {user.name || 'Not set'}
+                {user.name || t('profile.notSet')}
               </Text>
 
               <View className="h-3" />
 
-              <Text className="text-gray-500 text-xs">Email</Text>
+              <Text className="text-gray-500 text-xs">{t('profile.email')}</Text>
               <Text className="text-gray-900 text-lg font-semibold mt-1">
-                {user.email || 'Not set'}
+                {user.email || t('profile.notSet')}
               </Text>
 
               {merchantAccount && (
                 <>
                   <View className="h-3" />
-                  <Text className="text-gray-500 text-xs">Verification Status</Text>
+                  <Text className="text-gray-500 text-xs">{t('profile.verificationStatus')}</Text>
                   <Text className={`text-lg font-semibold mt-1 ${getStatusColor(merchantAccount.status)}`}>
-                    {getStatusLabel(merchantAccount.status)}
+                    {merchantAccount.status === 'verified' ? t('profile.verified') :
+                      merchantAccount.status === 'pending' ? t('profile.pending') :
+                        t('profile.none')}
                   </Text>
                 </>
               )}
@@ -210,13 +216,20 @@ export default function MerchantProfileScreen() {
             {/* Settings List */}
             <View className="bg-white mt-4">
               <ListItem
-                title="Language"
-                right={<Text className="text-gray-500">English</Text>}
-                onPress={() => {}}
+                title={t('profile.language')}
+                right={<Text className="text-gray-500">{
+                  i18n.language === 'ur' ? 'اردو' :
+                    i18n.language === 'ur-roman' ? 'Urdu (Roman)' :
+                      'English'
+                }</Text>}
+                onPress={() => {
+                  console.log('Language option pressed (Merchant)');
+                  setLanguageSheetVisible(true);
+                }}
               />
               <Separator />
               <ListItem
-                title="Push Notifications"
+                title={t('profile.pushNotifications')}
                 right={
                   <Switch
                     value={pushEnabled}
@@ -227,14 +240,14 @@ export default function MerchantProfileScreen() {
                 }
               />
               <Separator />
-              <ListItem title="Terms & Policies" onPress={() => {}} />
+              <ListItem title={t('profile.termsPolicies')} onPress={() => { }} />
               <Separator />
               {user && (
                 <>
-                  <ListItem title="Switch to Consumer" onPress={handleSwitchToConsumer} />
+                  <ListItem title={t('profile.switchToConsumer')} onPress={handleSwitchToConsumer} />
                   <Separator />
                   <ListItem
-                    title="Set this role as default"
+                    title={t('profile.setDefaultRole')}
                     right={
                       <Switch
                         value={!isConsumerDefault}
@@ -248,9 +261,9 @@ export default function MerchantProfileScreen() {
                   <Separator />
                 </>
               )}
-              <ListItem title="Suggestion or Complaint" onPress={() => {}} />
+              <ListItem title={t('profile.suggestionComplaint')} onPress={() => { }} />
               <Separator />
-              <ListItem title="FAQs" onPress={() => {}} />
+              <ListItem title={t('profile.faqs')} onPress={() => { }} />
             </View>
 
             {/* Logout Button */}
@@ -265,16 +278,22 @@ export default function MerchantProfileScreen() {
                   {isLoggingOut ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <Text className="text-white text-base font-bold">Logout</Text>
+                    <Text className="text-white text-base font-bold">{t('profile.logout')}</Text>
                   )}
                 </TouchableOpacity>
               </View>
             )}
+
           </>
         )}
-        <Text className="text-center text-gray-400 text-xs mt-2 px-4">Version 0.1</Text>
+        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 0.1</Text>
       </ScrollView>
-    </View>
+
+      <LanguageActionSheet
+        visible={languageSheetVisible}
+        onClose={() => setLanguageSheetVisible(false)}
+      />
+    </View >
   );
 }
 

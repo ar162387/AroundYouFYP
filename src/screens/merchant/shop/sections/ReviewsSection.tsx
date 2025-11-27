@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 import { getShopReviews, getShopReviewStats, ReviewWithUser } from '../../../../services/consumer/reviewService';
 import StarIcon from '../../../../icons/StarIcon';
@@ -9,6 +10,7 @@ type ReviewsSectionProps = {
 };
 
 export default function ReviewsSection({ shop }: ReviewsSectionProps) {
+  const { t } = useTranslation();
   const [reviews, setReviews] = useState<ReviewWithUser[]>([]);
   const [stats, setStats] = useState<{ average_rating: number; total_reviews: number; rating_distribution: { 1: number; 2: number; 3: number; 4: number; 5: number } } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,7 +28,7 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
       ]);
 
       if (reviewsResult.error) {
-        setError('Failed to load reviews');
+        setError(t('merchant.dashboardSection.reviews.failedToLoad'));
         console.error('Error fetching reviews:', reviewsResult.error);
       } else {
         setReviews(reviewsResult.data || []);
@@ -38,7 +40,7 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
         setStats(statsResult.data || null);
       }
     } catch (err) {
-      setError('An unexpected error occurred');
+      setError(t('merchant.dashboardSection.reviews.unexpectedError'));
       console.error('Error fetching reviews:', err);
     } finally {
       setIsLoading(false);
@@ -62,11 +64,13 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
     const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
     if (diffInDays === 0) {
-      return `Today at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      return t('merchant.dashboardSection.reviews.todayAt', { time });
     } else if (diffInDays === 1) {
-      return `Yesterday at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      return t('merchant.dashboardSection.reviews.yesterdayAt', { time });
     } else if (diffInDays < 7) {
-      return `${diffInDays} days ago`;
+      return t('merchant.dashboardSection.reviews.daysAgo', { count: diffInDays });
     } else {
       return date.toLocaleDateString('en-US', {
         month: 'short',
@@ -82,7 +86,7 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="text-gray-600 mt-4">Loading reviews...</Text>
+        <Text className="text-gray-600 mt-4">{t('merchant.dashboardSection.reviews.loading')}</Text>
       </View>
     );
   }
@@ -115,15 +119,15 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
                 </View>
               </View>
               <Text className="text-gray-600 text-base">
-                Based on {stats.total_reviews} {stats.total_reviews === 1 ? 'review' : 'reviews'}
+                {t('merchant.dashboardSection.reviews.basedOn', { count: stats.total_reviews })}
               </Text>
             </>
           ) : (
             <>
               <View className="flex-row items-center mb-2">
-                <Text className="text-2xl font-semibold text-gray-500">No reviews yet</Text>
+                <Text className="text-2xl font-semibold text-gray-500">{t('merchant.dashboardSection.reviews.noReviewsYet')}</Text>
               </View>
-              <Text className="text-gray-500 text-sm">Start receiving orders to get reviews</Text>
+              <Text className="text-gray-500 text-sm">{t('merchant.dashboardSection.reviews.startReceivingOrders')}</Text>
             </>
           )}
         </View>
@@ -131,7 +135,7 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
         {/* Rating Distribution */}
         {stats && stats.total_reviews > 0 && (
           <View className="mt-4 pt-4 border-t border-gray-200">
-            <Text className="text-sm font-semibold text-gray-700 mb-3">Rating Distribution</Text>
+            <Text className="text-sm font-semibold text-gray-700 mb-3">{t('merchant.dashboardSection.reviews.ratingDistribution')}</Text>
             {[5, 4, 3, 2, 1].map((rating) => {
               const count = stats.rating_distribution[rating as keyof typeof stats.rating_distribution];
               const percentage = stats.total_reviews > 0 ? (count / stats.total_reviews) * 100 : 0;
@@ -170,16 +174,16 @@ export default function ReviewsSection({ shop }: ReviewsSectionProps) {
         <View className="bg-white rounded-xl p-8 items-center border border-gray-200">
           <Text className="text-6xl mb-4">⭐</Text>
           <Text className="text-gray-900 text-lg font-semibold mb-2 text-center">
-            No reviews yet
+            {t('merchant.dashboardSection.reviews.noReviewsYet')}
           </Text>
           <Text className="text-gray-500 text-center">
-            Reviews from customers will appear here
+            {t('merchant.dashboardSection.reviews.reviewsFromCustomers')}
           </Text>
         </View>
       ) : (
         <View>
           <Text className="text-lg font-bold text-gray-900 mb-4">
-            All Reviews ({reviews.length})
+            {t('merchant.dashboardSection.reviews.allReviews', { count: reviews.length })}
           </Text>
           {reviews.map((review) => (
             <ReviewCard key={review.id} review={review} formatDate={formatDate} />
@@ -199,9 +203,10 @@ function ReviewCard({
   review: ReviewWithUser;
   formatDate: (dateString: string) => string;
 }) {
+  const { t } = useTranslation();
   // Display name: use name if available, otherwise fallback to email
   // Since reviews are from authenticated users, they should always have email
-  const displayName = review.user?.name || review.user?.email || 'User';
+  const displayName = review.user?.name || review.user?.email || t('merchant.dashboardSection.reviews.user');
   
   // Calculate initials based on name if available, otherwise use email username
   const getInitials = () => {
@@ -259,7 +264,7 @@ function ReviewCard({
 
       {/* Updated indicator */}
       {review.updated_at !== review.created_at && (
-        <Text className="text-gray-400 text-xs mt-2">(Updated)</Text>
+        <Text className="text-gray-400 text-xs mt-2">{t('merchant.dashboardSection.reviews.updated')}</Text>
       )}
     </View>
   );

@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, View, Text, TouchableOpacity, TextInput, Scro
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslation } from 'react-i18next';
 import type { DeliveryRunner } from '../../../services/merchant/deliveryRunnerService';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -45,6 +46,7 @@ export function DeliveryRunnerFormSheet({
   onSubmit,
   onDelete,
 }: DeliveryRunnerFormSheetProps) {
+  const { t } = useTranslation();
   const defaultValues = useMemo(() => {
     if (defaultRunner) {
       return {
@@ -82,10 +84,10 @@ export function DeliveryRunnerFormSheet({
 
           <View className="px-6 pb-3 border-b border-gray-100">
             <Text className="text-xl font-semibold text-gray-900">
-              {mode === 'create' ? 'Add Delivery Runner' : 'Edit Delivery Runner'}
+              {mode === 'create' ? t('merchant.delivery.runnerForm.addTitle') : t('merchant.delivery.runnerForm.editTitle')}
             </Text>
             <Text className="text-xs text-gray-500 mt-2">
-              Add a delivery runner who will handle deliveries for this shop.
+              {t('merchant.delivery.runnerForm.description')}
             </Text>
           </View>
           <ScrollView
@@ -99,12 +101,12 @@ export function DeliveryRunnerFormSheet({
             name="name"
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-6">
-                <Text className="text-sm font-semibold text-gray-700">Name</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.runnerForm.name')}</Text>
                 <TextInput
                   value={value}
                   onChangeText={onChange}
                   className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                  placeholder="Runner name"
+                  placeholder={t('merchant.delivery.runnerForm.namePlaceholder')}
                   autoCapitalize="words"
                 />
                 {fieldState.error ? (
@@ -119,13 +121,13 @@ export function DeliveryRunnerFormSheet({
             name="phoneNumber"
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">Phone Number</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.runnerForm.phoneNumber')}</Text>
                 <TextInput
                   value={value}
                   onChangeText={onChange}
                   keyboardType="phone-pad"
                   className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                  placeholder="Phone number"
+                  placeholder={t('merchant.delivery.runnerForm.phoneNumberPlaceholder')}
                 />
                 {fieldState.error ? (
                   <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -142,7 +144,7 @@ export function DeliveryRunnerFormSheet({
                 onPress={onClose}
                 disabled={loading || deleteLoading}
               >
-                <Text className="text-sm font-semibold text-gray-600">Cancel</Text>
+                <Text className="text-sm font-semibold text-gray-600">{t('merchant.delivery.runnerForm.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
@@ -153,7 +155,7 @@ export function DeliveryRunnerFormSheet({
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <Text className="text-sm font-semibold text-white">
-                    {mode === 'create' ? 'Add Runner' : 'Update Runner'}
+                    {mode === 'create' ? t('merchant.delivery.runnerForm.addRunner') : t('merchant.delivery.runnerForm.updateRunner')}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -172,7 +174,7 @@ export function DeliveryRunnerFormSheet({
                 {deleteLoading ? (
                   <ActivityIndicator size="small" color="#DC2626" />
                 ) : (
-                  <Text className="text-sm font-semibold text-red-600">Delete Runner</Text>
+                  <Text className="text-sm font-semibold text-red-600">{t('merchant.delivery.runnerForm.deleteRunner')}</Text>
                 )}
               </TouchableOpacity>
             ) : null}

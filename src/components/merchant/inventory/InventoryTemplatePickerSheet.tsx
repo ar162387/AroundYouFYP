@@ -4,6 +4,7 @@ import { FlashList } from '@shopify/flash-list';
 import type { InventoryTemplateItem } from '../../../types/inventory';
 import { useInventoryTemplates } from '../../../hooks/merchant/useInventoryTemplates';
 import InventoryTemplateItemSkeleton from '../../../skeleton/InventoryTemplateItemSkeleton';
+import { useTranslation } from 'react-i18next';
 
 type InventoryTemplatePickerSheetProps = {
   visible: boolean;
@@ -18,6 +19,7 @@ export function InventoryTemplatePickerSheet({
   onSelect,
   existingTemplateIds,
 }: InventoryTemplatePickerSheetProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -52,7 +54,7 @@ export function InventoryTemplatePickerSheet({
         className="bg-white border border-gray-100 rounded-3xl p-4 flex-row space-x-4"
         onPress={() => {
           if (alreadyAdded) {
-            Alert.alert('Already Added', 'This template is already in your inventory.');
+            Alert.alert(t('merchant.inventory.common.alreadyAdded'), t('merchant.inventory.common.alreadyAddedDesc'));
             return;
           }
           onSelect(item);
@@ -70,7 +72,7 @@ export function InventoryTemplatePickerSheet({
           <Text className="text-base font-semibold text-gray-900" numberOfLines={2}>
             {item.name}
           </Text>
-          {item.barcode ? <Text className="text-xs text-gray-500 mt-1">Barcode: {item.barcode}</Text> : null}
+          {item.barcode ? <Text className="text-xs text-gray-500 mt-1">{t('merchant.inventory.form.barcode')}: {item.barcode}</Text> : null}
           {item.description ? (
             <Text className="text-xs text-gray-400 mt-1" numberOfLines={2}>
               {item.description}
@@ -79,7 +81,7 @@ export function InventoryTemplatePickerSheet({
         </View>
         {alreadyAdded ? (
           <View className="self-start bg-green-50 px-2 py-1 rounded-lg">
-            <Text className="text-[10px] font-semibold text-green-600">Already Added</Text>
+            <Text className="text-[10px] font-semibold text-green-600">{t('merchant.inventory.common.alreadyAdded')}</Text>
           </View>
         ) : null}
       </TouchableOpacity>
@@ -90,14 +92,14 @@ export function InventoryTemplatePickerSheet({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View className="flex-1 bg-white">
         <View className="px-6 pt-6 pb-3 border-b border-gray-100">
-          <Text className="text-xl font-semibold text-gray-900">Choose from Template</Text>
-          <Text className="text-xs text-gray-500 mt-2">Search the shared catalog to quickly add items to your shop.</Text>
+          <Text className="text-xl font-semibold text-gray-900">{t('merchant.inventory.templates.pickerTitle')}</Text>
+          <Text className="text-xs text-gray-500 mt-2">{t('merchant.inventory.templates.pickerDesc')}</Text>
         </View>
         <View className="px-6 pt-4 pb-2">
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search by name or barcode"
+            placeholder={t('merchant.inventory.templates.searchPlaceholder')}
             className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
             autoFocus
           />
@@ -114,7 +116,7 @@ export function InventoryTemplatePickerSheet({
               renderItem={renderItem}
               ListEmptyComponent={() => (
                 <View className="flex-1 items-center justify-center py-20">
-                  <Text className="text-sm text-gray-500">No templates found. Adjust your search.</Text>
+                  <Text className="text-sm text-gray-500">{t('merchant.inventory.templates.emptySearch')}</Text>
                 </View>
               )}
             />
@@ -125,7 +127,7 @@ export function InventoryTemplatePickerSheet({
             className="h-12 rounded-xl border border-gray-200 items-center justify-center"
             onPress={onClose}
           >
-            <Text className="text-sm font-semibold text-gray-600">Close</Text>
+            <Text className="text-sm font-semibold text-gray-600">{t('merchant.inventory.common.close')}</Text>
           </TouchableOpacity>
         </View>
       </View>

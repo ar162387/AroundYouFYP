@@ -8,6 +8,7 @@ import OrdersTrendIcon from '../../../../icons/OrdersTrendIcon';
 import RevenueFlowIcon from '../../../../icons/RevenueFlowIcon';
 import { getShopReviews, getShopReviewStats, ReviewWithUser } from '../../../../services/consumer/reviewService';
 import StarIcon from '../../../../icons/StarIcon';
+import { useTranslation } from 'react-i18next';
 
 type DashboardSectionProps = {
   shop: MerchantShop;
@@ -17,6 +18,7 @@ type DashboardSectionProps = {
 type RangeType = 'today' | 'yesterday' | '7_days' | '30_days' | 'all_time' | 'custom';
 
 export default function DashboardSection({ shop, onShowOrders }: DashboardSectionProps) {
+  const { t } = useTranslation();
   const [range, setRange] = useState<RangeType>('today');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
@@ -70,28 +72,28 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
   const timeMetrics = useMemo(() => {
     console.log('All-Time Analytics:', allTimeAnalytics);
     console.log('Previous All-Time Analytics:', previousAllTimeAnalytics);
-    
+
     if (!allTimeAnalytics) {
-        return {
+      return {
         confirmation: { current: null, change: null, changeType: null },
         preparation: { current: null, change: null, changeType: null },
         delivery: { current: null, change: null, changeType: null },
-        };
-      }
-      
+      };
+    }
+
     const calculateChange = (current: number | undefined, previous: number | undefined) => {
       if (current === undefined || current === null) return { change: null, changeType: null };
       if (previous === undefined || previous === null) return { change: null, changeType: null };
-      
+
       const diff = Math.round(current - previous);
       if (diff === 0) return { change: null, changeType: null };
-        return {
+      return {
         change: Math.abs(diff),
         changeType: diff > 0 ? 'up' : 'down',
-        };
+      };
     };
 
-        return {
+    return {
       confirmation: {
         current: allTimeAnalytics.average_confirmation_time_seconds,
         ...calculateChange(
@@ -140,29 +142,29 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
   // Generate chart data from real data
   const chartConfig = useMemo(() => {
     if (isLoadingChart || !timeSeriesData) {
-          return {
+      return {
         xLabels: [] as string[],
         yLabels: [0] as number[],
         data: [] as number[],
         orders: 0,
         revenue: 0,
-          };
-        }
-        
+      };
+    }
+
     const data = timeSeriesData as { xLabels: string[]; data: number[]; orders: number; revenue: number };
 
     // Generate yLabels based on max value
     const maxValue = Math.max(...(data.data || []), 1);
     const yMax = Math.ceil(maxValue / 1000) * 1000 || 1000;
-        const yLabels = Array.from({ length: 5 }, (_, i) => Math.floor((yMax / 4) * i));
-        
-        return {
+    const yLabels = Array.from({ length: 5 }, (_, i) => Math.floor((yMax / 4) * i));
+
+    return {
       xLabels: data.xLabels || [],
-          yLabels,
+      yLabels,
       data: data.data || [],
       orders: data.orders || 0,
       revenue: data.revenue || 0, // This is in cents
-        };
+    };
   }, [timeSeriesData, isLoadingChart]);
 
   const chartData = chartConfig.data.map((value: number, index: number) => ({
@@ -224,17 +226,17 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
     const endDate = parseDateInput(endInput);
 
     if (!startDate || !endDate) {
-      setDateError('Enter valid dates in DD / MM / YYYY format.');
+      setDateError(t('merchant.dashboardSection.datePicker.invalidDate'));
       return;
     }
 
     if (startDate > endDate) {
-      setDateError('Start date cannot be after end date.');
+      setDateError(t('merchant.dashboardSection.datePicker.dateErrorStart'));
       return;
     }
 
     if (endDate < startDate) {
-      setDateError('End date cannot be before start date.');
+      setDateError(t('merchant.dashboardSection.datePicker.dateErrorEnd'));
       return;
     }
 
@@ -244,43 +246,46 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
     setShowDatePicker(false);
 
     Alert.alert(
-      'Custom range applied',
-      `Showing stats from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}.`
+      t('merchant.dashboardSection.datePicker.customRangeApplied'),
+      t('merchant.dashboardSection.datePicker.showingStats', {
+        start: startDate.toLocaleDateString(),
+        end: endDate.toLocaleDateString(),
+      })
     );
   };
 
   const formatDateRange = () => {
     if (!customStartDate && !customEndDate) {
-      return 'Select dates';
+      return t('merchant.dashboardSection.ranges.selectDates');
     }
     const formatDate = (date: Date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     if (customStartDate && customEndDate) {
       return `${formatDate(customStartDate)} - ${formatDate(customEndDate)}`;
     }
     if (customStartDate) {
-      return `From ${formatDate(customStartDate)}`;
+      return `${t('merchant.dashboardSection.ranges.from')} ${formatDate(customStartDate)}`;
     }
-    return `Until ${formatDate(customEndDate!)}`;
+    return `${t('merchant.dashboardSection.ranges.until')} ${formatDate(customEndDate!)}`;
   };
 
   const rangeLabel = useMemo(() => {
     switch (range) {
       case 'today':
-        return 'Today';
+        return t('merchant.dashboardSection.ranges.today');
       case 'yesterday':
-        return 'Yesterday';
+        return t('merchant.dashboardSection.ranges.yesterday');
       case '7_days':
-        return 'Last 7 days';
+        return t('merchant.dashboardSection.ranges.last7Days');
       case '30_days':
-        return 'Last 30 days';
+        return t('merchant.dashboardSection.ranges.last30Days');
       case 'all_time':
-        return 'All time';
+        return t('merchant.dashboardSection.ranges.allTime');
       case 'custom':
-        return 'Custom';
+        return t('merchant.dashboardSection.ranges.custom');
       default:
-        return 'Today';
+        return t('merchant.dashboardSection.ranges.today');
     }
-  }, [range]);
+  }, [range, t]);
 
   // Fetch reviews data
   const [reviewsData, setReviewsData] = useState<ReviewWithUser[]>([]);
@@ -316,7 +321,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
   // Get 3 random reviews
   const randomReviews = useMemo(() => {
     if (reviewsData.length === 0) return [];
-    
+
     // Shuffle array and take first 3
     const shuffled = [...reviewsData].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 3);
@@ -329,11 +334,15 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
     const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
     if (diffInDays === 0) {
-      return `Today at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      return t('merchant.dashboardSection.reviews.todayAt', {
+        time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      });
     } else if (diffInDays === 1) {
-      return `Yesterday at ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      return t('merchant.dashboardSection.reviews.yesterdayAt', {
+        time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      });
     } else if (diffInDays < 7) {
-      return `${diffInDays} days ago`;
+      return t('merchant.dashboardSection.reviews.daysAgo', { count: diffInDays });
     } else {
       return date.toLocaleDateString('en-US', {
         month: 'short',
@@ -353,7 +362,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
     return [
       {
         key: 'confirmation',
-        title: 'Confirmation Time',
+        title: t('merchant.dashboardSection.metrics.confirmationTime'),
         value:
           timeMetrics.confirmation.current !== null && timeMetrics.confirmation.current !== undefined
             ? formatDuration(timeMetrics.confirmation.current)
@@ -363,11 +372,11 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             ? formatDuration(timeMetrics.confirmation.change)
             : null,
         changeType: timeMetrics.confirmation.changeType,
-        subtitle: 'Average time',
+        subtitle: t('merchant.dashboardSection.metrics.avgTime'),
       },
       {
         key: 'preparation',
-        title: 'Preparation Time',
+        title: t('merchant.dashboardSection.metrics.preparationTime'),
         value:
           timeMetrics.preparation.current !== null && timeMetrics.preparation.current !== undefined
             ? formatDuration(timeMetrics.preparation.current)
@@ -377,11 +386,11 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             ? formatDuration(timeMetrics.preparation.change)
             : null,
         changeType: timeMetrics.preparation.changeType,
-        subtitle: 'Average time',
+        subtitle: t('merchant.dashboardSection.metrics.avgTime'),
       },
       {
         key: 'delivery',
-        title: 'Delivery Time',
+        title: t('merchant.dashboardSection.metrics.deliveryTime'),
         value:
           timeMetrics.delivery.current !== null && timeMetrics.delivery.current !== undefined
             ? formatDuration(timeMetrics.delivery.current)
@@ -391,37 +400,37 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             ? formatDuration(timeMetrics.delivery.change)
             : null,
         changeType: timeMetrics.delivery.changeType,
-        subtitle: 'Average time',
+        subtitle: t('merchant.dashboardSection.metrics.avgTime'),
       },
       {
         key: 'totalOrders',
-        title: 'Total Orders',
+        title: t('merchant.dashboardSection.metrics.totalOrders'),
         value: allTimeAnalytics ? allTimeAnalytics.total_orders.toLocaleString() : null,
         changeLabel:
           orderTrend.change !== null && orderTrend.change !== undefined
             ? orderTrend.change.toLocaleString()
             : null,
         changeType: orderTrend.changeType,
-        subtitle: 'All-time',
+        subtitle: t('merchant.dashboardSection.metrics.allTimeSubtitle'),
       },
     ] as const;
-  }, [allTimeAnalytics, orderTrend.change, orderTrend.changeType, timeMetrics]);
+  }, [allTimeAnalytics, orderTrend.change, orderTrend.changeType, timeMetrics, t]);
 
   return (
     <View className="space-y-4">
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-md">
         <View className="flex-row items-center justify-between">
-          <Text className="text-2xl font-bold text-gray-900">Summary</Text>
+          <Text className="text-2xl font-bold text-gray-900">{t('merchant.dashboardSection.titles.summary')}</Text>
         </View>
 
         <View className="mt-5 flex-row flex-wrap">
           {[
-            { key: 'today', label: 'Today' },
-            { key: 'yesterday', label: 'Yesterday' },
-            { key: '7_days', label: '7 days' },
-            { key: '30_days', label: '30 days' },
-            { key: 'all_time', label: 'All time' },
-            { key: 'custom', label: range === 'custom' && (customStartDate || customEndDate) ? formatDateRange() : 'Custom' },
+            { key: 'today', label: t('merchant.dashboardSection.ranges.today') },
+            { key: 'yesterday', label: t('merchant.dashboardSection.ranges.yesterday') },
+            { key: '7_days', label: t('merchant.dashboardSection.ranges.last7Days') },
+            { key: '30_days', label: t('merchant.dashboardSection.ranges.last30Days') },
+            { key: 'all_time', label: t('merchant.dashboardSection.ranges.allTime') },
+            { key: 'custom', label: range === 'custom' && (customStartDate || customEndDate) ? formatDateRange() : t('merchant.dashboardSection.ranges.custom') },
           ].map((item) => {
             const isActive = range === item.key;
             return (
@@ -448,7 +457,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             <View className="flex-1 basis-0">
               <View className="flex-row items-center">
                 <OrdersTrendIcon size={22} color="#2563eb" />
-                <Text className="ml-2 text-sm font-semibold text-gray-600">Orders</Text>
+                <Text className="ml-2 text-sm font-semibold text-gray-600">{t('merchant.dashboardSection.chart.orders')}</Text>
               </View>
               {isLoadingChart ? (
                 <ActivityIndicator size="small" color="#2563eb" className="mt-2" />
@@ -461,7 +470,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             <View className="flex-1 basis-0">
               <View className="flex-row items-center">
                 <RevenueFlowIcon size={22} color="#16a34a" />
-                <Text className="ml-2 text-sm font-semibold text-gray-600">Revenue</Text>
+                <Text className="ml-2 text-sm font-semibold text-gray-600">{t('merchant.dashboardSection.chart.revenue')}</Text>
               </View>
               {isLoadingChart ? (
                 <ActivityIndicator size="small" color="#16a34a" className="mt-2" />
@@ -477,13 +486,13 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             {isLoadingChart ? (
               <View className="h-40 items-center justify-center">
                 <ActivityIndicator size="large" color="#3B82F6" />
-                <Text className="text-gray-500 mt-2">Loading chart data...</Text>
+                <Text className="text-gray-500 mt-2">{t('merchant.dashboardSection.chart.loadingChart')}</Text>
               </View>
             ) : chartConfig.data.length > 0 ? (
               <OrdersRevenueLineChart data={chartData} xLabels={chartConfig.xLabels} yLabels={chartConfig.yLabels} />
             ) : (
               <View className="h-40 items-center justify-center">
-                <Text className="text-gray-500">No data available for this period</Text>
+                <Text className="text-gray-500">{t('merchant.dashboardSection.chart.noData')}</Text>
               </View>
             )}
           </View>
@@ -492,52 +501,52 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
 
       {/* Time Metrics Cards Section - Always shows all-time averages, separate from chart */}
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-md mt-4">
-        <Text className="text-lg font-bold text-gray-900 mb-4">Performance Metrics (All-Time)</Text>
+        <Text className="text-lg font-bold text-gray-900 mb-4">{t('merchant.dashboardSection.titles.performanceMetrics')}</Text>
         <View className="flex-row flex-wrap -mx-1">
           {isLoadingAllTime
             ? Array.from({ length: 4 }).map((_, index) => (
-                <View key={`metric-skeleton-${index}`} className="w-1/2 px-1 pb-3">
-                  <View className="bg-white border border-gray-100 rounded-2xl p-4 items-center justify-center shadow-sm">
-                    <ActivityIndicator size="small" color="#3B82F6" />
-                    <Text className="text-xs text-gray-500 mt-2">Loading...</Text>
-                  </View>
+              <View key={`metric-skeleton-${index}`} className="w-1/2 px-1 pb-3">
+                <View className="bg-white border border-gray-100 rounded-2xl p-4 items-center justify-center shadow-sm">
+                  <ActivityIndicator size="small" color="#3B82F6" />
+                  <Text className="text-xs text-gray-500 mt-2">Loading...</Text>
                 </View>
-              ))
+              </View>
+            ))
             : metricCards.map((card) => (
-                <View key={card.key} className="w-1/2 px-1 pb-3">
-                  <View className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                    <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                      {card.title}
-                    </Text>
-                    <View className="flex-row items-baseline flex-wrap">
-                      {card.value ? (
-                        <>
-                          <Text className="text-xl font-bold text-gray-900">{card.value}</Text>
-                          {card.changeLabel && card.changeType === 'up' && (
-                            <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
-                              <Text className="text-green-600 text-xs font-semibold">↑</Text>
+              <View key={card.key} className="w-1/2 px-1 pb-3">
+                <View className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                    {card.title}
+                  </Text>
+                  <View className="flex-row items-baseline flex-wrap">
+                    {card.value ? (
+                      <>
+                        <Text className="text-xl font-bold text-gray-900">{card.value}</Text>
+                        {card.changeLabel && card.changeType === 'up' && (
+                          <View className="ml-2 flex-row items-center bg-green-50 px-2 py-1 rounded-full">
+                            <Text className="text-green-600 text-xs font-semibold">↑</Text>
                             <Text className="text-green-600 text-xs font-semibold ml-1">
                               +{card.changeLabel}
                             </Text>
-                            </View>
-                          )}
-                          {card.changeLabel && card.changeType === 'down' && (
-                            <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
-                              <Text className="text-red-600 text-xs font-semibold">↓</Text>
+                          </View>
+                        )}
+                        {card.changeLabel && card.changeType === 'down' && (
+                          <View className="ml-2 flex-row items-center bg-red-50 px-2 py-1 rounded-full">
+                            <Text className="text-red-600 text-xs font-semibold">↓</Text>
                             <Text className="text-red-600 text-xs font-semibold ml-1">
                               -{card.changeLabel}
                             </Text>
-                            </View>
-                          )}
-                        </>
-                      ) : (
-                        <Text className="text-sm text-gray-400">No data</Text>
-                      )}
-                    </View>
-                    <Text className="text-[11px] text-gray-400 mt-1">{card.subtitle}</Text>
+                          </View>
+                        )}
+                      </>
+                    ) : (
+                      <Text className="text-sm text-gray-400">No data</Text>
+                    )}
                   </View>
+                  <Text className="text-[11px] text-gray-400 mt-1">{card.subtitle}</Text>
                 </View>
-              ))}
+              </View>
+            ))}
         </View>
       </View>
 
@@ -551,15 +560,15 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
         <View className="flex-1 justify-end bg-black/50">
           <View className="bg-white rounded-t-3xl p-6 pb-10">
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-xl font-bold text-gray-900">Select Date Range</Text>
+              <Text className="text-xl font-bold text-gray-900">{t('merchant.dashboardSection.datePicker.selectRange')}</Text>
               <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Text className="text-blue-600 font-semibold text-base">Close</Text>
+                <Text className="text-blue-600 font-semibold text-base">{t('merchant.dashboardSection.datePicker.close')}</Text>
               </TouchableOpacity>
             </View>
 
             <View className="space-y-6">
               <View>
-                <Text className="text-sm font-semibold text-gray-700 mb-3">Start Date</Text>
+                <Text className="text-sm font-semibold text-gray-700 mb-3">{t('merchant.dashboardSection.datePicker.startDate')}</Text>
                 <View className="flex-row space-x-3">
                   {[
                     { key: 'day', placeholder: 'DD', maxLength: 2 },
@@ -583,7 +592,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
               </View>
 
               <View>
-                <Text className="text-sm font-semibold text-gray-700 mb-3">End Date</Text>
+                <Text className="text-sm font-semibold text-gray-700 mb-3">{t('merchant.dashboardSection.datePicker.endDate')}</Text>
                 <View className="flex-row space-x-3">
                   {[
                     { key: 'day', placeholder: 'DD', maxLength: 2 },
@@ -616,7 +625,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
                 onPress={handleApplyCustomRange}
                 className="bg-blue-600 rounded-2xl py-4"
               >
-                <Text className="text-center text-white font-semibold text-base">Apply</Text>
+                <Text className="text-center text-white font-semibold text-base">{t('merchant.dashboardSection.datePicker.apply')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -624,17 +633,17 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
       </Modal>
 
       <View className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
-        <Text className="text-lg font-semibold text-gray-900">Reviews</Text>
+        <Text className="text-lg font-semibold text-gray-900">{t('merchant.dashboardSection.titles.reviews')}</Text>
 
         {isLoadingReviews ? (
           <View className="mt-5 items-center py-8">
             <ActivityIndicator size="large" color="#3B82F6" />
-            <Text className="text-gray-500 mt-2">Loading reviews...</Text>
+            <Text className="text-gray-500 mt-2">{t('merchant.dashboardSection.reviews.loadingReviews')}</Text>
           </View>
         ) : (
           <>
             <View className="mt-5 bg-blue-50 border border-blue-200 rounded-2xl p-4">
-              <Text className="text-xs uppercase font-semibold text-blue-700">Average rating</Text>
+              <Text className="text-xs uppercase font-semibold text-blue-700">{t('merchant.dashboardSection.reviews.avgRating')}</Text>
               <View className="flex-row items-end mt-2">
                 <Text className="text-4xl font-bold text-blue-900">
                   {reviewStats?.average_rating.toFixed(1) || '0.0'}
@@ -642,12 +651,12 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
                 <Text className="text-sm text-blue-600 ml-2">/ 5.0</Text>
                 {reviewStats && reviewStats.total_reviews > 0 && (
                   <Text className="text-sm text-blue-600 ml-2">
-                    ({reviewStats.total_reviews} {reviewStats.total_reviews === 1 ? 'review' : 'reviews'})
+                    ({reviewStats.total_reviews} {reviewStats.total_reviews === 1 ? t('merchant.dashboardSection.reviews.review') : t('merchant.dashboardSection.reviews.reviews')})
                   </Text>
                 )}
               </View>
               {reviewStats && reviewStats.total_reviews === 0 && (
-                <Text className="text-xs text-blue-600 mt-2">No reviews yet</Text>
+                <Text className="text-xs text-blue-600 mt-2">{t('merchant.dashboardSection.reviews.noReviews')}</Text>
               )}
             </View>
 
@@ -686,7 +695,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             ) : reviewStats && reviewStats.total_reviews === 0 ? (
               <View className="mt-5 bg-gray-50 border border-gray-200 rounded-2xl p-6 items-center">
                 <Text className="text-4xl mb-2">⭐</Text>
-                <Text className="text-gray-600 text-sm text-center">No reviews yet</Text>
+                <Text className="text-gray-600 text-sm text-center">{t('merchant.dashboardSection.reviews.noReviews')}</Text>
               </View>
             ) : null}
           </>

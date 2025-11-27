@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, View, Text, TouchableOpacity, TextInput, Scro
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslation } from 'react-i18next';
 import type { DeliveryLogic, DistanceTier } from '../../../services/merchant/deliveryLogicService';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -63,6 +64,7 @@ export function DistanceLayerFormSheet({
   onClose,
   onSubmit,
 }: DistanceLayerFormSheetProps) {
+  const { t } = useTranslation();
   const [distanceMode, setDistanceMode] = useState<'auto' | 'custom'>('auto');
   const [customTiers, setCustomTiers] = useState<DistanceTier[]>(DEFAULT_TIERS);
   const [tierInputs, setTierInputs] = useState<{ distance: string; fee: string }[]>(
@@ -129,7 +131,7 @@ export function DistanceLayerFormSheet({
         if (tier.max_distance <= prevTier.max_distance) {
           errors[index] = {
             ...errors[index],
-            distance: 'Must be greater than previous tier',
+            distance: t('merchant.delivery.distanceForm.mustBeGreater'),
           };
           isValid = false;
         }
@@ -141,7 +143,7 @@ export function DistanceLayerFormSheet({
         if (tier.fee < prevTier.fee) {
           errors[index] = {
             ...errors[index],
-            fee: 'Must be ≥ previous tier',
+            fee: t('merchant.delivery.distanceForm.mustBeGreaterOrEqual'),
           };
           isValid = false;
         }
@@ -151,7 +153,7 @@ export function DistanceLayerFormSheet({
       if (maxDeliveryFee !== undefined && tier.fee > maxDeliveryFee) {
         errors[index] = {
           ...errors[index],
-          fee: `Must not exceed max delivery fee (${maxDeliveryFee} PKR)`,
+          fee: t('merchant.delivery.distanceForm.mustNotExceed', { amount: maxDeliveryFee }),
         };
         isValid = false;
       }
@@ -160,7 +162,7 @@ export function DistanceLayerFormSheet({
       if (tier.max_distance <= 0) {
         errors[index] = {
           ...errors[index],
-          distance: 'Must be greater than 0',
+          distance: t('merchant.delivery.distanceForm.mustBeGreaterThanZero'),
         };
         isValid = false;
       }
@@ -168,7 +170,7 @@ export function DistanceLayerFormSheet({
       if (tier.fee < 0) {
         errors[index] = {
           ...errors[index],
-          fee: 'Must be 0 or greater',
+          fee: t('merchant.delivery.distanceForm.mustBeZeroOrGreater'),
         };
         isValid = false;
       }
@@ -247,9 +249,9 @@ export function DistanceLayerFormSheet({
           </View>
 
           <View className="px-6 pb-3 border-b border-gray-100">
-            <Text className="text-xl font-semibold text-gray-900">Distance Tiering</Text>
+            <Text className="text-xl font-semibold text-gray-900">{t('merchant.delivery.distanceForm.title')}</Text>
             <Text className="text-xs text-gray-500 mt-2">
-              Configure distance-based pricing tiers. Most merchants use auto mode.
+              {t('merchant.delivery.distanceForm.description')}
             </Text>
           </View>
           
@@ -263,26 +265,26 @@ export function DistanceLayerFormSheet({
             <View className="mt-6">
               <View className="flex-row justify-between items-center mb-3">
                 <View className="flex-1">
-                  <Text className="text-sm font-semibold text-gray-700">Distance Pricing Mode</Text>
+                  <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.distanceForm.distancePricingMode')}</Text>
                   <Text className="text-xs text-gray-500 mt-1">
                     {distanceMode === 'auto' 
-                      ? 'Auto mode uses default tiered pricing' 
-                      : 'Custom mode lets you set your own tiers'}
+                      ? t('merchant.delivery.distanceForm.autoModeDesc')
+                      : t('merchant.delivery.distanceForm.customModeDesc')}
                   </Text>
                 </View>
                 <View className="flex-row items-center space-x-2">
-                  <Text className="text-xs text-gray-600">Auto</Text>
+                  <Text className="text-xs text-gray-600">{t('merchant.delivery.distanceForm.auto')}</Text>
                   <Switch 
                     value={distanceMode === 'custom'} 
                     onValueChange={(val) => setDistanceMode(val ? 'custom' : 'auto')}
                   />
-                  <Text className="text-xs text-gray-600">Custom</Text>
+                  <Text className="text-xs text-gray-600">{t('merchant.delivery.distanceForm.custom')}</Text>
                 </View>
               </View>
 
               {distanceMode === 'auto' ? (
                 <View className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-1">
-                  <Text className="text-xs font-semibold text-blue-900 mb-2">Default Distance Tiers</Text>
+                  <Text className="text-xs font-semibold text-blue-900 mb-2">{t('merchant.delivery.distanceForm.defaultTiers')}</Text>
                   {[
                     { max_distance: 200, fee: 20 },
                     { max_distance: 400, fee: 30 },
@@ -299,29 +301,32 @@ export function DistanceLayerFormSheet({
                   ))}
                   <View className="flex-row justify-between pt-1 border-t border-blue-200">
                     <Text className="text-xs text-blue-900">
-                      Beyond {DEFAULT_TIERS[DEFAULT_TIERS.length - 1].max_distance}m
+                      {t('merchant.delivery.distanceForm.beyond', { distance: DEFAULT_TIERS[DEFAULT_TIERS.length - 1].max_distance })}
                     </Text>
                     <Text className="text-xs font-semibold text-blue-900">
-                      Linear scaling: +Rs {watchedValues.beyondTierFeePerUnit ? parseFloat(watchedValues.beyondTierFeePerUnit).toFixed(0) : (defaultLogic?.beyondTierFeePerUnit.toFixed(0) || '10')} per {watchedValues.beyondTierDistanceUnit ? parseFloat(watchedValues.beyondTierDistanceUnit).toFixed(0) : (defaultLogic?.beyondTierDistanceUnit.toFixed(0) || '250')}m
+                      {t('merchant.delivery.distanceForm.linearScaling', {
+                        fee: watchedValues.beyondTierFeePerUnit ? parseFloat(watchedValues.beyondTierFeePerUnit).toFixed(0) : (defaultLogic?.beyondTierFeePerUnit.toFixed(0) || '10'),
+                        unit: watchedValues.beyondTierDistanceUnit ? parseFloat(watchedValues.beyondTierDistanceUnit).toFixed(0) : (defaultLogic?.beyondTierDistanceUnit.toFixed(0) || '250')
+                      })}
                     </Text>
                   </View>
                 </View>
               ) : (
                 <View className="space-y-2">
                   <View className="flex-row justify-between items-center mb-2">
-                    <Text className="text-xs font-semibold text-gray-700">Custom Distance Tiers</Text>
+                    <Text className="text-xs font-semibold text-gray-700">{t('merchant.delivery.distanceForm.customTiers')}</Text>
                     <TouchableOpacity
                       onPress={handleResetToDefaults}
                       className="bg-gray-100 rounded-lg px-3 py-1"
                     >
-                      <Text className="text-xs font-semibold text-gray-700">Reset to Defaults</Text>
+                      <Text className="text-xs font-semibold text-gray-700">{t('merchant.delivery.distanceForm.resetToDefaults')}</Text>
                     </TouchableOpacity>
                   </View>
                   
                   {/* Header Row */}
                   <View className="flex-row items-center px-1 mb-1">
-                    <Text className="flex-1 text-xs font-semibold text-gray-600">Distance (m)</Text>
-                    <Text className="flex-1 text-xs font-semibold text-gray-600 ml-2">Fee (PKR)</Text>
+                    <Text className="flex-1 text-xs font-semibold text-gray-600">{t('merchant.delivery.distanceForm.distance')}</Text>
+                    <Text className="flex-1 text-xs font-semibold text-gray-600 ml-2">{t('merchant.delivery.distanceForm.fee')}</Text>
                     <View style={{ width: 32 }} />
                   </View>
 
@@ -384,13 +389,13 @@ export function DistanceLayerFormSheet({
                     onPress={handleAddTier}
                     className="border border-dashed border-blue-300 rounded-lg py-2 items-center mt-2"
                   >
-                    <Text className="text-sm font-semibold text-blue-600">+ Add Tier</Text>
+                    <Text className="text-sm font-semibold text-blue-600">{t('merchant.delivery.distanceForm.addTier')}</Text>
                   </TouchableOpacity>
 
                   {hasValidationErrors && (
                     <View className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
                       <Text className="text-xs text-red-700">
-                        Please fix validation errors before saving.
+                        {t('merchant.delivery.distanceForm.fixValidationErrors')}
                       </Text>
                     </View>
                   )}
@@ -398,9 +403,11 @@ export function DistanceLayerFormSheet({
                   {customTiers.length > 0 && (
                     <View className="mt-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                       <Text className="text-xs text-gray-600">
-                        Beyond {customTiers[customTiers.length - 1].max_distance}m: Linear scaling will apply at{' '}
-                        {watchedValues.beyondTierFeePerUnit ? parseFloat(watchedValues.beyondTierFeePerUnit).toFixed(0) : (defaultLogic?.beyondTierFeePerUnit.toFixed(0) || '10')} PKR per{' '}
-                        {watchedValues.beyondTierDistanceUnit ? parseFloat(watchedValues.beyondTierDistanceUnit).toFixed(0) : (defaultLogic?.beyondTierDistanceUnit.toFixed(0) || '250')}m
+                        {t('merchant.delivery.distanceForm.beyondLastTier', {
+                          distance: customTiers[customTiers.length - 1].max_distance,
+                          fee: watchedValues.beyondTierFeePerUnit ? parseFloat(watchedValues.beyondTierFeePerUnit).toFixed(0) : (defaultLogic?.beyondTierFeePerUnit.toFixed(0) || '10'),
+                          unit: watchedValues.beyondTierDistanceUnit ? parseFloat(watchedValues.beyondTierDistanceUnit).toFixed(0) : (defaultLogic?.beyondTierDistanceUnit.toFixed(0) || '250')
+                        })}
                       </Text>
                     </View>
                   )}
@@ -410,9 +417,9 @@ export function DistanceLayerFormSheet({
 
             {/* Max Delivery Fee */}
             <View className="mt-5">
-              <Text className="text-sm font-semibold text-gray-700">Maximum Delivery Fee (PKR)</Text>
+              <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.distanceForm.maxDeliveryFee')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Cap on the maximum delivery fee charged. Default: 130 PKR. Maximum: 300 PKR
+                {t('merchant.delivery.distanceForm.maxDeliveryFeeDesc')}
               </Text>
               <Controller
                 control={control}
@@ -428,7 +435,7 @@ export function DistanceLayerFormSheet({
                       }}
                       keyboardType="decimal-pad"
                       className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                      placeholder="130.00"
+                      placeholder={t('merchant.delivery.distanceForm.maxDeliveryFeePlaceholder')}
                     />
                     {fieldState.error ? (
                       <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -440,14 +447,14 @@ export function DistanceLayerFormSheet({
 
             {/* Linear Scaling After Last Tier */}
             <View className="mt-5">
-              <Text className="text-sm font-semibold text-gray-700">Linear Scaling After Last Tier</Text>
+              <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.distanceForm.linearScalingTitle')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                For distances beyond the last tier, apply linear scaling. Default: +Rs 10 per 250m
+                {t('merchant.delivery.distanceForm.linearScalingDesc')}
               </Text>
               
               <View className="flex-row space-x-3 mt-3">
                 <View className="flex-1">
-                  <Text className="text-xs text-gray-600 mb-1">Fee Per Unit (PKR)</Text>
+                  <Text className="text-xs text-gray-600 mb-1">{t('merchant.delivery.distanceForm.feePerUnit')}</Text>
                   <Controller
                     control={control}
                     name="beyondTierFeePerUnit"
@@ -462,7 +469,7 @@ export function DistanceLayerFormSheet({
                           }}
                           keyboardType="decimal-pad"
                           className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                          placeholder="10.00"
+                          placeholder={t('merchant.delivery.distanceForm.feePerUnitPlaceholder')}
                         />
                         {fieldState.error ? (
                           <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -473,7 +480,7 @@ export function DistanceLayerFormSheet({
                 </View>
                 
                 <View className="flex-1">
-                  <Text className="text-xs text-gray-600 mb-1">Distance Unit (meters)</Text>
+                  <Text className="text-xs text-gray-600 mb-1">{t('merchant.delivery.distanceForm.distanceUnit')}</Text>
                   <Controller
                     control={control}
                     name="beyondTierDistanceUnit"
@@ -488,7 +495,7 @@ export function DistanceLayerFormSheet({
                           }}
                           keyboardType="decimal-pad"
                           className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                          placeholder="250"
+                          placeholder={t('merchant.delivery.distanceForm.distanceUnitPlaceholder')}
                         />
                         {fieldState.error ? (
                           <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -501,8 +508,10 @@ export function DistanceLayerFormSheet({
               
               <View className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                 <Text className="text-xs text-blue-900">
-                  Example: If last tier ends at 1000m and distance is 1500m, 
-                  the extra 500m will be charged at {watchedValues.beyondTierFeePerUnit || '10'} PKR per {watchedValues.beyondTierDistanceUnit || '250'}m
+                  {t('merchant.delivery.distanceForm.linearScalingExample', {
+                    fee: watchedValues.beyondTierFeePerUnit || '10',
+                    unit: watchedValues.beyondTierDistanceUnit || '250'
+                  })}
                 </Text>
               </View>
             </View>
@@ -516,7 +525,7 @@ export function DistanceLayerFormSheet({
                 onPress={onClose}
                 disabled={loading}
               >
-                <Text className="text-sm font-semibold text-gray-600">Cancel</Text>
+                <Text className="text-sm font-semibold text-gray-600">{t('merchant.delivery.distanceForm.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
@@ -540,7 +549,7 @@ export function DistanceLayerFormSheet({
                 {loading ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text className="text-sm font-semibold text-white">Save Settings</Text>
+                  <Text className="text-sm font-semibold text-white">{t('merchant.delivery.distanceForm.saveSettings')}</Text>
                 )}
               </TouchableOpacity>
             </View>

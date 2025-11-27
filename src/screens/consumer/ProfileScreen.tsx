@@ -8,10 +8,14 @@ import OrdersIcon from '../../icons/OrdersIcon';
 import AddressIcon from '../../icons/AddressIcon';
 import FavoriteIcon from '../../icons/FavoriteIcon';
 import * as merchantService from '../../services/merchant/merchantService';
+import { useTranslation } from 'react-i18next';
+import LanguageActionSheet from '../../components/LanguageActionSheet';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
+  const { t, i18n } = useTranslation();
+  const [languageSheetVisible, setLanguageSheetVisible] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isConsumerDefault, setIsConsumerDefault] = useState(true);
@@ -42,9 +46,6 @@ export default function ProfileScreen() {
   };
 
   const handleSwitchToMerchant = async () => {
-    console.log('handleSwitchToMerchant called!');
-    Alert.alert('Debug', 'Button pressed! Checking merchant account...');
-    
     if (!user) {
       Alert.alert('Error', 'Please log in first');
       return;
@@ -52,12 +53,9 @@ export default function ProfileScreen() {
 
     setIsSwitchingToMerchant(true);
     try {
-      console.log('Checking merchant account for user:', user.id);
       // Check if merchant account exists
       const { merchant, error } = await merchantService.getMerchantAccount(user.id);
-      
-      console.log('Merchant account result:', { merchant, error });
-      
+
       if (error && error.message) {
         console.error('Error fetching merchant account:', error);
         Alert.alert('Error', error.message);
@@ -67,14 +65,12 @@ export default function ProfileScreen() {
 
       if (merchant) {
         // Merchant account exists, reset stack to merchant experience
-        console.log('Merchant account found, resetting navigation to MerchantDashboard');
         navigation.reset({
           index: 0,
           routes: [{ name: 'MerchantDashboard' }],
         });
       } else {
         // No merchant account, show registration survey
-        console.log('No merchant account found, navigating to registration survey');
         navigation.navigate('MerchantRegistrationSurvey');
       }
     } catch (error: any) {
@@ -135,7 +131,7 @@ export default function ProfileScreen() {
     <View className="flex-1 bg-gray-50">
       {/* Header */}
       <View className="pt-12 pb-4 px-4 bg-white border-b border-gray-200">
-        <Text className="text-2xl font-bold text-gray-900">Profile</Text>
+        <Text className="text-2xl font-bold text-gray-900">{t('profile.title')}</Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
@@ -144,14 +140,14 @@ export default function ProfileScreen() {
           <View className="px-4 mt-6">
             <View className="bg-white rounded-2xl p-6 mb-4">
               <Text className="text-gray-900 text-base text-center mb-4">
-                Please Sign Up / Login to shop online aroundYou
+                {t('profile.notLoggedIn')}
               </Text>
               <TouchableOpacity
                 activeOpacity={0.8}
                 className="w-full bg-blue-600 rounded-xl items-center justify-center py-4"
                 onPress={handleSignInPress}
               >
-                <Text className="text-white text-base font-bold">Sign Up / Login</Text>
+                <Text className="text-white text-base font-bold">{t('profile.signUpLogin')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -160,36 +156,36 @@ export default function ProfileScreen() {
           <>
             {/* User Info */}
             <View className="bg-white px-4 py-5 mt-3">
-              <Text className="text-gray-500 text-xs">Name</Text>
+              <Text className="text-gray-500 text-xs">{t('profile.name')}</Text>
               <Text className="text-gray-900 text-lg font-semibold mt-1">
-                {user.name || 'Not set'}
+                {user.name || t('profile.notSet')}
               </Text>
 
               <View className="h-3" />
 
-              <Text className="text-gray-500 text-xs">Email</Text>
+              <Text className="text-gray-500 text-xs">{t('profile.email')}</Text>
               <Text className="text-gray-900 text-lg font-semibold mt-1">
-                {user.email || 'Not set'}
+                {user.email || t('profile.notSet')}
               </Text>
             </View>
 
             {/* Quick Actions */}
             <View className="px-4 mt-4">
               <View className="flex-row justify-between">
-                <SquareAction 
-                  title="Orders" 
+                <SquareAction
+                  title={t('profile.orders')}
                   icon={<OrdersIcon size={32} color="#3B82F6" />}
-                  onPress={() => {}} 
+                  onPress={() => navigation.navigate('Orders')}
                 />
-                <SquareAction 
-                  title="Favourites" 
+                <SquareAction
+                  title={t('profile.favourites')}
                   icon={<FavoriteIcon size={32} color="#3B82F6" />}
-                  onPress={() => {}} 
+                  onPress={() => { }}
                 />
-                <SquareAction 
-                  title="Addresses" 
+                <SquareAction
+                  title={t('profile.addresses')}
                   icon={<AddressIcon size={32} color="#3B82F6" />}
-                  onPress={() => navigation.navigate('ConsumerAddressManagement')} 
+                  onPress={() => navigation.navigate('ConsumerAddressManagement')}
                 />
               </View>
             </View>
@@ -199,13 +195,20 @@ export default function ProfileScreen() {
         {/* Settings List */}
         <View className="bg-white mt-4">
           <ListItem
-            title="Language"
-            right={<Text className="text-gray-500">English</Text>}
-            onPress={() => {}}
+            title={t('profile.language')}
+            right={<Text className="text-gray-500">{
+              i18n.language === 'ur' ? 'اردو' :
+                i18n.language === 'ur-roman' ? 'Urdu (Roman)' :
+                  'English'
+            }</Text>}
+            onPress={() => {
+              console.log('Language option pressed');
+              setLanguageSheetVisible(true);
+            }}
           />
           <Separator />
           <ListItem
-            title="Push Notifications"
+            title={t('profile.pushNotifications')}
             right={
               <Switch
                 value={pushEnabled}
@@ -216,18 +219,18 @@ export default function ProfileScreen() {
             }
           />
           <Separator />
-          <ListItem title="Terms & Policies" onPress={() => {}} />
+          <ListItem title={t('profile.termsPolicies')} onPress={() => { }} />
           <Separator />
           {user && (
             <>
-              <ListItem 
-                title="Switch to Merchant" 
+              <ListItem
+                title={t('profile.switchToMerchant')}
                 onPress={handleSwitchToMerchant}
                 right={isSwitchingToMerchant ? <ActivityIndicator size="small" color="#2563eb" /> : undefined}
               />
               <Separator />
               <ListItem
-                title="Set this role as default"
+                title={t('profile.setDefaultRole')}
                 right={
                   <Switch
                     value={isConsumerDefault}
@@ -244,9 +247,9 @@ export default function ProfileScreen() {
               <Separator />
             </>
           )}
-          <ListItem title="Suggestion or Complaint" onPress={() => {}} />
+          <ListItem title={t('profile.suggestionComplaint')} onPress={() => { }} />
           <Separator />
-          <ListItem title="FAQs" onPress={() => {}} />
+          <ListItem title={t('profile.faqs')} onPress={() => { }} />
         </View>
 
         {/* Logout Button */}
@@ -261,13 +264,18 @@ export default function ProfileScreen() {
               {isLoggingOut ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
-                <Text className="text-white text-base font-bold">Logout</Text>
+                <Text className="text-white text-base font-bold">{t('profile.logout')}</Text>
               )}
             </TouchableOpacity>
           </View>
         )}
-        <Text className="text-center text-gray-400 text-xs mt-2 px-4">Version 0.1</Text>
+        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 0.1</Text>
       </ScrollView>
+
+      <LanguageActionSheet
+        visible={languageSheetVisible}
+        onClose={() => setLanguageSheetVisible(false)}
+      />
     </View>
   );
 }

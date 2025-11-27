@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,20 +18,25 @@ import { useCart } from '../../context/CartContext';
 import { useUserLocation } from '../../hooks/consumer/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useQuery } from 'react-query';
-import { findShopsByLocation } from '../../services/consumer/shopService';
+import { findShopsByLocation, fetchShopDetails } from '../../services/consumer/shopService';
 import BackIcon from '../../icons/BackIcon';
 import DeleteIcon from '../../icons/DeleteIcon';
 import LinearGradient from 'react-native-linear-gradient';
+import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function CartsManagementScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { carts, deleteShopCart, loading: cartsLoading } = useCart();
   const { coords } = useUserLocation();
   const { selectedAddress } = useLocationSelection();
   const [deletingShopId, setDeletingShopId] = useState<string | null>(null);
+
+  const cartsList = Object.values(carts);
 
   // Get effective coordinates (from selected address or user location)
   const effectiveCoords = selectedAddress?.coords || coords;
@@ -69,6 +74,75 @@ export default function CartsManagementScreen() {
     if (!availableShops) return new Set<string>();
     return new Set(availableShops.map(shop => shop.id));
   }, [availableShops]);
+
+  // Fetch shop details for all carts to check opening status
+  const shopDetailsQueries = useQuery(
+    ['cartShopDetails', cartsList.map(c => c.shopId).join(',')],
+    async () => {
+      const details = await Promise.all(
+        cartsList.map(async (cart) => {
+          try {
+            const result = await fetchShopDetails(cart.shopId);
+            return { shopId: cart.shopId, details: result.data, error: result.error };
+          } catch (error) {
+            return { shopId: cart.shopId, details: null, error };
+          }
+        })
+      );
+      return details.reduce((acc, { shopId, details, error }) => {
+        if (details) acc[shopId] = details;
+        return acc;
+      }, {} as Record<string, any>);
+    },
+    {
+      enabled: cartsList.length > 0,
+    }
+  );
+
+  // Auto-refresh shop details every 30 seconds for real-time status updates
+  useEffect(() => {
+    if (!shopDetailsQueries.data || cartsList.length === 0) return;
+    
+    const interval = setInterval(() => {
+      shopDetailsQueries.refetch();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [shopDetailsQueries.data, cartsList.length, shopDetailsQueries.refetch]);
+
+  // Compute opening status for each shop
+  const shopOpeningStatuses = useMemo(() => {
+    const statuses: Record<string, { isOpen: boolean; reason?: string; holidayDescription?: string }> = {};
+    
+    if (!shopDetailsQueries.data) return statuses;
+
+    cartsList.forEach((cart) => {
+      const shopDetails = shopDetailsQueries.data[cart.shopId];
+      if (shopDetails) {
+        const openingStatus = getCurrentOpeningStatus({
+          opening_hours: shopDetails.opening_hours ?? null,
+          holidays: shopDetails.holidays ?? null,
+          open_status_mode: shopDetails.open_status_mode ?? undefined,
+        });
+        statuses[cart.shopId] = {
+          isOpen: openingStatus.isOpen,
+          reason: openingStatus.reason,
+          holidayDescription: openingStatus.holidayDescription,
+        };
+      } else {
+        // If no shop details, assume closed
+        statuses[cart.shopId] = { isOpen: false };
+      }
+    });
+
+    return statuses;
+  }, [shopDetailsQueries.data, cartsList]);
+
+  // Check if shop is closed
+  const isShopClosed = (shopId: string): boolean => {
+    const status = shopOpeningStatuses[shopId];
+    return status ? !status.isOpen : false;
+  };
 
   // Check if shop is available using server-side validation results
   const isShopAvailable = (shopId: string): boolean => {
@@ -121,6 +195,16 @@ export default function CartsManagementScreen() {
   // Handle shop banner press
   const handleShopPress = (shopId: string, shopName: string) => {
     const available = isShopAvailable(shopId);
+    const closed = isShopClosed(shopId);
+    
+    if (closed) {
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Shop is currently closed.', ToastAndroid.SHORT);
+      } else {
+        Alert.alert('Shop closed', 'This shop is currently closed.');
+      }
+      return;
+    }
     
     if (!available) {
       if (Platform.OS === 'android') {
@@ -152,7 +236,19 @@ export default function CartsManagementScreen() {
     });
   };
 
-  const cartsList = Object.values(carts);
+  // Handle view cart press
+  const handleViewCart = (shopId: string) => {
+    const closed = isShopClosed(shopId);
+    if (closed) {
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Shop is currently closed.', ToastAndroid.SHORT);
+      } else {
+        Alert.alert('Shop closed', 'This shop is currently closed.');
+      }
+      return;
+    }
+    navigation.navigate('ViewCart', { shopId });
+  };
 
   // Show loading only if we're still loading cart data (not delivery areas)
   if (cartsLoading) {
@@ -206,8 +302,10 @@ export default function CartsManagementScreen() {
         <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
           {cartsList.map((cart) => {
             const available = isShopAvailable(cart.shopId);
+            const closed = isShopClosed(cart.shopId);
             const isDeleting = deletingShopId === cart.shopId;
             const isValidating = shopsLoading;
+            const openingStatus = shopOpeningStatuses[cart.shopId];
 
             return (
               <View
@@ -219,14 +317,14 @@ export default function CartsManagementScreen() {
                   shadowOpacity: 0.1,
                   shadowRadius: 8,
                   elevation: 3,
-                  opacity: available ? 1 : 0.6,
+                  opacity: (available && !closed) ? 1 : 0.6,
                 }}
               >
-                {/* Upper Section: Shop Info (clickable if available) */}
+                {/* Upper Section: Shop Info (clickable if available and open) */}
                 <TouchableOpacity
                   onPress={() => handleShopPress(cart.shopId, cart.shopName)}
-                  disabled={!available || isValidating}
-                  activeOpacity={available && !isValidating ? 0.7 : 1}
+                  disabled={!available || closed || isValidating}
+                  activeOpacity={(available && !closed && !isValidating) ? 0.7 : 1}
                   className="flex-row items-center p-4 border-b border-gray-100"
                 >
                   {/* Shop Image */}
@@ -258,6 +356,19 @@ export default function CartsManagementScreen() {
                       <Text className="text-gray-400 text-xs mt-1 font-semibold">
                         Checking availability...
                       </Text>
+                    ) : closed ? (
+                      <View className="flex-row items-center mt-1">
+                        <View className="bg-red-100 px-2 py-0.5 rounded-full mr-2">
+                          <Text className="text-red-700 text-xs font-bold">
+                            {t('shopCard.closed').toUpperCase()}
+                          </Text>
+                        </View>
+                        {openingStatus?.holidayDescription && (
+                          <Text className="text-red-600 text-xs font-medium flex-1" numberOfLines={1}>
+                            {openingStatus.holidayDescription}
+                          </Text>
+                        )}
+                      </View>
                     ) : !available ? (
                       <Text className="text-red-600 text-xs mt-1 font-semibold">
                         Unavailable in your location
@@ -294,39 +405,47 @@ export default function CartsManagementScreen() {
                     <Text className="text-gray-900 text-lg font-bold">
                       Rs {(cart.totalPrice / 100).toFixed(0)}
                     </Text>
-                    {available && !isValidating && (
+                    {(available && !closed && !isValidating) && (
                       <View className="flex-row items-center">
                         <TouchableOpacity
-                          onPress={() => navigation.navigate('ViewCart', { shopId: cart.shopId })}
+                          onPress={() => handleViewCart(cart.shopId)}
                           className="bg-blue-600 px-4 py-2 rounded-full mr-2"
                           activeOpacity={0.8}
                         >
                           <Text className="text-white text-sm font-semibold">View Cart</Text>
                         </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleShopPress(cart.shopId, cart.shopName)}
-                        activeOpacity={0.7}
-                      >
-                        <Text className="text-blue-600 text-sm font-semibold">
+                        <TouchableOpacity
+                          onPress={() => handleShopPress(cart.shopId, cart.shopName)}
+                          activeOpacity={0.7}
+                        >
+                          <Text className="text-blue-600 text-sm font-semibold">
                             Add more →
                           </Text>
                         </TouchableOpacity>
                       </View>
                     )}
-                    {(!available || isValidating) && (
+                    {(closed || !available || isValidating) && (
                       <TouchableOpacity
                         onPress={() => {
-                          if (Platform.OS === 'android') {
-                            ToastAndroid.show('Shop unavailable in your location.', ToastAndroid.SHORT);
-                          } else {
-                            Alert.alert('Shop unavailable', 'Shop unavailable in your location.');
+                          if (closed) {
+                            if (Platform.OS === 'android') {
+                              ToastAndroid.show('Shop is currently closed.', ToastAndroid.SHORT);
+                            } else {
+                              Alert.alert('Shop closed', 'This shop is currently closed.');
+                            }
+                          } else if (!available) {
+                            if (Platform.OS === 'android') {
+                              ToastAndroid.show('Shop unavailable in your location.', ToastAndroid.SHORT);
+                            } else {
+                              Alert.alert('Shop unavailable', 'Shop unavailable in your location.');
+                            }
                           }
                         }}
-                        disabled={!available || isValidating}
-                        className={`px-4 py-2 rounded-full ${!available || isValidating ? 'bg-gray-300' : 'bg-blue-600'}`}
+                        disabled={closed || !available || isValidating}
+                        className={`px-4 py-2 rounded-full bg-gray-300`}
                         activeOpacity={0.8}
                       >
-                        <Text className={`text-sm font-semibold ${!available || isValidating ? 'text-gray-500' : 'text-white'}`}>
+                        <Text className="text-sm font-semibold text-gray-500">
                           View Cart
                         </Text>
                       </TouchableOpacity>

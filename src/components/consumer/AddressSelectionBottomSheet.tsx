@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { RootStackParamList } from '../../navigation/types';
 import * as addressService from '../../services/consumer/addressService';
 import AddressListSkeleton from '../../skeleton/AddressListSkeleton';
+import { useTranslation } from 'react-i18next';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -27,6 +28,7 @@ export default function AddressSelectionBottomSheet({
   onClose,
   onSelectAddress,
 }: AddressSelectionBottomSheetProps) {
+  const { t } = useTranslation();
   const navigation = useNavigation<NavigationProp>();
   const { selectedAddress } = useLocationSelection();
   const { user } = useAuth();
@@ -66,7 +68,7 @@ export default function AddressSelectionBottomSheet({
       latitude: Number(address.latitude),
       longitude: Number(address.longitude),
     };
-    
+
     onSelectAddress({
       label: address.street_address,
       city: address.city,
@@ -101,12 +103,12 @@ export default function AddressSelectionBottomSheet({
               </View>
 
               {/* Title */}
-              <Text className="text-lg font-semibold mb-4">Choose delivery address</Text>
+              <Text className="text-lg font-semibold mb-4">{t('address.chooseDelivery')}</Text>
 
               {/* Current selection card */}
               {selectedAddress && (
                 <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3">
-                  <Text className="text-xs text-blue-600 font-semibold mb-1">CURRENT ADDRESS</Text>
+                  <Text className="text-xs text-blue-600 font-semibold mb-1">{t('address.currentAddress')}</Text>
                   <Text className="text-base font-semibold text-gray-900">{selectedAddress.label}</Text>
                   <Text className="text-sm text-gray-600">{selectedAddress.city}</Text>
                 </View>
@@ -192,7 +194,7 @@ export default function AddressSelectionBottomSheet({
                 onPress={handleAddNewAddress}
               >
                 <Text className="text-xl mr-3">➕</Text>
-                <Text className="text-base font-medium">Add New Address</Text>
+                <Text className="text-base font-medium">{t('address.addNew')}</Text>
               </TouchableOpacity>
             </View>
           </ScrollView>

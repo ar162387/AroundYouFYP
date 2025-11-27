@@ -2,6 +2,7 @@ import { supabase, executeWithRetry, isTimeoutOrConnectionError, resetSupabaseCo
 import type { Shop } from '../supabase';
 import type { PostgrestError } from '@supabase/supabase-js';
 import type { DeliveryLogic } from '../merchant/deliveryLogicService';
+import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
 
 export type ConsumerShop = Shop;
 
@@ -18,6 +19,9 @@ export type ShopDetails = {
   rating: number;
   orders: number;
   deliveryLogic: DeliveryLogic | null;
+  opening_hours?: any; // OpeningHoursConfig
+  holidays?: any; // ShopHoliday[]
+  open_status_mode?: 'auto' | 'manual_open' | 'manual_closed' | null;
 };
 
 export type ShopCategory = {
@@ -83,24 +87,40 @@ export async function findShopsByLocation(
       return { data: [], error: null };
     }
 
-    // Map the result to ConsumerShop format
-    const shops: ConsumerShop[] = data.map((row: any) => ({
-      id: row.id,
-      name: row.name,
-      image_url: row.image_url || '',
-      rating: 0, // N/A for now
-      orders: row.delivered_orders_count !== undefined ? Number(row.delivered_orders_count) : 0,
-      delivery_fee: 0, // Will be calculated based on distance and delivery logic
-      delivery_time: undefined, // N/A for now
-      tags: row.tags || [],
-      address: row.address,
-      latitude: row.latitude,
-      longitude: row.longitude,
-      is_open: row.is_open,
-      created_at: row.created_at,
-      shop_type: row.shop_type || undefined,
-      minimumOrderValue: undefined, // Will be set by calculateShopsDeliveryFees
-    }));
+    // Map the result to ConsumerShop format and compute real-time opening status
+    const shops: ConsumerShop[] = data.map((row: any) => {
+      // Compute real-time opening status if opening hours data is available
+      let computedIsOpen = row.is_open;
+      if (row.opening_hours || row.holidays || row.open_status_mode) {
+        const openingStatus = getCurrentOpeningStatus({
+          opening_hours: row.opening_hours,
+          holidays: row.holidays,
+          open_status_mode: row.open_status_mode,
+        });
+        computedIsOpen = openingStatus.isOpen;
+      }
+
+      return {
+        id: row.id,
+        name: row.name,
+        image_url: row.image_url || '',
+        rating: 0, // N/A for now
+        orders: row.delivered_orders_count !== undefined ? Number(row.delivered_orders_count) : 0,
+        delivery_fee: 0, // Will be calculated based on distance and delivery logic
+        delivery_time: undefined, // N/A for now
+        tags: row.tags || [],
+        address: row.address,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        is_open: computedIsOpen, // Use computed real-time status
+        created_at: row.created_at,
+        shop_type: row.shop_type || undefined,
+        minimumOrderValue: undefined, // Will be set by calculateShopsDeliveryFees
+        opening_hours: row.opening_hours,
+        holidays: row.holidays,
+        open_status_mode: row.open_status_mode,
+      };
+    });
 
     return { data: shops, error: null };
   } catch (error: any) {
@@ -124,10 +144,10 @@ export async function findShopsByLocation(
  */
 export async function fetchShopDetails(shopId: string): Promise<ServiceResult<ShopDetails>> {
   try {
-    // Fetch shop info
+    // Fetch shop info including opening hours fields for real-time status
     const { data: shopData, error: shopError } = await supabase
       .from('shops')
-      .select('id, name, description, image_url, address, latitude, longitude, tags, is_open')
+      .select('id, name, description, image_url, address, latitude, longitude, tags, is_open, opening_hours, holidays, open_status_mode')
       .eq('id', shopId)
       .single();
 
@@ -172,6 +192,13 @@ export async function fetchShopDetails(shopId: string): Promise<ServiceResult<Sh
       };
     }
 
+    // Compute real-time opening status
+    const openingStatus = getCurrentOpeningStatus({
+      opening_hours: shopData.opening_hours as any,
+      holidays: shopData.holidays as any,
+      open_status_mode: shopData.open_status_mode as any,
+    });
+
     const shopDetails: ShopDetails = {
       id: shopData.id,
       name: shopData.name,
@@ -181,10 +208,13 @@ export async function fetchShopDetails(shopId: string): Promise<ServiceResult<Sh
       latitude: shopData.latitude,
       longitude: shopData.longitude,
       tags: shopData.tags || [],
-      is_open: shopData.is_open,
+      is_open: openingStatus.isOpen, // Use computed real-time status
       rating: 0, // TODO: Implement ratings
       orders: 0, // TODO: Implement order count
       deliveryLogic,
+      opening_hours: shopData.opening_hours,
+      holidays: shopData.holidays,
+      open_status_mode: shopData.open_status_mode,
     };
 
     return { data: shopDetails, error: null };

@@ -7,11 +7,12 @@ import type { MerchantShop } from '../../../../services/merchant/shopService';
 
 type SettingsSectionProps = {
   shop: MerchantShop;
+  onOpenOpeningHours: () => void;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-export default function SettingsSection({ shop }: SettingsSectionProps) {
+export default function SettingsSection({ shop, onOpenOpeningHours }: SettingsSectionProps) {
   const navigation = useNavigation<NavigationProp>();
 
   const handleEditGeneralDetails = () => {
@@ -32,7 +33,7 @@ export default function SettingsSection({ shop }: SettingsSectionProps) {
           <Text className="text-base text-gray-700">General details</Text>
           <Text className="text-sm font-semibold text-blue-600">Edit</Text>
         </TouchableOpacity>
-        <TouchableOpacity className="flex-row items-center justify-between" onPress={() => {}}>
+        <TouchableOpacity className="flex-row items-center justify-between" onPress={onOpenOpeningHours}>
           <Text className="text-base text-gray-700">Operating hours</Text>
           <Text className="text-sm font-semibold text-blue-600">Configure</Text>
         </TouchableOpacity>

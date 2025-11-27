@@ -13,14 +13,17 @@ import {
   OrderCancelledIcon,
 } from '../../icons/OrderStatusIcons';
 import DeliveryRunnerIcon from '../../icons/DeliveryRunnerIcon';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ActiveOrderBanner() {
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ur';
   const navigation = useNavigation<Nav>();
   const { data: order, isLoading } = useActiveOrder();
   const timerState = useOrderTimer(order);
-  
+
   // Animated value for pulsing effect
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
 
@@ -78,7 +81,7 @@ export default function ActiveOrderBanner() {
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center mb-1">
-                  <Text className="text-white text-sm font-bold mr-2">{statusDisplay.title}</Text>
+                  <Text className="text-white text-sm font-bold mr-2">{t(`orders.status.${order.status}`)}</Text>
                   {/* Timer removed per request */}
                 </View>
 
@@ -100,7 +103,7 @@ export default function ActiveOrderBanner() {
 
             {/* Arrow */}
             <View className="w-8 h-8 rounded-full bg-white/20 items-center justify-center">
-              <Text className="text-white text-lg">→</Text>
+              <Text className="text-white text-lg">{isRTL ? '←' : '→'}</Text>
             </View>
           </View>
 

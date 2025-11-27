@@ -8,10 +8,12 @@ import * as addressService from '../../services/consumer/addressService';
 import EditIcon from '../../icons/EditIcon';
 import DeleteIcon from '../../icons/DeleteIcon';
 import AddressListSkeleton from '../../skeleton/AddressListSkeleton';
+import { useTranslation } from 'react-i18next';
 
 type ConsumerAddressManagementScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ConsumerAddressManagementScreen() {
+  const { t } = useTranslation();
   const [addresses, setAddresses] = React.useState<addressService.ConsumerAddress[]>([]);
   const [loadingAddresses, setLoadingAddresses] = React.useState(false);
   const { user } = useAuth();
@@ -24,13 +26,13 @@ export default function ConsumerAddressManagementScreen() {
       const { data, error } = await addressService.getUserAddresses();
       if (error) {
         console.log('Error fetching addresses:', error);
-        Alert.alert('Error', error.message || 'Failed to load addresses');
+        Alert.alert(t('profile.error'), error.message || t('address.loadError'));
       } else {
         setAddresses(data || []);
       }
     } catch (err) {
       console.log('Error fetching addresses:', err);
-      Alert.alert('Error', 'Failed to load addresses');
+      Alert.alert(t('profile.error'), t('address.loadError'));
     } finally {
       setLoadingAddresses(false);
     }
@@ -49,27 +51,27 @@ export default function ConsumerAddressManagementScreen() {
 
   const handleDeleteAddress = (address: addressService.ConsumerAddress) => {
     Alert.alert(
-      'Delete Address',
-      `Are you sure you want to delete this address?`,
+      t('address.deleteTitle'),
+      t('address.deleteConfirm'),
       [
         {
-          text: 'Cancel',
+          text: t('address.cancel'),
           style: 'cancel',
         },
         {
-          text: 'Delete',
+          text: t('address.delete'),
           style: 'destructive',
           onPress: async () => {
             try {
               const { error } = await addressService.deleteAddress(address.id);
               if (error) {
-                Alert.alert('Error', error.message || 'Failed to delete address');
+                Alert.alert(t('profile.error'), error.message || t('address.deleteError'));
               } else {
                 // Refresh addresses after deletion
                 fetchAddresses();
               }
             } catch (err) {
-              Alert.alert('Error', 'Failed to delete address');
+              Alert.alert(t('profile.error'), t('address.deleteError'));
             }
           },
         },
@@ -89,18 +91,18 @@ export default function ConsumerAddressManagementScreen() {
           >
             <Text className="text-2xl text-gray-900">←</Text>
           </TouchableOpacity>
-          <Text className="text-2xl font-bold text-gray-900 flex-1">Addresses</Text>
+          <Text className="text-2xl font-bold text-gray-900 flex-1">{t('address.manageAddresses')}</Text>
         </View>
         <View className="flex-1 items-center justify-center px-4">
           <Text className="text-gray-500 text-center mb-4">
-            Please Sign Up / Login to manage your addresses
+            {t('address.loginPrompt')}
           </Text>
           <TouchableOpacity
             activeOpacity={0.8}
             className="bg-blue-600 rounded-xl items-center justify-center py-3 px-6"
             onPress={() => navigation.navigate('Login', { returnTo: 'Home' })}
           >
-            <Text className="text-white text-base font-bold">Sign Up / Login</Text>
+            <Text className="text-white text-base font-bold">{t('address.loginButton')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -118,7 +120,7 @@ export default function ConsumerAddressManagementScreen() {
         >
           <Text className="text-2xl text-gray-900">←</Text>
         </TouchableOpacity>
-        <Text className="text-2xl font-bold text-gray-900 flex-1">Addresses</Text>
+        <Text className="text-2xl font-bold text-gray-900 flex-1">{t('address.manageAddresses')}</Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
@@ -127,8 +129,8 @@ export default function ConsumerAddressManagementScreen() {
         ) : addresses.length === 0 ? (
           <View className="px-4 mt-6">
             <View className="bg-white rounded-2xl p-6 items-center">
-              <Text className="text-gray-500 text-center">No addresses saved yet</Text>
-              <Text className="text-gray-400 text-sm text-center mt-1">Add your first address to get started</Text>
+              <Text className="text-gray-500 text-center">{t('address.noSavedAddresses')}</Text>
+              <Text className="text-gray-400 text-sm text-center mt-1">{t('address.addFirstAddress')}</Text>
             </View>
           </View>
         ) : (
@@ -200,7 +202,7 @@ export default function ConsumerAddressManagementScreen() {
             activeOpacity={0.8}
             className="bg-blue-600 rounded-2xl items-center justify-center py-4"
           >
-            <Text className="text-white text-base font-bold">+ Add New Address</Text>
+            <Text className="text-white text-base font-bold">+ {t('address.addNew')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

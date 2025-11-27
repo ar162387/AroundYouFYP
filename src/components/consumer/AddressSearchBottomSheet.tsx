@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as addressService from '../../services/consumer/addressService';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
+import { useTranslation } from 'react-i18next';
 
 export type SheetMode = 'search' | 'confirm' | 'pinpoint' | 'details';
 
@@ -93,6 +94,7 @@ export default function AddressSearchBottomSheet({
   onPinpointComplete,
   onSearchAgain,
 }: AddressSearchBottomSheetProps) {
+  const { t } = useTranslation();
   return (
     <Animated.View
       className="bg-white rounded-t-3xl shadow-2xl"
@@ -122,13 +124,13 @@ export default function AddressSearchBottomSheet({
       {sheetMode === 'search' ? (
         <View style={{ flex: 1, overflow: 'hidden' }}>
           <View className="items-center mb-3">
-            <Text className="text-gray-900 text-base font-semibold">Enter the Address to Explore Shops AroundYou</Text>
+            <Text className="text-gray-900 text-base font-semibold">{t('address.enterAddress')}</Text>
           </View>
           <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3 mb-2">
             <Text className="text-xl mr-3">🔍</Text>
             <TextInput
               className="flex-1 text-base text-gray-900"
-              placeholder="Search for location..."
+              placeholder={t('address.searchPlaceholder')}
               placeholderTextColor="#9CA3AF"
               value={searchQuery}
               onChangeText={onSearchChange}
@@ -164,9 +166,9 @@ export default function AddressSearchBottomSheet({
                     }}
                     activeOpacity={0.7}
                   >
-                <View className="mr-3 mt-0.5">
-                  <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
-                </View>
+                    <View className="mr-3 mt-0.5">
+                      <LocationMarkerIcon size={20} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
+                    </View>
                     <View className="flex-1">
                       <Text className="text-base font-semibold text-gray-900">
                         {item.name}
@@ -182,20 +184,20 @@ export default function AddressSearchBottomSheet({
 
             {isSearching && (
               <View className="py-4 items-center">
-                <Text className="text-gray-500">Searching...</Text>
+                <Text className="text-gray-500">{t('address.searching')}</Text>
               </View>
             )}
 
             {searchQuery.length >= 2 && searchResults.length === 0 && !isSearching && (
               <View className="py-4 items-center">
-                <Text className="text-gray-500">No results found</Text>
+                <Text className="text-gray-500">{t('address.noResults')}</Text>
               </View>
             )}
 
             {searchQuery.length === 0 && (
               <View className="py-4 items-center">
                 <Text className="text-gray-400 text-sm">
-                  Search for a location to get started
+                  {t('address.searchStart')}
                 </Text>
               </View>
             )}
@@ -230,7 +232,7 @@ export default function AddressSearchBottomSheet({
 
           <View className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3">
             <Text className="text-blue-700 text-sm">
-              Your rider will deliver to the pinned location. You can make changes to your written address on the next page.
+              {t('address.deliveryNote')}
             </Text>
           </View>
 
@@ -241,7 +243,7 @@ export default function AddressSearchBottomSheet({
               onPress={onAddDetails}
               activeOpacity={0.7}
             >
-              <Text className="text-white font-bold text-base">Pinpoint location</Text>
+              <Text className="text-white font-bold text-base">{t('address.pinpointLocation')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -249,8 +251,8 @@ export default function AddressSearchBottomSheet({
         /* STATE 3: PINPOINT (reduced height) - Just pin placement, no form */
         <View style={{ flex: 1 }}>
           <View className="mb-2">
-            <Text className="text-gray-900 text-base font-bold mb-1">Help the Rider Find Your location</Text>
-            <Text className="text-gray-600 text-sm">Place the pin exactly on your building entrance for smooth delivery</Text>
+            <Text className="text-gray-900 text-base font-bold mb-1">{t('address.pinpointHelp')}</Text>
+            <Text className="text-gray-600 text-sm">{t('address.pinpointDesc')}</Text>
           </View>
 
           <View className="mb-0 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
@@ -266,14 +268,14 @@ export default function AddressSearchBottomSheet({
                 onPress={onBackFromPinpoint}
                 activeOpacity={0.7}
               >
-                <Text className="text-blue-600 font-bold text-base">Back</Text>
+                <Text className="text-blue-600 font-bold text-base">{t('address.back')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-1 bg-blue-600 rounded-xl py-3.5 items-center"
                 onPress={onPinpointComplete}
                 activeOpacity={0.7}
               >
-                <Text className="text-white font-bold text-base">Continue</Text>
+                <Text className="text-white font-bold text-base">{t('address.continue')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -281,119 +283,117 @@ export default function AddressSearchBottomSheet({
       ) : (
         /* STATE 4: DETAILS - Address details form with sticky buttons */
         <View style={{ flex: 1 }}>
-            {/* Clickable Address Header - Transitions back to search */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              className="mb-3 bg-gray-50 border border-gray-300 rounded-xl"
-              onPress={onSearchAgain}
-              style={{ paddingHorizontal: 12, paddingVertical: 10 }}
-            >
-              <View className="flex-row items-center justify-between">
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text
-                    className="text-gray-900 text-base font-bold"
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {lastReverse?.streetLine || 'Street address'}
-                  </Text>
-                  <Text className="text-gray-600 text-sm" numberOfLines={1} ellipsizeMode="tail">
-                    {lastReverse?.city || ''}
-                  </Text>
+          {/* Clickable Address Header - Transitions back to search */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            className="mb-3 bg-gray-50 border border-gray-300 rounded-xl"
+            onPress={onSearchAgain}
+            style={{ paddingHorizontal: 12, paddingVertical: 10 }}
+          >
+            <View className="flex-row items-center justify-between">
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text
+                  className="text-gray-900 text-base font-bold"
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                >
+                  {lastReverse?.streetLine || 'Street address'}
+                </Text>
+                <Text className="text-gray-600 text-sm" numberOfLines={1} ellipsizeMode="tail">
+                  {lastReverse?.city || ''}
+                </Text>
+              </View>
+              <Text className="text-gray-500 text-lg" style={{ paddingLeft: 8 }}>✎</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Scrollable content */}
+          <ScrollView
+            style={{ flex: 1 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+            contentContainerStyle={{ paddingBottom: 90 }}
+          >
+            {user && (
+              <>
+                <View className="mb-3">
+                  <Text className="text-gray-700 text-sm font-medium mb-2">{t('address.addDetails')}</Text>
+                  <TextInput
+                    className="bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-base"
+                    placeholder={t('address.detailsPlaceholder')}
+                    value={landmark}
+                    onChangeText={onChangeLandmark}
+                    autoCapitalize="words"
+                  />
                 </View>
-                <Text className="text-gray-500 text-lg" style={{ paddingLeft: 8 }}>✎</Text>
-              </View>
-            </TouchableOpacity>
 
-            {/* Scrollable content */}
-            <ScrollView
-              style={{ flex: 1 }}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              bounces={false}
-              contentContainerStyle={{ paddingBottom: 90 }}
-            >
-              {user && (
-                <>
-                  <View className="mb-3">
-                    <Text className="text-gray-700 text-sm font-medium mb-2">Add Flat / House / Street number or Landmark (optional)</Text>
-                    <TextInput
-                      className="bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 text-base"
-                      placeholder="e.g., Flat 2B, House 45, Near Main Gate"
-                      value={landmark}
-                      onChangeText={onChangeLandmark}
-                      autoCapitalize="words"
-                    />
-                  </View>
-
-                  <View className="mb-0">
-                    <Text className="text-gray-700 text-sm font-medium mb-2">Address Title (optional, unique)</Text>
-                    <View className="flex-row gap-3">
-                      <TouchableOpacity
-                        className={`flex-1 flex-row items-center justify-center py-3 rounded-xl border-2 ${
-                          selectedTitle === 'home'
-                            ? 'bg-blue-50 border-blue-600'
-                            : 'bg-white border-gray-300'
+                <View className="mb-0">
+                  <Text className="text-gray-700 text-sm font-medium mb-2">{t('address.titleLabel')}</Text>
+                  <View className="flex-row gap-3">
+                    <TouchableOpacity
+                      className={`flex-1 flex-row items-center justify-center py-3 rounded-xl border-2 ${selectedTitle === 'home'
+                        ? 'bg-blue-50 border-blue-600'
+                        : 'bg-white border-gray-300'
                         }`}
-                        onPress={() => onToggleTitle('home')}
-                        activeOpacity={0.7}
-                      >
-                        <Text className="text-xl mr-2">🏠</Text>
-                        <Text className={`font-semibold ${selectedTitle === 'home' ? 'text-blue-600' : 'text-gray-700'}`}>
-                          Home
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        className={`flex-1 flex-row items-center justify-center py-3 rounded-xl border-2 ${
-                          selectedTitle === 'office'
-                            ? 'bg-blue-50 border-blue-600'
-                            : 'bg-white border-gray-300'
+                      onPress={() => onToggleTitle('home')}
+                      activeOpacity={0.7}
+                    >
+                      <Text className="text-xl mr-2">🏠</Text>
+                      <Text className={`font-semibold ${selectedTitle === 'home' ? 'text-blue-600' : 'text-gray-700'}`}>
+                        {t('address.home')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className={`flex-1 flex-row items-center justify-center py-3 rounded-xl border-2 ${selectedTitle === 'office'
+                        ? 'bg-blue-50 border-blue-600'
+                        : 'bg-white border-gray-300'
                         }`}
-                        onPress={() => onToggleTitle('office')}
-                        activeOpacity={0.7}
-                      >
-                        <Text className="text-xl mr-2">🏢</Text>
-                        <Text className={`font-semibold ${selectedTitle === 'office' ? 'text-blue-600' : 'text-gray-700'}`}>
-                          Office
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
+                      onPress={() => onToggleTitle('office')}
+                      activeOpacity={0.7}
+                    >
+                      <Text className="text-xl mr-2">🏢</Text>
+                      <Text className={`font-semibold ${selectedTitle === 'office' ? 'text-blue-600' : 'text-gray-700'}`}>
+                        {t('address.office')}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                </>
-              )}
-            </ScrollView>
+                </View>
+              </>
+            )}
+          </ScrollView>
 
-            {/* Sticky buttons at bottom */}
-            <View
-              style={{
-                position: 'absolute',
-                bottom: Platform.OS === 'ios' ? 24 : 16,
-                left: 16,
-                right: 16,
-                backgroundColor: 'white',
-                paddingTop: 8,
-              }}
-            >
-              <View className="flex-row gap-3">
-                <TouchableOpacity
-                  className="flex-1 bg-white border-2 border-blue-600 rounded-xl py-3.5 items-center"
-                  onPress={onBackFromDetails}
-                  activeOpacity={0.7}
-                  disabled={isSaving}
-                >
-                  <Text className="text-blue-600 font-bold text-base">Back</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  className={`flex-1 bg-blue-600 rounded-xl py-3.5 items-center ${isSaving ? 'opacity-60' : ''}`}
-                  onPress={onConfirm}
-                  activeOpacity={0.7}
-                  disabled={isSaving}
-                >
-                  <Text className="text-white font-bold text-base">{isSaving ? 'Saving...' : 'Save and Continue'}</Text>
-                </TouchableOpacity>
-              </View>
+          {/* Sticky buttons at bottom */}
+          <View
+            style={{
+              position: 'absolute',
+              bottom: Platform.OS === 'ios' ? 24 : 16,
+              left: 16,
+              right: 16,
+              backgroundColor: 'white',
+              paddingTop: 8,
+            }}
+          >
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                className="flex-1 bg-white border-2 border-blue-600 rounded-xl py-3.5 items-center"
+                onPress={onBackFromDetails}
+                activeOpacity={0.7}
+                disabled={isSaving}
+              >
+                <Text className="text-blue-600 font-bold text-base">{t('address.back')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                className={`flex-1 bg-blue-600 rounded-xl py-3.5 items-center ${isSaving ? 'opacity-60' : ''}`}
+                onPress={onConfirm}
+                activeOpacity={0.7}
+                disabled={isSaving}
+              >
+                <Text className="text-white font-bold text-base">{isSaving ? t('address.saving') : t('address.saveAndContinue')}</Text>
+              </TouchableOpacity>
             </View>
           </View>
+        </View>
       )}
     </Animated.View>
   );

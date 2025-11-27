@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 import type { RootStackParamList } from '../../../../navigation/types';
@@ -25,6 +26,7 @@ type DeliverySectionProps = {
 };
 
 export default function DeliverySection({ shop }: DeliverySectionProps) {
+  const { t } = useTranslation();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: areas, isLoading } = useDeliveryAreas(shop.id);
   const { data: runners, isLoading: isLoadingRunners } = useDeliveryRunners(shop.id);
@@ -44,18 +46,18 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
   const areaSummary = useMemo(() => {
     if (!areas || areas.length === 0) {
       return {
-        title: 'No zones set',
+        title: t('merchant.delivery.areas.noZonesSet'),
         badgeBg: 'bg-blue-50',
         badgeText: 'text-blue-600',
       };
     }
 
     return {
-      title: `${areas.length} ${areas.length === 1 ? 'zone' : 'zones'}`,
+      title: `${areas.length} ${areas.length === 1 ? t('merchant.delivery.areas.zone') : t('merchant.delivery.areas.zones')}`,
       badgeBg: 'bg-emerald-50',
       badgeText: 'text-emerald-600',
     };
-  }, [areas]);
+  }, [areas, t]);
 
   const handleAddRunner = () => {
     setFormMode('create');
@@ -71,12 +73,12 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
 
   const handleDeleteRunner = (runner: DeliveryRunner) => {
     Alert.alert(
-      'Delete Runner',
-      `Are you sure you want to delete ${runner.name}?`,
+      t('merchant.delivery.runners.deleteTitle'),
+      t('merchant.delivery.runners.deleteConfirm', { name: runner.name }),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('merchant.delivery.runners.keepIt'), style: 'cancel' },
         {
-          text: 'Delete',
+          text: t('merchant.delivery.runners.remove'),
           style: 'destructive',
           onPress: () => {
             deleteMutation.mutate(runner.id);
@@ -177,9 +179,9 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
       <View className="bg-white border border-gray-100 rounded-3xl p-4 shadow-sm">
         <View className="flex-row items-start justify-between mb-3">
           <View className="flex-1 mr-3">
-            <Text className="text-base font-semibold text-gray-900">Delivery Areas</Text>
+            <Text className="text-base font-semibold text-gray-900">{t('merchant.delivery.areas.title')}</Text>
             <Text className="text-xs text-gray-500 mt-1">
-              Draw zones on the map to define where you deliver. Customers only see your shop if their location is within these zones.
+              {t('merchant.delivery.areas.description')}
             </Text>
           </View>
           <TouchableOpacity
@@ -187,13 +189,13 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
             onPress={() => navigation.navigate('ManageDeliveryAreas', { shop })}
             accessibilityRole="button"
           >
-            <Text className="text-sm font-semibold text-white">Manage</Text>
+            <Text className="text-sm font-semibold text-white">{t('merchant.delivery.areas.manage')}</Text>
           </TouchableOpacity>
         </View>
         {isLoading ? (
           <View className="flex-row items-center">
             <ActivityIndicator size="small" color="#2563eb" />
-            <Text className="ml-2 text-xs text-gray-500">Loading zones...</Text>
+            <Text className="ml-2 text-xs text-gray-500">{t('merchant.delivery.areas.loadingZones')}</Text>
           </View>
         ) : (
           <View className={`inline-flex self-start rounded-full px-3 py-1 ${areaSummary.badgeBg}`}>
@@ -207,9 +209,9 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
         <View className="mt-6 pt-6 border-t border-gray-100">
           <View className="flex-row items-start justify-between mb-3">
             <View className="flex-1 mr-3">
-              <Text className="text-base font-semibold text-gray-900">Delivery Runners</Text>
+              <Text className="text-base font-semibold text-gray-900">{t('merchant.delivery.runners.title')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Manage delivery runners who handle orders for this shop.
+                {t('merchant.delivery.runners.description')}
               </Text>
             </View>
             <TouchableOpacity
@@ -217,14 +219,14 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
               onPress={handleAddRunner}
               accessibilityRole="button"
             >
-              <Text className="text-sm font-semibold text-white">Add</Text>
+              <Text className="text-sm font-semibold text-white">{t('merchant.delivery.runners.add')}</Text>
             </TouchableOpacity>
           </View>
 
           {isLoadingRunners ? (
             <View className="flex-row items-center">
               <ActivityIndicator size="small" color="#2563eb" />
-              <Text className="ml-2 text-xs text-gray-500">Loading runners...</Text>
+              <Text className="ml-2 text-xs text-gray-500">{t('merchant.delivery.runners.loadingRunners')}</Text>
             </View>
           ) : runners && runners.length > 0 ? (
             <View className="space-y-2">
@@ -259,7 +261,7 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
           ) : (
             <View className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
               <Text className="text-xs text-blue-600">
-                No delivery runners added yet. Click "Add" to add your first runner.
+                {t('merchant.delivery.runners.noRunners')}
               </Text>
             </View>
           )}
@@ -269,9 +271,9 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
         <View className="mt-6 pt-6 border-t border-gray-100">
           <View className="flex-row items-start justify-between mb-3">
             <View className="flex-1 mr-3">
-              <Text className="text-base font-semibold text-gray-900">Delivery Logic</Text>
+              <Text className="text-base font-semibold text-gray-900">{t('merchant.delivery.logic.title')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Configure order value thresholds, surcharges, and delivery rules.
+                {t('merchant.delivery.logic.description')}
               </Text>
             </View>
             <TouchableOpacity
@@ -279,63 +281,63 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
               onPress={handleOpenLogicForm}
               accessibilityRole="button"
             >
-              <Text className="text-sm font-semibold text-white">Configure</Text>
+              <Text className="text-sm font-semibold text-white">{t('merchant.delivery.logic.configure')}</Text>
             </TouchableOpacity>
           </View>
 
           {isLoadingLogic ? (
             <View className="flex-row items-center">
               <ActivityIndicator size="small" color="#2563eb" />
-              <Text className="ml-2 text-xs text-gray-500">Loading settings...</Text>
+              <Text className="ml-2 text-xs text-gray-500">{t('merchant.delivery.logic.loadingSettings')}</Text>
             </View>
           ) : (
             <View className="space-y-3">
               <View className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                 <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-xs text-gray-600">Minimum Order Value</Text>
+                  <Text className="text-xs text-gray-600">{t('merchant.delivery.logic.minimumOrderValue')}</Text>
                   <Text className="text-sm font-semibold text-gray-900">
                     Rs {deliveryLogic?.minimumOrderValue.toFixed(0) || '200'}
                   </Text>
                 </View>
                 <Text className="text-xs text-gray-500">
-                  Orders below this value will have a surcharge applied
+                  {t('merchant.delivery.logic.minimumOrderValueDesc')}
                 </Text>
               </View>
 
               <View className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                 <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-xs text-gray-600">Small Order Surcharge</Text>
+                  <Text className="text-xs text-gray-600">{t('merchant.delivery.logic.smallOrderSurcharge')}</Text>
                   <Text className="text-sm font-semibold text-gray-900">
                     Rs {deliveryLogic?.smallOrderSurcharge.toFixed(0) || '40'}
                   </Text>
                 </View>
                 <Text className="text-xs text-gray-500">
-                  Applied when order value is below minimum
+                  {t('merchant.delivery.logic.smallOrderSurchargeDesc')}
                 </Text>
               </View>
 
               <View className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                 <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-xs text-gray-600">Least Order Value (Hard Floor)</Text>
+                  <Text className="text-xs text-gray-600">{t('merchant.delivery.logic.leastOrderValue')}</Text>
                   <Text className="text-sm font-semibold text-gray-900">
                     Rs {deliveryLogic?.leastOrderValue.toFixed(0) || '100'}
                   </Text>
                 </View>
                 <Text className="text-xs text-gray-500">
-                  Orders below this value will be rejected at checkout
+                  {t('merchant.delivery.logic.leastOrderValueDesc')}
                 </Text>
               </View>
 
               {/* Free Delivery */}
               <View className="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
                 <View className="flex-row items-center mb-2">
-                  <Text className="text-xs font-semibold text-emerald-900">🎉 Free Delivery</Text>
+                  <Text className="text-xs font-semibold text-emerald-900">🎉 {t('merchant.delivery.logic.freeDelivery')}</Text>
                 </View>
                 <Text className="text-xs text-emerald-700 mb-1">
-                  • Order value ≥ Rs {deliveryLogic?.freeDeliveryThreshold.toFixed(0) || '800'}
+                  • {t('merchant.delivery.logic.freeDeliveryThreshold', { amount: deliveryLogic?.freeDeliveryThreshold.toFixed(0) || '800' })}
                 </Text>
                 <Text className="text-xs text-emerald-700">
-                  • Distance ≤ {deliveryLogic?.freeDeliveryRadius.toFixed(0) || '1000'}m
+                  • {t('merchant.delivery.logic.freeDeliveryRadius', { amount: deliveryLogic?.freeDeliveryRadius.toFixed(0) || '1000' })}
                 </Text>
               </View>
             </View>
@@ -346,9 +348,9 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
         <View className="mt-6 pt-6 border-t border-gray-100">
           <View className="flex-row items-start justify-between mb-3">
             <View className="flex-1 mr-3">
-              <Text className="text-base font-semibold text-gray-900">Distance Tiering</Text>
+              <Text className="text-base font-semibold text-gray-900">{t('merchant.delivery.distanceTiering.title')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Auto mode calculates delivery fees based on distance. Most merchants use default settings.
+                {t('merchant.delivery.distanceTiering.description')}
               </Text>
             </View>
             <TouchableOpacity
@@ -356,14 +358,14 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
               onPress={handleOpenDistanceForm}
               accessibilityRole="button"
             >
-              <Text className="text-sm font-semibold text-white">Configure</Text>
+              <Text className="text-sm font-semibold text-white">{t('merchant.delivery.distanceTiering.configure')}</Text>
             </TouchableOpacity>
           </View>
 
           {isLoadingLogic ? (
             <View className="flex-row items-center">
               <ActivityIndicator size="small" color="#2563eb" />
-              <Text className="ml-2 text-xs text-gray-500">Loading settings...</Text>
+              <Text className="ml-2 text-xs text-gray-500">{t('merchant.delivery.distanceTiering.loadingSettings')}</Text>
             </View>
           ) : (
             <View className="space-y-3">
@@ -379,14 +381,14 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
                       ? 'text-orange-600' 
                       : 'text-purple-600'
                   }`}>
-                    {deliveryLogic?.distanceMode === 'custom' ? '⚙️ Custom Mode' : '🤖 Auto Mode'}
+                    {deliveryLogic?.distanceMode === 'custom' ? `⚙️ ${t('merchant.delivery.distanceTiering.customMode')}` : `🤖 ${t('merchant.delivery.distanceTiering.autoMode')}`}
                   </Text>
                 </View>
               </View>
 
               {/* Distance Tiers Preview */}
               <View className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                <Text className="text-xs font-semibold text-gray-700 mb-2">Distance Tiers</Text>
+                <Text className="text-xs font-semibold text-gray-700 mb-2">{t('merchant.delivery.distanceTiering.distanceTiers')}</Text>
                 <View className="space-y-1">
                   {deliveryLogic?.distanceTiers?.slice(0, 3).map((tier: any, index: number) => (
                     <View key={index} className="flex-row justify-between">
@@ -398,7 +400,7 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
                   ))}
                   {deliveryLogic && deliveryLogic.distanceTiers && deliveryLogic.distanceTiers.length > 3 && (
                     <Text className="text-xs text-gray-500 italic">
-                      +{deliveryLogic.distanceTiers.length - 3} more tiers...
+                      {t('merchant.delivery.distanceTiering.moreTiers', { count: deliveryLogic.distanceTiers.length - 3 })}
                     </Text>
                   )}
                 </View>
@@ -407,13 +409,13 @@ export default function DeliverySection({ shop }: DeliverySectionProps) {
               {/* Max Delivery Fee */}
               <View className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                 <View className="flex-row justify-between items-center mb-2">
-                  <Text className="text-xs text-gray-600">Maximum Delivery Fee</Text>
+                  <Text className="text-xs text-gray-600">{t('merchant.delivery.distanceTiering.maxDeliveryFee')}</Text>
                   <Text className="text-sm font-semibold text-gray-900">
                     Rs {deliveryLogic?.maxDeliveryFee.toFixed(0) || '130'}
                   </Text>
                 </View>
                 <Text className="text-xs text-gray-500">
-                  Cap on the maximum delivery fee charged
+                  {t('merchant.delivery.distanceTiering.maxDeliveryFeeDesc')}
                 </Text>
               </View>
             </View>

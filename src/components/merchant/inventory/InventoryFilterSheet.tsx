@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import type { InventoryCategory, InventoryListParams } from '../../../types/inventory';
+import { useTranslation } from 'react-i18next';
 
 type InventoryFilterSheetProps = {
   visible: boolean;
@@ -10,18 +11,6 @@ type InventoryFilterSheetProps = {
   categories: InventoryCategory[];
 };
 
-const statusOptions: Array<{ label: string; value: InventoryListParams['active'] }> = [
-  { label: 'All', value: null },
-  { label: 'Active', value: true },
-  { label: 'Hidden', value: false },
-];
-
-const templateOptions: Array<{ label: string; value: InventoryListParams['templateFilter'] }> = [
-  { label: 'All', value: 'all' },
-  { label: 'Templates', value: 'template' },
-  { label: 'Custom only', value: 'custom' },
-];
-
 export function InventoryFilterSheet({
   visible,
   onClose,
@@ -29,7 +18,20 @@ export function InventoryFilterSheet({
   selectedFilters,
   categories,
 }: InventoryFilterSheetProps) {
+  const { t } = useTranslation();
   const [draftFilters, setDraftFilters] = React.useState<InventoryListParams>(selectedFilters);
+
+  const statusOptions: Array<{ label: string; value: InventoryListParams['active'] }> = useMemo(() => [
+    { label: t('merchant.inventory.filter.all'), value: null },
+    { label: t('merchant.inventory.form.active'), value: true },
+    { label: t('merchant.inventory.form.inactive'), value: false },
+  ], [t]);
+
+  const templateOptions: Array<{ label: string; value: InventoryListParams['templateFilter'] }> = useMemo(() => [
+    { label: t('merchant.inventory.filter.all'), value: 'all' },
+    { label: t('merchant.inventory.filter.template'), value: 'template' },
+    { label: t('merchant.inventory.filter.manual'), value: 'custom' },
+  ], [t]);
 
   React.useEffect(() => {
     if (visible) {
@@ -41,11 +43,11 @@ export function InventoryFilterSheet({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View className="flex-1 bg-white">
         <View className="px-6 pt-6 pb-3 border-b border-gray-100">
-          <Text className="text-xl font-semibold text-gray-900">Filters</Text>
+          <Text className="text-xl font-semibold text-gray-900">{t('merchant.inventory.filter.title')}</Text>
         </View>
         <ScrollView className="flex-1 px-6" contentContainerStyle={{ paddingBottom: 32 }}>
           <View className="mt-6">
-            <Text className="text-sm font-semibold text-gray-700">Status</Text>
+            <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.filter.status')}</Text>
             <View className="flex-row flex-wrap mt-3">
               {statusOptions.map((option) => {
                 const selected = draftFilters.active === option.value;
@@ -65,7 +67,7 @@ export function InventoryFilterSheet({
           </View>
 
           <View className="mt-6">
-            <Text className="text-sm font-semibold text-gray-700">Type</Text>
+            <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.filter.type')}</Text>
             <View className="flex-row flex-wrap mt-3">
               {templateOptions.map((option) => {
                 const selected = draftFilters.templateFilter === option.value;
@@ -85,7 +87,7 @@ export function InventoryFilterSheet({
           </View>
 
           <View className="mt-6">
-            <Text className="text-sm font-semibold text-gray-700">Categories</Text>
+            <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.tabs.categories')}</Text>
             <View className="flex-row flex-wrap mt-3">
               {categories.map((category) => {
                 const selected = draftFilters.categoryIds?.includes(category.id) ?? false;
@@ -119,13 +121,13 @@ export function InventoryFilterSheet({
               setDraftFilters({ active: null, templateFilter: 'all', categoryIds: [] });
             }}
           >
-            <Text className="text-sm font-semibold text-gray-600">Clear</Text>
+            <Text className="text-sm font-semibold text-gray-600">{t('merchant.inventory.filter.reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
             onPress={() => onApply(draftFilters)}
           >
-            <Text className="text-sm font-semibold text-white">Apply</Text>
+            <Text className="text-sm font-semibold text-white">{t('merchant.inventory.filter.apply')}</Text>
           </TouchableOpacity>
         </View>
       </View>

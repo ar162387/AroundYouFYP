@@ -20,11 +20,13 @@ import BackIcon from '../../icons/BackIcon';
 import CartIcon from '../../icons/CartIcon';
 import CategoryItemsSkeleton from '../../skeleton/CategoryItemsSkeleton';
 import LinearGradient from 'react-native-linear-gradient';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'CategoryItems'>;
 
 export default function CategoryItemsScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { shopId, categoryId, categoryName } = route.params;
@@ -89,8 +91,8 @@ export default function CategoryItemsScreen() {
       <LinearGradient colors={['#1e3a8a', '#2563eb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
         <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
           <View className="flex-row items-center px-4 py-4">
-            <TouchableOpacity 
-              onPress={() => navigation.goBack()} 
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
               className="mr-3 w-8 h-8 items-center justify-center"
             >
               <BackIcon size={20} color="#FFFFFF" />
@@ -98,7 +100,7 @@ export default function CategoryItemsScreen() {
             <Text className="text-xl font-bold text-white flex-1" numberOfLines={1}>
               {categoryName}
             </Text>
-            <Text className="text-white text-sm">{activeItems?.length || 0} items</Text>
+            <Text className="text-white text-sm">{activeItems?.length || 0} {t('shop.items')}</Text>
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -111,7 +113,7 @@ export default function CategoryItemsScreen() {
           data={activeItems}
           keyExtractor={(item) => item.id}
           numColumns={2}
-          contentContainerStyle={{ 
+          contentContainerStyle={{
             padding: 12,
             paddingBottom: currentCart && currentCart.totalItems > 0 ? 140 : 40,
           }}
@@ -288,8 +290,8 @@ export default function CategoryItemsScreen() {
           ListEmptyComponent={
             <View className="py-12 items-center w-full">
               <Text className="text-5xl mb-3">📦</Text>
-              <Text className="text-gray-900 font-semibold text-lg mb-2">No items available</Text>
-              <Text className="text-gray-500 text-center">This category doesn't have any items yet</Text>
+              <Text className="text-gray-900 font-semibold text-lg mb-2">{t('shop.noItemsAvailable')}</Text>
+              <Text className="text-gray-500 text-center">{t('shop.categoryEmpty')}</Text>
             </View>
           }
         />
@@ -327,9 +329,9 @@ export default function CategoryItemsScreen() {
                 <CartIcon size={22} color="#FFFFFF" />
               </View>
               <View className="flex-1">
-                <Text className="text-white font-bold text-lg">View your cart</Text>
+                <Text className="text-white font-bold text-lg">{t('shop.viewCart')}</Text>
                 <Text className="text-white/95 text-sm">
-                  {currentCart.totalItems} {currentCart.totalItems === 1 ? 'item' : 'items'}
+                  {currentCart.totalItems} {currentCart.totalItems === 1 ? t('shop.item') : t('shop.items')}
                 </Text>
               </View>
             </View>

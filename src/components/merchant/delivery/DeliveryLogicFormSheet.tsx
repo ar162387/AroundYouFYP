@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, View, Text, TouchableOpacity, TextInput, Scro
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useTranslation } from 'react-i18next';
 import type { DeliveryLogic } from '../../../services/merchant/deliveryLogicService';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -69,6 +70,7 @@ export function DeliveryLogicFormSheet({
   onClose,
   onSubmit,
 }: DeliveryLogicFormSheetProps) {
+  const { t } = useTranslation();
   const defaultValues = useMemo(() => {
     if (defaultLogic) {
       return {
@@ -113,9 +115,9 @@ export function DeliveryLogicFormSheet({
           </View>
 
           <View className="px-6 pb-3 border-b border-gray-100">
-            <Text className="text-xl font-semibold text-gray-900">Delivery Logic Settings</Text>
+            <Text className="text-xl font-semibold text-gray-900">{t('merchant.delivery.logicForm.title')}</Text>
             <Text className="text-xs text-gray-500 mt-2">
-              Configure order value thresholds and surcharges for your shop.
+              {t('merchant.delivery.logicForm.description')}
             </Text>
           </View>
           <ScrollView
@@ -126,9 +128,9 @@ export function DeliveryLogicFormSheet({
           >
             {/* Minimum Order Value */}
             <View className="mt-6">
-              <Text className="text-sm font-semibold text-gray-700">Minimum Order Value (PKR)</Text>
+              <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.logicForm.minimumOrderValue')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Orders below this value will have a surcharge applied. Default: 200 PKR
+                {t('merchant.delivery.logicForm.minimumOrderValueDesc')}
               </Text>
               <Controller
                 control={control}
@@ -144,7 +146,7 @@ export function DeliveryLogicFormSheet({
                       }}
                       keyboardType="decimal-pad"
                       className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                      placeholder="200.00"
+                      placeholder={t('merchant.delivery.logicForm.minimumOrderValuePlaceholder')}
                     />
                     {fieldState.error ? (
                       <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -156,9 +158,9 @@ export function DeliveryLogicFormSheet({
 
             {/* Small Order Surcharge */}
             <View className="mt-5">
-              <Text className="text-sm font-semibold text-gray-700">Small Order Surcharge (PKR)</Text>
+              <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.logicForm.smallOrderSurcharge')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Additional fee for orders below the minimum value. Default: 40 PKR
+                {t('merchant.delivery.logicForm.smallOrderSurchargeDesc')}
               </Text>
               <Controller
                 control={control}
@@ -174,7 +176,7 @@ export function DeliveryLogicFormSheet({
                       }}
                       keyboardType="decimal-pad"
                       className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                      placeholder="40.00"
+                      placeholder={t('merchant.delivery.logicForm.smallOrderSurchargePlaceholder')}
                     />
                     {fieldState.error ? (
                       <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -186,9 +188,9 @@ export function DeliveryLogicFormSheet({
 
             {/* Least Order Value */}
             <View className="mt-5">
-              <Text className="text-sm font-semibold text-gray-700">Least Order Value - Hard Floor (PKR)</Text>
+              <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.logicForm.leastOrderValue')}</Text>
               <Text className="text-xs text-gray-500 mt-1">
-                Absolute minimum order value. Orders below this will be rejected at checkout. Default: 100 PKR
+                {t('merchant.delivery.logicForm.leastOrderValueDesc')}
               </Text>
               <Controller
                 control={control}
@@ -204,7 +206,7 @@ export function DeliveryLogicFormSheet({
                       }}
                       keyboardType="decimal-pad"
                       className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                      placeholder="100.00"
+                      placeholder={t('merchant.delivery.logicForm.leastOrderValuePlaceholder')}
                     />
                     {fieldState.error ? (
                       <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -216,16 +218,16 @@ export function DeliveryLogicFormSheet({
 
             {/* Free Delivery Discount Section */}
             <View className="mt-6 pt-6 border-t border-gray-100">
-              <Text className="text-sm font-semibold text-gray-700 mb-2">🎉 Free Delivery Discount</Text>
+              <Text className="text-sm font-semibold text-gray-700 mb-2">🎉 {t('merchant.delivery.logicForm.freeDeliveryTitle')}</Text>
               <Text className="text-xs text-gray-500 mb-4">
-                Offer free delivery when order value and distance meet these criteria.
+                {t('merchant.delivery.logicForm.freeDeliveryDesc')}
               </Text>
 
               {/* Free Delivery Threshold */}
               <View className="mb-4">
-                <Text className="text-sm font-semibold text-gray-700">Order Value Threshold (PKR)</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.logicForm.freeDeliveryThreshold')}</Text>
                 <Text className="text-xs text-gray-500 mt-1">
-                  Minimum order value to qualify for free delivery. Default: 800 PKR
+                  {t('merchant.delivery.logicForm.freeDeliveryThresholdDesc')}
                 </Text>
                 <Controller
                   control={control}
@@ -241,7 +243,7 @@ export function DeliveryLogicFormSheet({
                         }}
                         keyboardType="decimal-pad"
                         className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                        placeholder="800.00"
+                        placeholder={t('merchant.delivery.logicForm.freeDeliveryThresholdPlaceholder')}
                       />
                       {fieldState.error ? (
                         <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -253,9 +255,9 @@ export function DeliveryLogicFormSheet({
 
               {/* Free Delivery Radius */}
               <View>
-                <Text className="text-sm font-semibold text-gray-700">Maximum Distance (meters)</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.delivery.logicForm.freeDeliveryRadius')}</Text>
                 <Text className="text-xs text-gray-500 mt-1">
-                  Maximum delivery distance for free delivery eligibility. Default: 1000m
+                  {t('merchant.delivery.logicForm.freeDeliveryRadiusDesc')}
                 </Text>
                 <Controller
                   control={control}
@@ -271,7 +273,7 @@ export function DeliveryLogicFormSheet({
                         }}
                         keyboardType="number-pad"
                         className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 bg-white"
-                        placeholder="1000"
+                        placeholder={t('merchant.delivery.logicForm.freeDeliveryRadiusPlaceholder')}
                       />
                       {fieldState.error ? (
                         <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -284,20 +286,20 @@ export function DeliveryLogicFormSheet({
 
             {/* Info Box */}
             <View className="mt-6 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
-              <Text className="text-xs font-semibold text-blue-900 mb-2">How it works:</Text>
+              <Text className="text-xs font-semibold text-blue-900 mb-2">{t('merchant.delivery.logicForm.howItWorks')}</Text>
               <Text className="text-xs text-blue-700 mb-1">
-                • Orders ≥ {watchedValues.minimumOrderValue || '200'} PKR: No surcharge
+                • {t('merchant.delivery.logicForm.noSurcharge', { amount: watchedValues.minimumOrderValue || '200' })}
               </Text>
               <Text className="text-xs text-blue-700 mb-1">
-                • Orders &lt; {watchedValues.minimumOrderValue || '200'} PKR: Add {watchedValues.smallOrderSurcharge || '40'} PKR surcharge
+                • {t('merchant.delivery.logicForm.addSurcharge', { amount: watchedValues.minimumOrderValue || '200', surcharge: watchedValues.smallOrderSurcharge || '40' })}
               </Text>
               <Text className="text-xs text-blue-700 mb-1">
-                • Orders &lt; {watchedValues.leastOrderValue || '100'} PKR: Rejected at checkout
+                • {t('merchant.delivery.logicForm.rejected', { amount: watchedValues.leastOrderValue || '100' })}
               </Text>
               <View className="mt-2 pt-2 border-t border-blue-200">
-                <Text className="text-xs font-semibold text-emerald-700 mb-1">Free Delivery:</Text>
+                <Text className="text-xs font-semibold text-emerald-700 mb-1">{t('merchant.delivery.logicForm.freeDeliveryLabel')}</Text>
                 <Text className="text-xs text-emerald-700">
-                  Order value ≥ Rs {watchedValues.freeDeliveryThreshold || '800'} and distance ≤ {watchedValues.freeDeliveryRadius || '1000'}m
+                  {t('merchant.delivery.logicForm.freeDeliveryCondition', { threshold: watchedValues.freeDeliveryThreshold || '800', radius: watchedValues.freeDeliveryRadius || '1000' })}
                 </Text>
               </View>
             </View>
@@ -310,7 +312,7 @@ export function DeliveryLogicFormSheet({
                 onPress={onClose}
                 disabled={loading}
               >
-                <Text className="text-sm font-semibold text-gray-600">Cancel</Text>
+                <Text className="text-sm font-semibold text-gray-600">{t('merchant.delivery.logicForm.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
@@ -328,7 +330,7 @@ export function DeliveryLogicFormSheet({
                 {loading ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
-                  <Text className="text-sm font-semibold text-white">Save Settings</Text>
+                  <Text className="text-sm font-semibold text-white">{t('merchant.delivery.logicForm.saveSettings')}</Text>
                 )}
               </TouchableOpacity>
             </View>

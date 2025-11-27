@@ -32,6 +32,9 @@ export type Shop = {
   created_at: string;
   shop_type?: string; // e.g. "Grocery", "Meat", "Vegetable", "Stationery", "Dairy"
   minimumOrderValue?: number; // minimum order value in PKR
+  opening_hours?: any; // OpeningHoursConfig
+  holidays?: any; // ShopHoliday[]
+  open_status_mode?: 'auto' | 'manual_open' | 'manual_closed' | null;
 };
 
 export type Category = {

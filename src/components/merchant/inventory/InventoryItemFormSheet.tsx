@@ -4,30 +4,20 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { InventoryItem, InventoryTemplateItem } from '../../../types/inventory';
+import { useTranslation } from 'react-i18next';
 
 const centsRegex = /^\d+(\.\d{0,2})?$/;
 
-const baseSchema = z.object({
-  templateId: z.string().uuid().optional().nullable(),
-  name: z
-    .string()
-    .min(1, 'Name is required')
-    .max(100, 'Name must be under 100 characters'),
-  description: z.string().optional().nullable(),
-  barcode: z.string().optional().nullable(),
-  sku: z
-    .string()
-    .min(1, 'SKU is required')
-    .max(32, 'SKU must be under 32 characters'),
-  priceDisplay: z
-    .string()
-    .min(1, 'Price is required')
-    .regex(centsRegex, 'Enter a valid price'),
-  isActive: z.boolean(),
-  categoryIds: z.array(z.string()).min(1, 'Select at least one category'),
-});
-
-type InventoryItemFormState = z.infer<typeof baseSchema>;
+type InventoryItemFormState = {
+  templateId?: string | null;
+  name: string;
+  description?: string | null;
+  barcode?: string | null;
+  sku: string;
+  priceDisplay: string;
+  isActive: boolean;
+  categoryIds: string[];
+};
 
 export type InventoryItemFormValues = InventoryItemFormState & { priceCents: number };
 
@@ -61,6 +51,28 @@ export function InventoryItemFormSheet({
   onSubmit,
   onDelete,
 }: InventoryItemFormSheetProps) {
+  const { t } = useTranslation();
+
+  const schema = useMemo(() => z.object({
+    templateId: z.string().uuid().optional().nullable(),
+    name: z
+      .string()
+      .min(1, t('merchant.inventory.form.required'))
+      .max(100, 'Name must be under 100 characters'),
+    description: z.string().optional().nullable(),
+    barcode: z.string().optional().nullable(),
+    sku: z
+      .string()
+      .min(1, t('merchant.inventory.form.required'))
+      .max(32, 'SKU must be under 32 characters'),
+    priceDisplay: z
+      .string()
+      .min(1, t('merchant.inventory.form.required'))
+      .regex(centsRegex, 'Enter a valid price'),
+    isActive: z.boolean(),
+    categoryIds: z.array(z.string()).min(1, t('merchant.inventory.form.required')),
+  }), [t]);
+
   const defaultValues = useMemo(() => {
     if (defaultItem) {
       return {
@@ -99,7 +111,7 @@ export function InventoryItemFormSheet({
   }, [defaultItem, template]);
 
   const { control, handleSubmit, reset, watch, setValue, formState } = useForm<InventoryItemFormState>({
-    resolver: zodResolver(baseSchema),
+    resolver: zodResolver(schema),
     defaultValues,
     mode: 'onChange',
   });
@@ -117,7 +129,7 @@ export function InventoryItemFormSheet({
       <View className="flex-1 bg-white">
         <View className="px-6 pt-6 pb-3 border-b border-gray-100">
           <Text className="text-xl font-semibold text-gray-900">
-            {mode === 'create' ? 'Add Inventory Item' : 'Edit Inventory Item'}
+            {mode === 'create' ? t('merchant.inventory.form.createItem') : t('merchant.inventory.form.editItem')}
           </Text>
           {templateLocked ? (
             <Text className="text-xs text-gray-500 mt-2">
@@ -135,13 +147,13 @@ export function InventoryItemFormSheet({
             name="name"
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-6">
-                <Text className="text-sm font-semibold text-gray-700">Name</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.name')}</Text>
                 <TextInput
                   value={value}
                   onChangeText={onChange}
                   className={`mt-2 border rounded-xl px-4 py-3 text-base ${templateLocked ? 'bg-gray-100 border-gray-100 text-gray-500' : 'border-gray-200 bg-white text-gray-900'}`}
                   editable={!templateLocked}
-                  placeholder="Item name"
+                  placeholder={t('merchant.inventory.form.enterName')}
                 />
                 {fieldState.error ? (
                   <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -155,13 +167,13 @@ export function InventoryItemFormSheet({
             name="barcode"
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">Barcode</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.barcode')}</Text>
                 <TextInput
                   value={value ?? ''}
                   onChangeText={onChange}
                   className={`mt-2 border rounded-xl px-4 py-3 text-base ${templateLocked ? 'bg-gray-100 border-gray-100 text-gray-500' : 'border-gray-200 bg-white text-gray-900'}`}
                   editable={!templateLocked}
-                  placeholder="Scan or enter"
+                  placeholder={t('merchant.inventory.form.enterBarcode')}
                 />
                 {fieldState.error ? (
                   <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -175,12 +187,12 @@ export function InventoryItemFormSheet({
             name="sku"
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">SKU</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.sku')}</Text>
                 <TextInput
                   value={value}
                   onChangeText={onChange}
                   className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
-                  placeholder="Unique identifier"
+                  placeholder={t('merchant.inventory.form.enterSku')}
                 />
                 {fieldState.error ? (
                   <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
@@ -194,7 +206,7 @@ export function InventoryItemFormSheet({
             name="priceDisplay"
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">Price</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.price')}</Text>
                 <TextInput
                   value={value}
                   onChangeText={(text) => {
@@ -218,14 +230,14 @@ export function InventoryItemFormSheet({
             name="description"
             render={({ field: { value, onChange } }) => (
               <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">Description</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.description')}</Text>
                 <TextInput
                   value={value ?? ''}
                   onChangeText={onChange}
                   multiline
                   numberOfLines={3}
                   className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
-                  placeholder="Optional notes for staff"
+                  placeholder={t('merchant.inventory.form.enterDescription')}
                   textAlignVertical="top"
                 />
               </View>
@@ -233,11 +245,11 @@ export function InventoryItemFormSheet({
           />
 
           <View className="mt-5">
-            <Text className="text-sm font-semibold text-gray-700 mb-2">Categories</Text>
+            <Text className="text-sm font-semibold text-gray-700 mb-2">{t('merchant.inventory.tabs.categories')}</Text>
             {categoryOptions.length === 0 ? (
               <View className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
                 <Text className="text-xs text-amber-600">
-                  Create a category first so you can assign this item. Close this form and add a category from the Categories tab.
+                  {t('merchant.inventory.common.createCategoryFirstDesc')}
                 </Text>
               </View>
             ) : (
@@ -280,7 +292,7 @@ export function InventoryItemFormSheet({
             render={({ field: { value, onChange } }) => (
               <View className="mt-6 flex-row justify-between items-center">
                 <View>
-                  <Text className="text-sm font-semibold text-gray-700">Activate item</Text>
+                  <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.active')}</Text>
                   <Text className="text-xs text-gray-500 mt-1">Hidden items remain unavailable to shoppers.</Text>
                 </View>
                 <Switch value={value} onValueChange={onChange} />
@@ -296,7 +308,7 @@ export function InventoryItemFormSheet({
               onPress={onClose}
               disabled={loading || deleteLoading}
             >
-              <Text className="text-sm font-semibold text-gray-600">Cancel</Text>
+              <Text className="text-sm font-semibold text-gray-600">{t('merchant.inventory.common.cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
@@ -312,7 +324,7 @@ export function InventoryItemFormSheet({
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text className="text-sm font-semibold text-white">
-                  {mode === 'create' ? 'Save item' : 'Update item'}
+                  {mode === 'create' ? t('merchant.inventory.common.save') : t('merchant.inventory.common.save')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -331,7 +343,7 @@ export function InventoryItemFormSheet({
               {deleteLoading ? (
                 <ActivityIndicator size="small" color="#DC2626" />
               ) : (
-                <Text className="text-sm font-semibold text-red-600">Delete item</Text>
+                <Text className="text-sm font-semibold text-red-600">{t('merchant.inventory.items.deleteTitle')}</Text>
               )}
             </TouchableOpacity>
           ) : null}

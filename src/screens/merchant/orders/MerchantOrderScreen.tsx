@@ -34,11 +34,14 @@ import {
   getOrderStatusDisplay,
   formatPrice,
 } from '../../../types/orders';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'MerchantOrder'>;
 
 export default function MerchantOrderScreen() {
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ur';
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { shopId, orderId } = route.params;
@@ -96,13 +99,13 @@ export default function MerchantOrderScreen() {
 
       if (result?.success) {
         await refetch();
-        Alert.alert('Success', 'Order confirmed. You can now assign a runner.');
+        Alert.alert(t('merchant.orders.success'), t('merchant.orders.confirmSuccess'));
       } else {
-        Alert.alert('Error', result?.message || 'Failed to confirm order');
+        Alert.alert(t('merchant.orders.error'), result?.message || t('merchant.orders.confirmError'));
       }
     } catch (error: any) {
       console.error('Error confirming order:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm order');
+      Alert.alert(t('merchant.orders.error'), error?.message || t('merchant.orders.confirmError'));
     } finally {
       releaseProcessing();
     }
@@ -113,12 +116,12 @@ export default function MerchantOrderScreen() {
     if (deliveredMutation.isLoading || isProcessingMutationRef.current) return;
 
     Alert.alert(
-      'Mark as Delivered',
-      'Confirm that this order has been delivered?',
+      t('merchant.orders.markDeliveredTitle'),
+      t('merchant.orders.markDeliveredMessage'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('merchant.orders.cancel'), style: 'cancel' },
         {
-          text: 'Yes, Delivered',
+          text: t('merchant.orders.yesDelivered'),
           onPress: async () => {
             if (blockIfProcessing()) return;
             try {
@@ -127,17 +130,17 @@ export default function MerchantOrderScreen() {
               ) => Promise<{ success: boolean; message?: string }>)(order.id);
               if (result?.success) {
                 await refetch();
-                Alert.alert('Success', 'Order marked as delivered');
+                Alert.alert(t('merchant.orders.success'), t('merchant.orders.deliveredSuccess'));
                 navigation.goBack();
               } else {
                 Alert.alert(
-                  'Error',
-                  result?.message || 'Failed to mark as delivered',
+                  t('merchant.orders.error'),
+                  result?.message || t('merchant.orders.deliveredError'),
                 );
               }
             } catch (error: any) {
               console.error('Error marking order as delivered:', error);
-              Alert.alert('Error', error?.message || 'Failed to mark as delivered');
+              Alert.alert(t('merchant.orders.error'), error?.message || t('merchant.orders.deliveredError'));
             } finally {
               releaseProcessing();
             }
@@ -152,6 +155,7 @@ export default function MerchantOrderScreen() {
     releaseProcessing,
     refetch,
     navigation,
+    t,
   ]);
 
   const handleCancel = useCallback(() => {
@@ -170,27 +174,27 @@ export default function MerchantOrderScreen() {
         });
         if (result?.success) {
           await refetch();
-          Alert.alert('Success', 'Order cancelled');
+          Alert.alert(t('merchant.orders.success'), t('merchant.orders.cancelSuccess'));
           navigation.goBack();
         } else {
-          Alert.alert('Error', result?.message || 'Failed to cancel order');
+          Alert.alert(t('merchant.orders.error'), result?.message || t('merchant.orders.cancelError'));
         }
       } catch (error: any) {
         console.error('Error cancelling order:', error);
-        Alert.alert('Error', error?.message || 'Failed to cancel order');
+        Alert.alert(t('merchant.orders.error'), error?.message || t('merchant.orders.cancelError'));
       } finally {
         releaseProcessing();
       }
     };
 
-    Alert.alert('Cancel Order', 'Select cancellation reason', [
-      { text: 'Dismiss', style: 'cancel' },
+    Alert.alert(t('merchant.orders.cancelOrderTitle'), t('merchant.orders.cancelReason'), [
+      { text: t('merchant.orders.dismiss'), style: 'cancel' },
       {
-        text: 'Out of Stock',
+        text: t('merchant.orders.outOfStock'),
         onPress: () => handleCancelWithReason('Items out of stock'),
       },
       {
-        text: 'Other Reason',
+        text: t('merchant.orders.otherReason'),
         onPress: () => handleCancelWithReason('Cancelled by shop'),
       },
     ]);
@@ -231,7 +235,7 @@ export default function MerchantOrderScreen() {
               {confirmMutation.isLoading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text className="text-white font-bold">Confirm Order</Text>
+                <Text className="text-white font-bold">{t('merchant.orders.confirmOrder')}</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -240,9 +244,9 @@ export default function MerchantOrderScreen() {
               className="bg-red-100 rounded-xl py-3 px-4"
               activeOpacity={0.7}
             >
-              <Text className="text-red-600 font-semibold">Cancel</Text>
+              <Text className="text-red-600 font-semibold">{t('merchant.orders.cancel')}</Text>
             </TouchableOpacity>
-          </View>
+          </View >
         );
       case 'confirmed':
         return (
@@ -252,7 +256,7 @@ export default function MerchantOrderScreen() {
               className="flex-1 bg-blue-600 rounded-xl py-3 items-center"
               activeOpacity={0.7}
             >
-              <Text className="text-white font-bold">Assign Runner</Text>
+              <Text className="text-white font-bold">{t('merchant.orders.assignRunner')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleCancel}
@@ -260,7 +264,7 @@ export default function MerchantOrderScreen() {
               className="bg-red-100 rounded-xl py-3 px-4"
               activeOpacity={0.7}
             >
-              <Text className="text-red-600 font-semibold">Cancel</Text>
+              <Text className="text-red-600 font-semibold">{t('merchant.orders.cancel')}</Text>
             </TouchableOpacity>
           </View>
         );
@@ -276,7 +280,7 @@ export default function MerchantOrderScreen() {
               {deliveredMutation.isLoading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text className="text-white font-bold">Mark as Delivered</Text>
+                <Text className="text-white font-bold">{t('merchant.orders.markDelivered')}</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity
@@ -285,15 +289,15 @@ export default function MerchantOrderScreen() {
               className="bg-red-100 rounded-xl py-3 px-4"
               activeOpacity={0.7}
             >
-              <Text className="text-red-600 font-semibold">Cancel</Text>
+              <Text className="text-red-600 font-semibold">{t('merchant.orders.cancel')}</Text>
             </TouchableOpacity>
-          </View>
+          </View >
         );
       default:
         return (
           <View className="py-3">
             <Text className="text-gray-500 text-sm text-center">
-              No further actions available for this order.
+              {t('merchant.orders.noActions')}
             </Text>
           </View>
         );
@@ -317,7 +321,7 @@ export default function MerchantOrderScreen() {
             onPress={() => navigation.goBack()}
             className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
           >
-            <Text className="text-gray-700 text-lg">←</Text>
+            <Text className="text-gray-700 text-lg">{isRTL ? '→' : '←'}</Text>
           </TouchableOpacity>
           <View className="flex-1 ml-3">
             <Text className="text-gray-900 text-lg font-bold">
@@ -350,16 +354,16 @@ export default function MerchantOrderScreen() {
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-5xl mb-4">🧐</Text>
           <Text className="text-gray-900 text-lg font-semibold text-center mb-2">
-            Order not found
+            {t('merchant.orders.notFound')}
           </Text>
           <Text className="text-gray-500 text-center mb-6">
-            The order may have been removed or is no longer available.
+            {t('merchant.orders.notFoundDesc')}
           </Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             className="px-6 py-3 rounded-xl bg-blue-600"
           >
-            <Text className="text-white font-semibold">Back to orders</Text>
+            <Text className="text-white font-semibold">{t('merchant.orders.backToOrders')}</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -373,7 +377,7 @@ export default function MerchantOrderScreen() {
           >
             <View className="bg-white rounded-xl p-4 mb-4">
               <Text className="text-lg font-bold text-gray-900 mb-3">
-                Customer
+                {t('merchant.orders.customer')}
               </Text>
               {order.customer_name && (
                 <Text className="text-gray-900 text-base font-semibold">
@@ -389,7 +393,7 @@ export default function MerchantOrderScreen() {
 
             <View className="bg-white rounded-xl p-4 mb-4">
               <Text className="text-lg font-bold text-gray-900 mb-3">
-                Delivery Address
+                {t('merchant.orders.deliveryAddress')}
               </Text>
               <Text className="text-gray-900 text-base">
                 {order.delivery_address.street_address}
@@ -401,7 +405,7 @@ export default function MerchantOrderScreen() {
               </Text>
               {order.delivery_address.landmark && (
                 <View className="mt-2">
-                  <Text className="text-xs text-gray-500">Landmark</Text>
+                  <Text className="text-xs text-gray-500">{t('merchant.orders.landmark')}</Text>
                   <Text className="text-gray-700 text-sm">
                     {order.delivery_address.landmark}
                   </Text>
@@ -411,14 +415,14 @@ export default function MerchantOrderScreen() {
                 onPress={handleGetDirections}
                 className="mt-3 bg-blue-50 px-4 py-2 rounded-lg self-start"
               >
-                <Text className="text-blue-600 font-semibold">Get Directions</Text>
+                <Text className="text-blue-600 font-semibold">{t('merchant.orders.getDirections')}</Text>
               </TouchableOpacity>
             </View>
 
             {order.special_instructions && (
               <View className="bg-white rounded-xl p-4 mb-4">
                 <Text className="text-lg font-bold text-gray-900 mb-2">
-                  Special Instructions
+                  {t('merchant.orders.specialInstructions')}
                 </Text>
                 <Text className="text-gray-700 text-sm">
                   {order.special_instructions}
@@ -428,16 +432,15 @@ export default function MerchantOrderScreen() {
 
             <View className="bg-white rounded-xl p-4 mb-4">
               <Text className="text-lg font-bold text-gray-900 mb-3">
-                Order Items
+                {t('merchant.orders.orderItems')}
               </Text>
               {order.order_items.map((item, index) => (
                 <View
                   key={item.id}
-                  className={`flex-row justify-between py-2 ${
-                    index < order.order_items.length - 1
-                      ? 'border-b border-gray-100'
-                      : ''
-                  }`}
+                  className={`flex-row justify-between py-2 ${index < order.order_items.length - 1
+                    ? 'border-b border-gray-100'
+                    : ''
+                    }`}
                 >
                   <View className="flex-1">
                     <Text className="text-gray-900 text-base font-medium">
@@ -458,37 +461,37 @@ export default function MerchantOrderScreen() {
 
             <View className="bg-white rounded-xl p-4 mb-4">
               <Text className="text-lg font-bold text-gray-900 mb-3">
-                Payment Summary
+                {t('merchant.orders.paymentSummary')}
               </Text>
               <View className="flex-row justify-between mb-2">
-                <Text className="text-gray-600 text-base">Subtotal</Text>
+                <Text className="text-gray-600 text-base">{t('merchant.orders.subtotal')}</Text>
                 <Text className="text-gray-900 text-base font-semibold">
                   {formatPrice(order.subtotal_cents)}
                 </Text>
               </View>
               {order.surcharge_cents > 0 && (
                 <View className="flex-row justify-between mb-2">
-                  <Text className="text-gray-600 text-base">Surcharge</Text>
+                  <Text className="text-gray-600 text-base">{t('merchant.orders.surcharge')}</Text>
                   <Text className="text-gray-900 text-base font-semibold">
                     {formatPrice(order.surcharge_cents)}
                   </Text>
                 </View>
               )}
               <View className="flex-row justify-between mb-2">
-                <Text className="text-gray-600 text-base">Delivery</Text>
+                <Text className="text-gray-600 text-base">{t('merchant.orders.delivery')}</Text>
                 <Text className="text-gray-900 text-base font-semibold">
                   {formatPrice(order.delivery_fee_cents)}
                 </Text>
               </View>
               <View className="flex-row justify-between mt-3 pt-3 border-t border-gray-200">
-                <Text className="text-gray-900 text-lg font-bold">Total</Text>
+                <Text className="text-gray-900 text-lg font-bold">{t('merchant.orders.total')}</Text>
                 <Text className="text-gray-900 text-lg font-bold">
                   {formatPrice(order.total_cents)}
                 </Text>
               </View>
               <View className="mt-3 pt-3 border-t border-gray-200">
                 <View className="flex-row justify-between">
-                  <Text className="text-gray-600 text-base">Payment</Text>
+                  <Text className="text-gray-600 text-base">{t('merchant.orders.payment')}</Text>
                   <Text className="text-gray-900 text-base font-semibold capitalize">
                     {order.payment_method}
                   </Text>
@@ -499,7 +502,7 @@ export default function MerchantOrderScreen() {
             {order.delivery_runner && (
               <View className="bg-white rounded-xl p-4 mb-4">
                 <Text className="text-lg font-bold text-gray-900 mb-3">
-                  Delivery Runner
+                  {t('merchant.orders.deliveryRunner')}
                 </Text>
                 <Text className="text-gray-900 text-base font-semibold">
                   {order.delivery_runner.name}
@@ -541,18 +544,18 @@ export default function MerchantOrderScreen() {
               });
               if (result?.success) {
                 await refetch();
-                Alert.alert('Success', 'Runner assigned and order dispatched');
+                Alert.alert(t('merchant.orders.success'), t('merchant.orders.assignSuccess'));
                 setIsRunnerModalVisible(false);
                 navigation.goBack();
               } else {
                 Alert.alert(
-                  'Error',
-                  result?.message || 'Failed to assign runner',
+                  t('merchant.orders.error'),
+                  result?.message || t('merchant.orders.assignError'),
                 );
               }
             } catch (error: any) {
               console.error('Error assigning runner:', error);
-              Alert.alert('Error', error?.message || 'Failed to assign runner');
+              Alert.alert(t('merchant.orders.error'), error?.message || t('merchant.orders.assignError'));
             } finally {
               releaseProcessing();
             }
@@ -579,6 +582,7 @@ function RunnerSelectionModal({
   onSelect,
   isAssigning,
 }: RunnerSelectionModalProps) {
+  const { t } = useTranslation();
   const { data: runners, isLoading } = useDeliveryRunners(shopId);
 
   return (
@@ -591,7 +595,7 @@ function RunnerSelectionModal({
       <View className="flex-1 bg-gray-50">
         <View className="bg-white border-b border-gray-200 px-4 py-4">
           <View className="flex-row items-center justify-between">
-            <Text className="text-gray-900 text-lg font-bold">Select Runner</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('merchant.orders.selectRunner')}</Text>
             <TouchableOpacity
               onPress={onClose}
               className="w-8 h-8 rounded-full bg-gray-100 items-center justify-center"
@@ -608,7 +612,7 @@ function RunnerSelectionModal({
         ) : !runners || runners.length === 0 ? (
           <View className="flex-1 items-center justify-center p-8">
             <Text className="text-gray-600 text-center">
-              No delivery runners available. Add runners in shop settings.
+              {t('merchant.orders.noRunners')}
             </Text>
           </View>
         ) : (
@@ -633,13 +637,13 @@ function RunnerSelectionModal({
                       {runner.is_available ? (
                         <View className="px-2 py-1 bg-green-100 rounded-full self-start">
                           <Text className="text-green-700 text-xs font-semibold">
-                            ✓ Free
+                            ✓ {t('merchant.orders.free')}
                           </Text>
                         </View>
                       ) : (
                         <View className="px-2 py-1 bg-orange-100 rounded-full self-start">
                           <Text className="text-orange-700 text-xs font-semibold">
-                            🚚 Delivering: {runner.current_order_number}
+                            🚚 {t('merchant.orders.delivering', { orderNumber: runner.current_order_number })}
                           </Text>
                         </View>
                       )}
@@ -659,7 +663,7 @@ function RunnerSelectionModal({
             <View className="bg-white rounded-xl p-6">
               <ActivityIndicator size="large" color="#3B82F6" />
               <Text className="text-gray-900 mt-4 font-semibold">
-                Assigning runner...
+                {t('merchant.orders.assigning')}
               </Text>
             </View>
           </View>

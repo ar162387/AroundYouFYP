@@ -19,11 +19,15 @@ import { hasReviewedShop } from '../../services/consumer/reviewService';
 import LinearGradient from 'react-native-linear-gradient';
 import ShopTypeImage from '../../icons/shopTypeRemote';
 import type { ShopType } from '../../services/merchant/shopService';
+import AppLogo from '../../icons/AppLogo';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 
 export default function HomeScreen() {
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ur';
   const navigation = useNavigation<Nav>();
   const { addressLine, placeLabel, loading: locationLoading } = useUserLocation();
   const { selectedAddress } = useLocationSelection();
@@ -86,7 +90,7 @@ export default function HomeScreen() {
   const BANNER_MAX_HEIGHT = 170;
   const LOCATION_HEADER_HEIGHT = 80; // Approximate height of location header
   const SEARCH_BAR_HEIGHT = 70; // Approximate height of search bar
-  
+
   const bannerHeight = scrollY.interpolate({
     inputRange: [0, BANNER_MAX_HEIGHT],
     outputRange: [BANNER_MAX_HEIGHT, 0],
@@ -108,7 +112,7 @@ export default function HomeScreen() {
   // Calculate search bar position - starts right after header, moves to top (insets.top)
   const searchBarTop = scrollY.interpolate({
     inputRange: [0, LOCATION_HEADER_HEIGHT],
-    outputRange: [insets.top + 60, insets.top], // Positioned tighter to header
+    outputRange: [insets.top + 75, insets.top], // Increased initial position for more breathing room
     extrapolate: 'clamp',
   });
 
@@ -139,7 +143,7 @@ export default function HomeScreen() {
     const checkForReviewPrompt = async () => {
       // Don't check if review sheet is already visible
       if (reviewSheetVisible) return;
-      
+
       if (!orders || orders.length === 0) return;
 
       // Find the most recent delivered order that we haven't prompted for
@@ -154,17 +158,17 @@ export default function HomeScreen() {
       if (deliveredOrders.length === 0) return;
 
       const mostRecentDeliveredOrder = deliveredOrders[0];
-      
+
       // Check if this order was recently delivered (within last 24 hours)
-      const deliveredAt = mostRecentDeliveredOrder.delivered_at 
+      const deliveredAt = mostRecentDeliveredOrder.delivered_at
         ? new Date(mostRecentDeliveredOrder.delivered_at).getTime()
         : null;
-      
+
       if (!deliveredAt) return;
-      
+
       const now = Date.now();
       const hoursSinceDelivery = (now - deliveredAt) / (1000 * 60 * 60);
-      
+
       // Only show prompt for orders delivered in the last 24 hours
       if (hoursSinceDelivery > 24) {
         // Mark this order as checked so we don't check it again
@@ -174,7 +178,7 @@ export default function HomeScreen() {
 
       // Check if user has already reviewed this shop
       const { data: hasReviewed, error } = await hasReviewedShop(mostRecentDeliveredOrder.shop_id);
-      
+
       if (!error && !hasReviewed) {
         // Mark this order as prompted
         promptedOrderIds.current.add(mostRecentDeliveredOrder.id);
@@ -208,15 +212,15 @@ export default function HomeScreen() {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Fixed Gradient Overlay for Safe Area - always visible at top */}
-      <View 
-        style={{ 
-          position: 'absolute', 
-          top: 0, 
-          left: 0, 
-          right: 0, 
-          height: insets.top, 
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
           zIndex: 30,
-        }} 
+        }}
         pointerEvents="none"
       >
         <LinearGradient
@@ -227,41 +231,40 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* Sticky Search Bar - positioned absolutely, animates from natural position to top */}
+      {/* Sticky Search Bar - Floating Style */}
       <Animated.View
         style={{
           position: 'absolute',
           top: searchBarTop,
-          left: 0,
-          right: 0,
+          left: 16,
+          right: 16,
           zIndex: 20,
-          elevation: 8,
         }}
         pointerEvents="box-none"
       >
-        <LinearGradient
-          colors={["#1e3a8a", "#2563eb"]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          className="px-5 pb-3"
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={async () => {
+            try {
+              ReactNativeHapticFeedback.trigger('selection');
+            } catch { }
+            navigation.navigate('Search');
+          }}
+          className="flex-row items-center bg-white rounded-full px-5 py-3.5 shadow-sm border border-gray-100"
+          style={{
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.08,
+            shadowRadius: 12,
+            elevation: 6,
+          }}
         >
-          <View className="pt-3" />
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={async () => {
-              try {
-                ReactNativeHapticFeedback.trigger('selection');
-              } catch {}
-              navigation.navigate('Search');
-            }}
-            className="flex-row items-center bg-white/95 rounded-full px-4 py-3"
-          >
-            <Text className="text-gray-400 text-lg mr-2">🔍</Text>
-            <Text className="text-gray-700 text-base flex-1">Search product, shop…</Text>
-            <Text className="text-gray-600 text-lg">⚙️</Text>
-          </TouchableOpacity>
-          <View className="pb-2" />
-        </LinearGradient>
+          <Text className="text-blue-600 text-lg mr-3">🔍</Text>
+          <Text className="text-gray-500 text-base flex-1 font-medium">{t('home.searchPlaceholder')}</Text>
+          <View className="bg-gray-50 p-1.5 rounded-full">
+            <Text className="text-gray-600 text-xs">⌘</Text>
+          </View>
+        </TouchableOpacity>
       </Animated.View>
 
       <Animated.ScrollView
@@ -274,8 +277,8 @@ export default function HomeScreen() {
         }}
         contentContainerStyle={{ paddingBottom: TAB_BAR_HEIGHT }}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={handleRefresh}
             progressViewOffset={LOCATION_HEADER_HEIGHT + SEARCH_BAR_HEIGHT + BANNER_MAX_HEIGHT}
           />
@@ -286,6 +289,13 @@ export default function HomeScreen() {
           <Animated.View
             style={{
               opacity: locationHeaderOpacity,
+              transform: [{
+                translateY: scrollY.interpolate({
+                  inputRange: [0, 100],
+                  outputRange: [0, -50],
+                  extrapolate: 'clamp',
+                })
+              }]
             }}
           >
             <Header
@@ -293,18 +303,18 @@ export default function HomeScreen() {
               onLocationPress={() => setSheetVisible(true)}
               locationLabel={
                 selectedAddress?.label ||
-                (locationLoading ? 'Fetching your location…' : (placeLabel || 'Select your address'))
+                (locationLoading ? t('home.loadingLocation') : (placeLabel || t('home.selectAddress')))
               }
             />
           </Animated.View>
         </View>
 
         {/* Spacer for search bar - maintains layout flow */}
-        <View style={{ height: SEARCH_BAR_HEIGHT }}>
+        <View style={{ height: SEARCH_BAR_HEIGHT + 10 }}>
           <LinearGradient
-            colors={["#1e3a8a", "#2563eb"]}
+            colors={["#2563eb", "#1d4ed8"]}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            end={{ x: 1, y: 1 }}
             className="h-full"
           />
         </View>
@@ -312,17 +322,38 @@ export default function HomeScreen() {
         {/* Secondary/Dynamic Header Content (Banner) - gradient and collapses away */}
         <Animated.View style={{ height: bannerHeight, overflow: 'hidden' }}>
           <LinearGradient
-            colors={["#1e3a8a", "#2563eb"]}
+            colors={["#2563eb", "#1d4ed8"]}
             start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
+            end={{ x: 1, y: 1 }}
             className="px-5 h-full justify-start"
           >
-            <Animated.View style={{ opacity: bannerOpacity, paddingTop: 12 }}>
-              <Text className="text-white text-2xl font-semibold">
-                Order anything Online 
-                from the Shops AroundYou
-              </Text>
-              <Text className="text-white/90 mt-2">Fast delivery • Local shops • Best offers</Text>
+            <Animated.View
+              style={{
+                opacity: bannerOpacity,
+                paddingTop: 12,
+                position: 'relative',
+              }}
+            >
+              <View className={`z-10 ${isRTL ? 'pl-2 items-end' : 'pr-2'}`}>
+                <Text className={`text-white text-3xl font-bold leading-tight ${isRTL ? 'text-right' : 'text-left'}`}>
+                  {t('home.banner.line1')}
+                </Text>
+                <Text className={`text-blue-100 text-3xl font-bold leading-tight ${isRTL ? 'text-right' : 'text-left'}`}>
+                  {t('home.banner.line2')}
+                </Text>
+                <Text className={`text-blue-200 mt-3 font-medium text-base ${isRTL ? 'text-right' : 'text-left'}`}>{t('home.banner.subtitle')}</Text>
+              </View>
+              <View
+                className="opacity-90"
+                style={{
+                  position: 'absolute',
+                  [isRTL ? 'left' : 'right']: -10,
+                  bottom: -10,
+                  zIndex: 0,
+                }}
+              >
+                <AppLogo size={140} color="rgba(255,255,255,0.9)" />
+              </View>
             </Animated.View>
           </LinearGradient>
         </Animated.View>
@@ -332,11 +363,11 @@ export default function HomeScreen() {
           <View className="h-12" />
 
           {/* Shop Type Filters - Horizontal Scroll */}
-          <View className="px-4 pt-2 pb-4">
+          <View className="pt-0 pb-6">
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingRight: 16 }}
+              contentContainerStyle={{ paddingHorizontal: 20 }}
               className="flex-row"
             >
               {availableShopTypes.map((type) => {
@@ -346,28 +377,31 @@ export default function HomeScreen() {
                     key={type}
                     onPress={() => handleShopTypeFilter(type)}
                     activeOpacity={0.7}
-                    className="items-center mr-5 px-1"
-                  >
-                    <View
-                      className={`rounded-xl items-center justify-center ${
-                        isSelected ? 'border-2 border-blue-600 bg-blue-50' : 'border border-transparent'
+                    className={`mr-3 px-4 py-2.5 rounded-full border flex-row items-center ${isSelected
+                      ? 'bg-blue-600 border-blue-600'
+                      : 'bg-white border-gray-200'
                       }`}
-                      style={{ width: 76, height: 76 }}
-                    >
+                    style={{
+                      shadowColor: isSelected ? '#2563eb' : '#000',
+                      shadowOffset: { width: 0, height: 2 },
+                      shadowOpacity: isSelected ? 0.3 : 0.05,
+                      shadowRadius: 4,
+                      elevation: isSelected ? 4 : 1,
+                    }}
+                  >
+                    <View className="mr-2">
                       <ShopTypeImage
                         type={type}
-                        size={40}
+                        size={20}
                         borderColor="transparent"
                         backgroundColor="transparent"
                       />
                     </View>
                     <Text
-                      className={`text-sm mt-2 font-bold ${
-                        isSelected ? 'text-blue-600' : 'text-gray-600'
-                      }`}
-                      numberOfLines={1}
+                      className={`text-sm font-bold ${isSelected ? 'text-white' : 'text-gray-700'
+                        }`}
                     >
-                      {AVAILABLE_TYPE_LABEL[type]}
+                      {t(`shopTypes.${type}`)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -376,15 +410,16 @@ export default function HomeScreen() {
           </View>
 
           {/* Nearby Shops */}
-          <View className="px-4 py-5">
-            <View className="flex-row items-center justify-between mb-4">
-              <View>
-                <Text className="text-gray-900 text-2xl font-extrabold">
-                  Nearby Shops
+          <View className="px-5 pb-20">
+            <View className={`flex-row items-center justify-between mb-5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+              <View className={isRTL ? 'items-end' : 'items-start'}>
+                <Text className="text-gray-900 text-xl font-bold">
+                  {t('home.nearbyShops')}
                 </Text>
-                <View className="h-1 bg-blue-600 rounded-full mt-1 w-20" />
+                <Text className="text-gray-500 text-sm mt-0.5">
+                  {t('home.shopsInArea', { count: filteredShops.length })}
+                </Text>
               </View>
-              
             </View>
 
             {/* Loading State */}
@@ -401,9 +436,9 @@ export default function HomeScreen() {
             {!shopsLoading && !shopsError && filteredShops.length === 0 && (
               <View className="py-8 items-center">
                 <Text className="text-gray-600 text-center">
-                  {selectedShopType 
-                    ? `No ${selectedShopType} shops found in your delivery area.`
-                    : 'No shops found in your delivery area. Try selecting a different address.'}
+                  {selectedShopType
+                    ? t('home.noShopsType', { type: t(`shopTypes.${selectedShopType}`) })
+                    : t('home.noShops')}
                 </Text>
               </View>
             )}
@@ -423,7 +458,7 @@ export default function HomeScreen() {
                       deliveryFee: shop.delivery_fee,
                       distanceInMeters: shopWithDistance.distanceInMeters,
                     });
-                    navigation.navigate('Shop', { 
+                    navigation.navigate('Shop', {
                       shopId: shop.id,
                       shop: shop,
                       distanceInMeters: shopWithDistance.distanceInMeters,
@@ -454,7 +489,7 @@ export default function HomeScreen() {
       </View>
 
       <AddressBottomSheet visible={sheetVisible} onClose={() => setSheetVisible(false)} />
-      
+
       {/* Review Bottom Sheet */}
       {reviewSheetShop && (
         <ReviewBottomSheet

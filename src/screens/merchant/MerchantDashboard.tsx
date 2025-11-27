@@ -7,9 +7,13 @@ import OrdersIcon from '../../icons/OrdersIcon';
 import ProfileIcon from '../../icons/ProfileIcon';
 import ShopIcon from '../../icons/ShopIcon';
 
+import { useTranslation } from 'react-i18next';
+
 const Tab = createBottomTabNavigator();
 
 export default function MerchantDashboard() {
+  const { t } = useTranslation();
+
   return (
     <Tab.Navigator
       initialRouteName="MerchantShops"
@@ -25,7 +29,7 @@ export default function MerchantDashboard() {
         name="MerchantShops"
         component={MerchantShopsScreen}
         options={{
-          tabBarLabel: 'Shops',
+          tabBarLabel: t('merchant.dashboard.shops'),
           tabBarIcon: ({ color }) => <ShopIcon size={24} color={color} />,
         }}
       />
@@ -33,7 +37,7 @@ export default function MerchantDashboard() {
         name="MerchantOrders"
         component={MerchantOrdersScreen}
         options={{
-          tabBarLabel: 'Orders',
+          tabBarLabel: t('merchant.dashboard.orders'),
           tabBarIcon: ({ color }) => <OrdersIcon size={24} color={color} />,
         }}
       />
@@ -41,7 +45,7 @@ export default function MerchantDashboard() {
         name="MerchantProfile"
         component={MerchantProfileScreen}
         options={{
-          tabBarLabel: 'Profile',
+          tabBarLabel: t('merchant.dashboard.profile'),
           tabBarIcon: ({ color }) => <ProfileIcon color={color} />,
         }}
       />

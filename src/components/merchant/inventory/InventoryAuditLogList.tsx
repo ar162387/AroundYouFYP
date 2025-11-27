@@ -2,10 +2,12 @@ import React, { useMemo } from 'react';
 import { FlashList } from '@shopify/flash-list';
 import { View, Text } from 'react-native';
 import type { InventoryAuditLogEntry, InventoryItem } from '../../../types/inventory';
+import { useTranslation } from 'react-i18next';
 
 type InventoryAuditLogListProps = {
   entries: InventoryAuditLogEntry[];
   items: InventoryItem[];
+  contentContainerStyle?: any;
 };
 
 function formatActor(entry: InventoryAuditLogEntry) {
@@ -15,16 +17,6 @@ function formatActor(entry: InventoryAuditLogEntry) {
   }
   return actor.name || actor.email || actor.role;
 }
-
-const actionLabels: Record<InventoryAuditLogEntry['actionType'], string> = {
-  CREATE: 'Created',
-  UPDATE: 'Updated',
-  DELETE: 'Deleted',
-  ACTIVATE: 'Marked Active',
-  DEACTIVATE: 'Marked Inactive',
-  IMPORT: 'Imported',
-  TEMPLATE_UPDATE: 'Synced from template',
-};
 
 function formatPrice(value: unknown, currency?: string) {
   if (typeof value !== 'number') {
@@ -41,14 +33,6 @@ function formatPrice(value: unknown, currency?: string) {
   return `$${amount.toFixed(2)}`;
 }
 
-function toSentence(label: string) {
-  return label
-    .replace(/_/g, ' ')
-    .replace(/([A-Z])/g, ' $1')
-    .trim()
-    .replace(/^\w/, (char) => char.toUpperCase());
-}
-
 function formatDiffValue(value: unknown) {
   if (value === null || value === undefined) {
     return '—';
@@ -62,42 +46,9 @@ function formatDiffValue(value: unknown) {
   return String(value);
 }
 
-function buildChangeSummary(entry: InventoryAuditLogEntry, currency?: string) {
-  const changes = entry.changedFields ?? {};
-  const meaningfulChanges = Object.entries(changes).filter(([field]) => field !== 'noop');
-  const summaries: string[] = [];
+export function InventoryAuditLogList({ entries, items, contentContainerStyle }: InventoryAuditLogListProps) {
+  const { t } = useTranslation();
 
-  meaningfulChanges.forEach(([field, diff]) => {
-    if (!diff) {
-      return;
-    }
-    const normalizedField = field.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase());
-    if (normalizedField === 'priceCents') {
-      summaries.push(`Price ${formatPrice(diff.from, currency)} → ${formatPrice(diff.to, currency)}`);
-      return;
-    }
-    if (normalizedField === 'isActive') {
-      const next = diff.to === true ? 'active' : 'inactive';
-      summaries.push(`Status marked ${next}`);
-      return;
-    }
-    const fromValue = formatDiffValue(diff.from);
-    const toValue = formatDiffValue(diff.to);
-    if (fromValue === toValue) {
-      summaries.push(`${toSentence(normalizedField)} updated`);
-    } else {
-      summaries.push(`${toSentence(normalizedField)} ${fromValue} → ${toValue}`);
-    }
-  });
-
-  if (summaries.length === 0) {
-    summaries.push('No item details changed');
-  }
-
-  return summaries;
-}
-
-export function InventoryAuditLogList({ entries, items }: InventoryAuditLogListProps) {
   const itemLookup = useMemo(() => {
     const map = new Map<string, InventoryItem>();
     items.forEach((item) => {
@@ -106,13 +57,56 @@ export function InventoryAuditLogList({ entries, items }: InventoryAuditLogListP
     return map;
   }, [items]);
 
+  const buildChangeSummary = (entry: InventoryAuditLogEntry, currency?: string) => {
+    const changes = entry.changedFields ?? {};
+    const meaningfulChanges = Object.entries(changes).filter(([field]) => field !== 'noop');
+    const summaries: string[] = [];
+
+    meaningfulChanges.forEach(([field, diff]) => {
+      if (!diff) {
+        return;
+      }
+      const normalizedField = field.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase());
+
+      if (normalizedField === 'priceCents') {
+        summaries.push(t('merchant.inventory.audit.summary.priceChange', {
+          from: formatPrice(diff.from, currency),
+          to: formatPrice(diff.to, currency)
+        }));
+        return;
+      }
+
+      if (normalizedField === 'isActive') {
+        const next = diff.to === true ? t('merchant.inventory.form.active').toLowerCase() : t('merchant.inventory.form.inactive').toLowerCase();
+        summaries.push(t('merchant.inventory.audit.summary.statusChange', { status: next }));
+        return;
+      }
+
+      const fromValue = formatDiffValue(diff.from);
+      const toValue = formatDiffValue(diff.to);
+      const fieldName = t(`merchant.inventory.audit.fields.${normalizedField}`, { defaultValue: normalizedField });
+
+      if (fromValue === toValue) {
+        summaries.push(t('merchant.inventory.audit.summary.fieldUpdate', { field: fieldName }));
+      } else {
+        summaries.push(t('merchant.inventory.audit.summary.fieldChange', { field: fieldName, from: fromValue, to: toValue }));
+      }
+    });
+
+    if (summaries.length === 0) {
+      summaries.push(t('merchant.inventory.audit.summary.noChanges'));
+    }
+
+    return summaries;
+  };
+
   return (
     <FlashList
       data={entries}
       keyExtractor={(entry) => entry.id}
       estimatedItemSize={80}
       ItemSeparatorComponent={() => <View className="h-3" />}
-      contentContainerStyle={{ paddingVertical: 4 }}
+      contentContainerStyle={contentContainerStyle ?? { paddingVertical: 4 }}
       renderItem={({ item }) => (
         <View className="bg-white border border-gray-100 rounded-3xl p-4">
           <View className="flex-row justify-between items-start">
@@ -121,7 +115,7 @@ export function InventoryAuditLogList({ entries, items }: InventoryAuditLogListP
                 {itemLookup.get(item.merchantItemId)?.name ?? 'Inventory item'}
               </Text>
               <Text className="text-xs text-gray-500 mt-1">
-                {actionLabels[item.actionType] ?? toSentence(item.actionType.toLowerCase())} · {formatActor(item)}
+                {t(`merchant.inventory.audit.actions.${item.actionType}`, { defaultValue: item.actionType })} · {formatActor(item)}
               </Text>
               <View className="mt-2">
                 {buildChangeSummary(item, itemLookup.get(item.merchantItemId)?.currency).map((summary, index) => (

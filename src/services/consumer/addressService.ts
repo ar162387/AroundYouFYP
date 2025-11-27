@@ -35,7 +35,7 @@ export type UpdateAddressInput = Partial<CreateAddressInput>;
  */
 export async function getUserAddresses(): Promise<{ data: ConsumerAddress[] | null; error: Error | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } =  await supabase
       .from('consumer_addresses')
       .select('*')
       .order('created_at', { ascending: false });

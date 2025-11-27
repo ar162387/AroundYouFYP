@@ -3,6 +3,7 @@ import { Modal, View, Text, TextInput, TouchableOpacity, Alert } from 'react-nat
 import { FlashList } from '@shopify/flash-list';
 import type { InventoryTemplateCategory } from '../../../types/inventory';
 import InventoryTemplateCategorySkeleton from '../../../skeleton/InventoryTemplateCategorySkeleton';
+import { useTranslation } from 'react-i18next';
 
 type InventoryCategoryTemplatePickerSheetProps = {
   visible: boolean;
@@ -21,6 +22,7 @@ export function InventoryCategoryTemplatePickerSheet({
   existingCategoryTemplateIds,
   loading = false,
 }: InventoryCategoryTemplatePickerSheetProps) {
+  const { t } = useTranslation();
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -60,7 +62,7 @@ export function InventoryCategoryTemplatePickerSheet({
         className="bg-white border border-gray-100 rounded-3xl p-4"
         onPress={() => {
           if (alreadyAdded) {
-            Alert.alert('Already Added', 'This category is already available in your shop.');
+            Alert.alert(t('merchant.inventory.common.alreadyAdded'), t('merchant.inventory.common.alreadyAddedDesc'));
             return;
           }
           onSelect(item);
@@ -73,7 +75,7 @@ export function InventoryCategoryTemplatePickerSheet({
           </View>
           {alreadyAdded ? (
             <View className="bg-green-50 px-2 py-1 rounded-lg">
-              <Text className="text-[10px] font-semibold text-green-600">Already Added</Text>
+              <Text className="text-[10px] font-semibold text-green-600">{t('merchant.inventory.common.alreadyAdded')}</Text>
             </View>
           ) : null}
         </View>
@@ -85,16 +87,16 @@ export function InventoryCategoryTemplatePickerSheet({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View className="flex-1 bg-white">
         <View className="px-6 pt-6 pb-3 border-b border-gray-100">
-          <Text className="text-xl font-semibold text-gray-900">Choose Category Template</Text>
+          <Text className="text-xl font-semibold text-gray-900">{t('merchant.inventory.templates.categoryPickerTitle')}</Text>
           <Text className="text-xs text-gray-500 mt-2">
-            Browse built-in categories and add them to your shop with a tap.
+            {t('merchant.inventory.templates.categoryPickerDesc')}
           </Text>
         </View>
         <View className="px-6 pt-4 pb-2">
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search categories"
+            placeholder={t('merchant.inventory.templates.searchPlaceholder')}
             className="border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
             autoFocus
           />
@@ -111,7 +113,7 @@ export function InventoryCategoryTemplatePickerSheet({
               renderItem={renderItem}
               ListEmptyComponent={() => (
                 <View className="flex-1 items-center justify-center py-20">
-                  <Text className="text-sm text-gray-500">No categories match your search.</Text>
+                  <Text className="text-sm text-gray-500">{t('merchant.inventory.templates.emptySearch')}</Text>
                 </View>
               )}
             />
@@ -122,7 +124,7 @@ export function InventoryCategoryTemplatePickerSheet({
             className="h-12 rounded-xl border border-gray-200 items-center justify-center"
             onPress={onClose}
           >
-            <Text className="text-sm font-semibold text-gray-600">Close</Text>
+            <Text className="text-sm font-semibold text-gray-600">{t('merchant.inventory.common.close')}</Text>
           </TouchableOpacity>
         </View>
       </View>

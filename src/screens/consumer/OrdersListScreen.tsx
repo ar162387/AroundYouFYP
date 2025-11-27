@@ -18,12 +18,14 @@ import BackIcon from '../../icons/BackIcon';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 import StarIcon from '../../icons/StarIcon';
 import ReviewBottomSheet from '../../components/consumer/ReviewBottomSheet';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function OrdersListScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
-  const { data: orders, isLoading, refetch, isRefetching } = useUserOrders();
+  const { data: orders, isLoading, refetch, isFetching } = useUserOrders();
   const [reviewSheetVisible, setReviewSheetVisible] = useState(false);
   const [reviewSheetShop, setReviewSheetShop] = useState<{ id: string; name: string; orderId?: string } | null>(null);
 
@@ -31,7 +33,7 @@ export default function OrdersListScreen() {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
         <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="text-gray-600 mt-4">Loading orders...</Text>
+        <Text className="text-gray-600 mt-4">{t('orders.loading')}</Text>
       </SafeAreaView>
     );
   }
@@ -49,7 +51,7 @@ export default function OrdersListScreen() {
             >
               <BackIcon size={20} color="#374151" />
             </TouchableOpacity>
-            <Text className="text-gray-900 text-lg font-bold">My Orders</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('orders.title')}</Text>
           </View>
         </View>
 
@@ -57,16 +59,16 @@ export default function OrdersListScreen() {
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-6xl mb-4">📦</Text>
           <Text className="text-gray-900 text-lg font-semibold mb-2 text-center">
-            No orders yet
+            {t('orders.noOrders')}
           </Text>
           <Text className="text-gray-500 text-center mb-6">
-            Start shopping to place your first order
+            {t('orders.startShopping')}
           </Text>
           <TouchableOpacity
             onPress={() => navigation.navigate('Home')}
             className="bg-blue-600 px-6 py-3 rounded-full"
           >
-            <Text className="text-white font-semibold">Browse Shops</Text>
+            <Text className="text-white font-semibold">{t('orders.browseShops')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -86,8 +88,8 @@ export default function OrdersListScreen() {
             <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
           <View className="flex-1">
-            <Text className="text-gray-900 text-lg font-bold">My Orders</Text>
-            <Text className="text-gray-500 text-sm">{orders.length} total</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('orders.title')}</Text>
+            <Text className="text-gray-500 text-sm">{orders.length} {t('orders.total')}</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -97,7 +99,7 @@ export default function OrdersListScreen() {
         contentContainerStyle={{ padding: 16 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+          <RefreshControl refreshing={isFetching} onRefresh={refetch} />
         }
       >
         {orders.map((order) => (
@@ -117,7 +119,7 @@ export default function OrdersListScreen() {
           />
         ))}
       </ScrollView>
-      
+
       {/* Review Bottom Sheet */}
       {reviewSheetShop && (
         <ReviewBottomSheet
@@ -148,6 +150,7 @@ interface OrderCardProps {
 }
 
 function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: OrderCardProps) {
+  const { t } = useTranslation();
   const statusDisplay = getOrderStatusDisplay(order.status);
   const placedDate = new Date(order.placed_at);
   const now = new Date();
@@ -155,10 +158,10 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
   const isYesterday = new Date(now.getTime() - 86400000).toDateString() === placedDate.toDateString();
 
   const dateLabel = isToday
-    ? 'Today'
+    ? t('orders.today')
     : isYesterday
-    ? 'Yesterday'
-    : placedDate.toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' });
+      ? t('orders.yesterday')
+      : placedDate.toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' });
 
   const timeLabel = placedDate.toLocaleTimeString('en-PK', {
     hour: '2-digit',
@@ -271,7 +274,7 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
           </Text>
         ))}
         {remainingCount > 0 && (
-          <Text className="text-gray-400 text-xs">+{remainingCount} more items</Text>
+          <Text className="text-gray-400 text-xs">+{remainingCount} {t('cart.items')}</Text>
         )}
       </View>
 
@@ -280,7 +283,7 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
         <Text className="text-gray-900 text-base font-bold">
           {formatPrice(order.total_cents)}
         </Text>
-        <Text className="text-blue-600 text-sm font-semibold">View Details →</Text>
+        <Text className="text-blue-600 text-sm font-semibold">{t('orders.viewDetails')} →</Text>
       </View>
 
       {/* Delivery Runner Info (if applicable) */}
@@ -294,7 +297,7 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
               <Text className="text-gray-900 text-sm font-semibold">
                 {order.delivery_runner.name}
               </Text>
-              <Text className="text-gray-500 text-xs">On the way</Text>
+              <Text className="text-gray-500 text-xs">{t('orders.onTheWay')}</Text>
             </View>
           </View>
         </View>
@@ -304,7 +307,7 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
       {order.status === 'delivered' && order.delivery_time_seconds && (
         <View className="mt-3 pt-3 border-t border-gray-100">
           <Text className="text-gray-500 text-xs">
-            Total delivery time: {formatDuration(
+            {t('orders.totalDeliveryTime')}: {formatDuration(
               (order.confirmation_time_seconds || 0) +
               (order.preparation_time_seconds || 0) +
               (order.delivery_time_seconds || 0)
@@ -321,7 +324,7 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
           activeOpacity={0.7}
         >
           <View className="flex-row items-center justify-between">
-            <Text className="text-gray-700 text-sm font-medium mr-3">Rate this order:</Text>
+            <Text className="text-gray-700 text-sm font-medium mr-3">{t('orders.rateOrder')}</Text>
             <View className="flex-row items-center">
               {[1, 2, 3, 4, 5].map((star) => (
                 <View key={star} className="mx-0.5">

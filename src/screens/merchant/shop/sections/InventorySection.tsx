@@ -37,6 +37,7 @@ import type {
   InventoryTemplateCategory,
   InventoryTemplateItem,
 } from '../../../../types/inventory';
+import { useTranslation } from 'react-i18next';
 
 type ItemsTabProps = {
   loading: boolean;
@@ -49,6 +50,7 @@ type ItemsTabProps = {
   onAddItem: () => void;
   onBrowseTemplates: () => void;
   onPromptCreateCategory: () => void;
+  contentContainerStyle?: any;
 };
 
 const ItemsTab = React.memo(function ItemsTab({
@@ -62,7 +64,10 @@ const ItemsTab = React.memo(function ItemsTab({
   onAddItem,
   onBrowseTemplates,
   onPromptCreateCategory,
+  contentContainerStyle,
 }: ItemsTabProps) {
+  const { t } = useTranslation();
+
   if (loading) {
     return <InventoryItemListSkeleton />;
   }
@@ -70,7 +75,7 @@ const ItemsTab = React.memo(function ItemsTab({
   if (error) {
     return (
       <View className="bg-red-50 border border-red-200 rounded-3xl p-5">
-        <Text className="text-sm text-red-600 font-medium">Failed to load items. Pull to refresh or try again.</Text>
+        <Text className="text-sm text-red-600 font-medium">{t('merchant.inventory.common.failedToLoad')}</Text>
       </View>
     );
   }
@@ -78,12 +83,12 @@ const ItemsTab = React.memo(function ItemsTab({
   if (!canCreateItems) {
     return (
       <View className="bg-white border border-blue-100 rounded-3xl p-6">
-        <Text className="text-base font-semibold text-blue-600">Create a category first</Text>
+        <Text className="text-base font-semibold text-blue-600">{t('merchant.inventory.common.createCategoryFirst')}</Text>
         <Text className="text-sm text-gray-500 mt-2">
-          Add at least one category so you can attach items and keep the catalog organized.
+          {t('merchant.inventory.common.createCategoryFirstDesc')}
         </Text>
         <TouchableOpacity className="mt-4 bg-blue-600 px-4 py-3 rounded-xl self-start" onPress={onPromptCreateCategory}>
-          <Text className="text-white font-semibold">Add category</Text>
+          <Text className="text-white font-semibold">{t('merchant.inventory.common.addCategory')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -94,7 +99,13 @@ const ItemsTab = React.memo(function ItemsTab({
   }
 
   return (
-    <InventoryList items={items} onToggleActive={onToggleActive} onEditItem={onEditItem} onViewAudit={onViewAudit} />
+    <InventoryList
+      items={items}
+      onToggleActive={onToggleActive}
+      onEditItem={onEditItem}
+      onViewAudit={onViewAudit}
+      contentContainerStyle={contentContainerStyle}
+    />
   );
 });
 
@@ -104,6 +115,7 @@ type CategoriesTabProps = {
   onAddCategory: () => void;
   onBrowseTemplateCategories: () => void;
   onEditCategory: (category: InventoryCategory) => void;
+  contentContainerStyle?: any;
 };
 
 const CategoriesTab = React.memo(function CategoriesTab({
@@ -112,33 +124,44 @@ const CategoriesTab = React.memo(function CategoriesTab({
   onAddCategory,
   onBrowseTemplateCategories,
   onEditCategory,
+  contentContainerStyle,
 }: CategoriesTabProps) {
+  const { t } = useTranslation();
+
   if (loading) {
     return <InventoryCategoryListSkeleton />;
   }
 
   return (
-    <View className="space-y-4">
-      <Text className="text-sm text-gray-500">
-        Organize your catalog by aisle or department. Categories sync with search and filters instantly.
-      </Text>
-      <View className="space-y-3">
-        <View className="bg-white border border-gray-200 rounded-xl px-4 py-3 self-start">
-          <Text className="text-xs text-gray-500">Total categories: {categories.length}</Text>
-        </View>
-        <View className="flex-row space-x-3">
-          <TouchableOpacity className="flex-1 bg-blue-600 h-12 rounded-xl items-center justify-center" onPress={onAddCategory}>
-            <Text className="text-white font-semibold">Add New Category</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="flex-1 bg-white border border-gray-200 h-12 rounded-xl items-center justify-center"
-            onPress={onBrowseTemplateCategories}
-          >
-            <Text className="text-gray-700 font-semibold">Choose from Template</Text>
-          </TouchableOpacity>
+    <View className="flex-1">
+      <View className="space-y-4 mb-4">
+        <Text className="text-sm text-gray-500">
+          {t('merchant.inventory.common.organizeCatalog')}
+        </Text>
+        <View className="space-y-3">
+          <View className="bg-white border border-gray-200 rounded-xl px-4 py-3 self-start">
+            <Text className="text-xs text-gray-500">{t('merchant.inventory.common.totalCategories', { count: categories.length })}</Text>
+          </View>
+          <View className="flex-row space-x-3">
+            <TouchableOpacity className="flex-1 bg-blue-600 h-12 rounded-xl items-center justify-center" onPress={onAddCategory}>
+              <Text className="text-white font-semibold">{t('merchant.inventory.common.addNewCategory')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="flex-1 bg-white border border-gray-200 h-12 rounded-xl items-center justify-center"
+              onPress={onBrowseTemplateCategories}
+            >
+              <Text className="text-gray-700 font-semibold">{t('merchant.inventory.common.chooseTemplate')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-      <InventoryCategoryList categories={categories} onEditCategory={onEditCategory} />
+      <View className="flex-1">
+        <InventoryCategoryList
+          categories={categories}
+          onEditCategory={onEditCategory}
+          contentContainerStyle={contentContainerStyle}
+        />
+      </View>
     </View>
   );
 });
@@ -147,15 +170,29 @@ type AuditTabProps = {
   loading: boolean;
   entries: InventoryAuditLogEntry[];
   items: InventoryItem[];
+  contentContainerStyle?: any;
 };
 
-const AuditTab = React.memo(function AuditTab({ loading, entries, items }: AuditTabProps) {
+const AuditTab = React.memo(function AuditTab({ loading, entries, items, contentContainerStyle }: AuditTabProps) {
+  const { t } = useTranslation();
   return (
-    <View className="space-y-4">
-      <Text className="text-sm text-gray-500">
-        Every price change, SKU edit, and template sync is logged for transparency.
-      </Text>
-      {loading ? <InventoryAuditLogSkeleton /> : <InventoryAuditLogList entries={entries} items={items} />}
+    <View className="flex-1">
+      <View className="mb-4">
+        <Text className="text-sm text-gray-500">
+          {t('merchant.inventory.common.transparencyLog')}
+        </Text>
+      </View>
+      <View className="flex-1">
+        {loading ? (
+          <InventoryAuditLogSkeleton />
+        ) : (
+          <InventoryAuditLogList
+            entries={entries}
+            items={items}
+            contentContainerStyle={contentContainerStyle}
+          />
+        )}
+      </View>
     </View>
   );
 });
@@ -171,6 +208,7 @@ const initialFilters: InventoryListParams = {
 };
 
 export default function InventorySection({ shop }: InventorySectionProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<InventoryTab>('items');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<InventoryListParams>(initialFilters);
@@ -205,7 +243,8 @@ export default function InventorySection({ shop }: InventorySectionProps) {
   const toggleItemMutation = useToggleInventoryItem(shop.id, listParams);
   const deleteItemMutation = useDeleteInventoryItem(shop.id, listParams);
 
-  const { data: auditLogData, isLoading: auditLoading } = useInventoryAuditLog(shop.id, { limit: 50 });
+  const auditLogFilters = useMemo(() => ({ limit: 50 }), []);
+  const { data: auditLogData, isLoading: auditLoading } = useInventoryAuditLog(shop.id, auditLogFilters);
   const templateCategoriesQuery = useInventoryTemplateCategories();
   const templateCategories = templateCategoriesQuery.data ?? [];
   const templateCategoriesLoading = templateCategoriesQuery.isLoading;
@@ -293,10 +332,10 @@ export default function InventorySection({ shop }: InventorySectionProps) {
     if (!selectedItem) {
       return;
     }
-    Alert.alert('Delete Item', `Are you sure you want to delete “${selectedItem.name}”?`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('merchant.inventory.items.deleteTitle'), t('merchant.inventory.items.deleteConfirm', { name: selectedItem.name }), [
+      { text: t('merchant.inventory.common.cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('merchant.inventory.common.delete'),
         style: 'destructive',
         onPress: async () => {
           setIsItemDeleting(true);
@@ -307,14 +346,14 @@ export default function InventorySection({ shop }: InventorySectionProps) {
             setSelectedItem(null);
             setSelectedTemplate(null);
           } catch (error: any) {
-            Alert.alert('Unable to delete item', error?.message ?? 'Please try again later.');
+            Alert.alert(t('merchant.inventory.items.deleteError'), error?.message ?? t('merchant.inventory.items.deleteErrorDesc'));
           } finally {
             setIsItemDeleting(false);
           }
         },
       },
     ]);
-  }, [selectedItem, deleteItemMutation]);
+  }, [selectedItem, deleteItemMutation, t]);
 
   const existingTemplateIds = useMemo(() => {
     const ids = items
@@ -341,25 +380,25 @@ export default function InventorySection({ shop }: InventorySectionProps) {
   const handleTemplateCategorySelect = useCallback(
     (template: InventoryTemplateCategory) => {
       if (existingCategoryTemplateIds.has(template.id)) {
-        Alert.alert('Already Added', 'This category is already available in your shop.');
+        Alert.alert(t('merchant.inventory.categories.alreadyAdded'), t('merchant.inventory.categories.alreadyAddedDesc'));
         return;
       }
 
-      Alert.alert('Add Category', `Add “${template.name}” to your shop?`, [
-        { text: 'Cancel', style: 'cancel' },
+      Alert.alert(t('merchant.inventory.categories.addTitle'), t('merchant.inventory.categories.addConfirm', { name: template.name }), [
+        { text: t('merchant.inventory.common.cancel'), style: 'cancel' },
         {
-          text: 'Add',
+          text: t('merchant.inventory.common.add'),
           style: 'default',
           onPress: () => {
             createCategoryMutation
               .mutateAsync({ name: template.name, description: template.description, templateId: template.id })
               .then(() => setCategoryTemplatePickerOpen(false))
-              .catch(() => {});
+              .catch(() => { });
           },
         },
       ]);
     },
-    [existingCategoryTemplateIds, createCategoryMutation]
+    [existingCategoryTemplateIds, createCategoryMutation, t]
   );
 
   const handleCategorySubmit = useCallback(async (values: InventoryCategoryFormSubmit) => {
@@ -401,10 +440,10 @@ export default function InventorySection({ shop }: InventorySectionProps) {
       return;
     }
 
-    Alert.alert('Delete Category', `Delete “${selectedCategory.name}” from your shop?`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('merchant.inventory.categories.deleteTitle'), t('merchant.inventory.categories.deleteConfirm', { name: selectedCategory.name }), [
+      { text: t('merchant.inventory.common.cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('merchant.inventory.common.delete'),
         style: 'destructive',
         onPress: async () => {
           setIsCategoryDeleting(true);
@@ -415,8 +454,8 @@ export default function InventorySection({ shop }: InventorySectionProps) {
             setSelectedCategory(null);
           } catch (error: any) {
             Alert.alert(
-              'Unable to delete category',
-              error?.message ?? 'One or more items still rely on this category.'
+              t('merchant.inventory.categories.deleteError'),
+              error?.message ?? t('merchant.inventory.categories.deleteErrorDesc')
             );
           } finally {
             setIsCategoryDeleting(false);
@@ -424,7 +463,7 @@ export default function InventorySection({ shop }: InventorySectionProps) {
         },
       },
     ]);
-  }, [selectedCategory, deleteCategoryMutation]);
+  }, [selectedCategory, deleteCategoryMutation, t]);
 
   const promptCreateCategory = useCallback(() => {
     setActiveTab('categories');
@@ -469,32 +508,35 @@ export default function InventorySection({ shop }: InventorySectionProps) {
   const itemsOrCategoriesLoading = itemsLoading || categoriesLoading;
 
   return (
-    <View className="flex-1 space-y-6">
-    <View className="space-y-4">
+    <View className="flex-1 space-y-6 px-5 pt-6">
+      <View className="space-y-4">
         <InventoryTabBar activeTab={activeTab} onTabChange={setActiveTab} />
 
         {activeTab === 'items' ? (
-          <View className="space-y-3">
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search by name, SKU, or barcode"
-              className="bg-white border border-gray-100 rounded-2xl px-4 py-3 text-base text-gray-900"
-            />
+          <View className="space-y-4 pt-4">
+            <View className="mb-2">
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t('merchant.inventory.common.searchPlaceholder')}
+                className="bg-white border-2 border-gray-300 rounded-2xl px-4 py-4 text-base text-gray-900 shadow-sm"
+                style={{ minHeight: 52 }}
+              />
+            </View>
             <View className="flex-row space-x-3">
               <TouchableOpacity
                 className="flex-1 bg-blue-600 h-12 rounded-xl items-center justify-center"
                 onPress={openCreateItem}
                 disabled={itemsOrCategoriesLoading || !canCreateItems}
               >
-                <Text className="text-white font-semibold">Add New Item</Text>
+                <Text className="text-white font-semibold">{t('merchant.inventory.common.addNewItem')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-1 bg-white border border-gray-200 h-12 rounded-xl items-center justify-center"
                 onPress={openTemplatePicker}
                 disabled={itemsOrCategoriesLoading || !canCreateItems}
               >
-                <Text className="text-gray-700 font-semibold">Choose from Template</Text>
+                <Text className="text-gray-700 font-semibold">{t('merchant.inventory.common.chooseTemplate')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -514,6 +556,7 @@ export default function InventorySection({ shop }: InventorySectionProps) {
             onAddItem={openCreateItem}
             onBrowseTemplates={openTemplatePicker}
             onPromptCreateCategory={promptCreateCategory}
+            contentContainerStyle={{ paddingBottom: 100 }}
           />
         ) : null}
 
@@ -524,11 +567,17 @@ export default function InventorySection({ shop }: InventorySectionProps) {
             onAddCategory={openCategoryForm}
             onBrowseTemplateCategories={openCategoryTemplatePicker}
             onEditCategory={editCategory}
+            contentContainerStyle={{ paddingBottom: 100 }}
           />
         ) : null}
 
         {activeTab === 'audit' ? (
-          <AuditTab loading={auditLoading} entries={auditLogData?.entries ?? []} items={items} />
+          <AuditTab
+            loading={auditLoading}
+            entries={auditLogData?.entries ?? []}
+            items={items}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          />
         ) : null}
       </View>
 

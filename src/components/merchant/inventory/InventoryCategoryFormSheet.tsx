@@ -4,13 +4,13 @@ import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { InventoryCategory, InventoryTemplateCategory } from '../../../types/inventory';
+import { useTranslation } from 'react-i18next';
 
-const schema = z.object({
-  name: z.string().min(1, 'Name is required').max(60, 'Keep category names under 60 characters'),
-  description: z.string().max(160, 'Keep descriptions short').optional().nullable(),
-});
+type InventoryCategoryFormValues = {
+  name: string;
+  description?: string | null;
+};
 
-export type InventoryCategoryFormValues = z.infer<typeof schema>;
 export type InventoryCategoryFormSubmit = InventoryCategoryFormValues & { templateId?: string | null };
 
 type InventoryCategoryFormSheetProps = {
@@ -38,6 +38,13 @@ export function InventoryCategoryFormSheet({
   existingCategoryTemplateIds,
   onDelete,
 }: InventoryCategoryFormSheetProps) {
+  const { t } = useTranslation();
+
+  const schema = useMemo(() => z.object({
+    name: z.string().min(1, t('merchant.inventory.form.required')).max(60, 'Keep category names under 60 characters'),
+    description: z.string().max(160, 'Keep descriptions short').optional().nullable(),
+  }), [t]);
+
   const defaultValues = useMemo(() => ({
     name: defaultCategory?.name ?? '',
     description: defaultCategory?.description ?? '',
@@ -110,16 +117,16 @@ export function InventoryCategoryFormSheet({
       <View className="flex-1 bg-white">
         <View className="px-6 pt-6 pb-3 border-b border-gray-100">
           <Text className="text-xl font-semibold text-gray-900">
-            {mode === 'create' ? 'New Category' : 'Edit Category'}
+            {mode === 'create' ? t('merchant.inventory.form.createCategory') : t('merchant.inventory.form.editCategory')}
           </Text>
           <Text className="text-xs text-gray-500 mt-2">
-            Categories help shoppers filter and staff batch updates quickly.
+            {t('merchant.inventory.common.categoryHelp')}
           </Text>
         </View>
         <View className="flex-1 px-6 pt-6">
           {groupedTemplateCategories.length > 0 ? (
             <View className="mb-6">
-              <Text className="text-sm font-semibold text-gray-700">Start from a template</Text>
+              <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.common.startFromTemplate')}</Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -136,9 +143,8 @@ export function InventoryCategoryFormSheet({
                           key={template.id}
                           onPress={() => handleTemplateSelect(template)}
                           disabled={isEditMode || alreadyAdded}
-                          className={`w-48 px-3 py-3 rounded-2xl border mb-3 ${
-                            selected ? 'bg-purple-50 border-purple-200' : 'bg-white border-gray-200'
-                          } ${alreadyAdded ? 'opacity-60 border-gray-200' : ''} ${isEditMode ? 'opacity-60' : ''}`}
+                          className={`w-48 px-3 py-3 rounded-2xl border mb-3 ${selected ? 'bg-purple-50 border-purple-200' : 'bg-white border-gray-200'
+                            } ${alreadyAdded ? 'opacity-60 border-gray-200' : ''} ${isEditMode ? 'opacity-60' : ''}`}
                         >
                           <Text className={`text-sm font-semibold ${selected ? 'text-purple-600' : 'text-gray-700'}`}>
                             {template.name}
@@ -150,7 +156,7 @@ export function InventoryCategoryFormSheet({
                           ) : null}
                           {alreadyAdded ? (
                             <View className="mt-3 self-start bg-green-50 border border-green-100 px-2 py-1 rounded-lg">
-                              <Text className="text-[10px] font-semibold text-green-600">Already added</Text>
+                              <Text className="text-[10px] font-semibold text-green-600">{t('merchant.inventory.common.alreadyAdded')}</Text>
                             </View>
                           ) : null}
                         </TouchableOpacity>
@@ -172,11 +178,11 @@ export function InventoryCategoryFormSheet({
             name="name"
             render={({ field: { value, onChange } }) => (
               <View>
-                <Text className="text-sm font-semibold text-gray-700">Name</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.name')}</Text>
                 <TextInput
                   value={value}
                   onChangeText={onChange}
-                  placeholder="Produce"
+                  placeholder={t('merchant.inventory.form.enterName')}
                   className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
                 />
                 {formState.errors.name ? (
@@ -191,11 +197,11 @@ export function InventoryCategoryFormSheet({
             name="description"
             render={({ field: { value, onChange } }) => (
               <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">Description</Text>
+                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.description')}</Text>
                 <TextInput
                   value={value ?? ''}
                   onChangeText={onChange}
-                  placeholder="Visible to staff only"
+                  placeholder={t('merchant.inventory.form.enterDescription')}
                   multiline
                   numberOfLines={3}
                   textAlignVertical="top"
@@ -215,7 +221,7 @@ export function InventoryCategoryFormSheet({
               onPress={onClose}
               disabled={loading || deleteLoading}
             >
-              <Text className="text-sm font-semibold text-gray-600">Cancel</Text>
+              <Text className="text-sm font-semibold text-gray-600">{t('merchant.inventory.common.cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
@@ -230,7 +236,7 @@ export function InventoryCategoryFormSheet({
               {loading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text className="text-sm font-semibold text-white">{mode === 'create' ? 'Save' : 'Update'}</Text>
+                <Text className="text-sm font-semibold text-white">{mode === 'create' ? t('merchant.inventory.common.save') : t('merchant.inventory.common.save')}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -248,7 +254,7 @@ export function InventoryCategoryFormSheet({
               {deleteLoading ? (
                 <ActivityIndicator size="small" color="#DC2626" />
               ) : (
-                <Text className="text-sm font-semibold text-red-600">Delete category</Text>
+                <Text className="text-sm font-semibold text-red-600">{t('merchant.inventory.items.deleteTitle')}</Text>
               )}
             </TouchableOpacity>
           ) : null}

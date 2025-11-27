@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,8 @@ import AroundYouSearchIcon from '../../icons/AroundYouSearchIcon';
 import CartIcon from '../../icons/CartIcon';
 import ShopScreenSkeleton from '../../skeleton/ShopScreenSkeleton';
 import LinearGradient from 'react-native-linear-gradient';
+import { useTranslation } from 'react-i18next';
+import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,6 +43,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Shop'>;
 
 export default function ShopScreen() {
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ur';
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { shopId, shop: passedShop, distanceInMeters: passedDistance } = route.params;
@@ -67,12 +71,43 @@ export default function ShopScreen() {
   // Get current cart for this shop
   const currentCart = getShopCart(shopId);
 
-  // Fetch shop details
-  const { data: shopDetails, isLoading: shopLoading } = useQuery(['shopDetails', shopId], async () => {
+  // Fetch shop details with auto-refresh for real-time status
+  const { data: shopDetails, isLoading: shopLoading, refetch: refetchShopDetails } = useQuery(['shopDetails', shopId], async () => {
     const result = await fetchShopDetails(shopId);
     if (result.error) throw new Error(result.error.message);
     return result.data;
   });
+
+  // Auto-refresh shop details every 30 seconds for real-time status updates
+  useEffect(() => {
+    if (!shopDetails) return;
+    
+    const interval = setInterval(() => {
+      refetchShopDetails();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [shopDetails, refetchShopDetails]);
+
+  // Compute real-time opening status
+  const openingStatus = useMemo(() => {
+    if (!shopDetails) return null;
+    return getCurrentOpeningStatus({
+      opening_hours: shopDetails.opening_hours ?? null,
+      holidays: shopDetails.holidays ?? null,
+      open_status_mode: shopDetails.open_status_mode ?? undefined,
+    });
+  }, [shopDetails]);
+
+  // Determine if shop is closed - be explicit and strict
+  const isShopClosed = useMemo(() => {
+    if (!shopDetails) return true; // If no shop details, assume closed
+    if (openingStatus !== null) {
+      return !openingStatus.isOpen; // Use computed status if available
+    }
+    // Fallback to shopDetails.is_open (which should already be computed real-time)
+    return !shopDetails.is_open;
+  }, [shopDetails, openingStatus]);
 
   // Fetch categories
   const { data: categories, isLoading: categoriesLoading } = useQuery(['shopCategories', shopId], async () => {
@@ -92,26 +127,26 @@ export default function ShopScreen() {
   // Use the same coordinates as HomeScreen (from selectedAddress or userLocation)
   const { selectedAddress } = useLocationSelection();
   const effectiveCoords = selectedAddress?.coords || coords;
-  
+
   // Calculate distance only if we have valid coordinates and shop details
   const calculateDistanceIfNeeded = () => {
     if (passedDistance !== undefined) {
       return passedDistance;
     }
-    
+
     if (!shopDetails || !effectiveCoords?.latitude || !effectiveCoords?.longitude) {
       return null;
     }
-    
+
     if (!shopDetails.latitude || !shopDetails.longitude) {
       console.warn('Shop missing coordinates:', shopDetails.id);
       return null;
     }
-    
+
     // Validate coordinates are reasonable (not 0, not NaN, within valid ranges)
     const validLat = Math.abs(effectiveCoords.latitude) <= 90 && Math.abs(shopDetails.latitude) <= 90;
     const validLng = Math.abs(effectiveCoords.longitude) <= 180 && Math.abs(shopDetails.longitude) <= 180;
-    
+
     if (!validLat || !validLng) {
       console.warn('Invalid coordinates:', {
         user: { lat: effectiveCoords.latitude, lng: effectiveCoords.longitude },
@@ -119,14 +154,14 @@ export default function ShopScreen() {
       });
       return null;
     }
-    
+
     const calculatedDistance = calculateDistance(
       effectiveCoords.latitude,
       effectiveCoords.longitude,
       shopDetails.latitude,
       shopDetails.longitude
     );
-    
+
     // Sanity check: if distance is > 100km, something is wrong
     if (calculatedDistance > 100000) {
       console.error('Calculated distance seems wrong (>100km):', {
@@ -136,10 +171,10 @@ export default function ShopScreen() {
       });
       return null;
     }
-    
+
     return calculatedDistance;
   };
-  
+
   const distanceInMeters = calculateDistanceIfNeeded();
 
   // Use delivery fee from passed shop (already calculated on HomeScreen), or calculate if not provided
@@ -230,10 +265,10 @@ export default function ShopScreen() {
       // Calculate offset accounting for the sticky category bar height
       const stickyBarHeight = 56;
       const scrollPosition = position - stickyBarHeight;
-      
-      scrollViewRef.current.scrollTo({ 
-        y: Math.max(0, scrollPosition), 
-        animated: true 
+
+      scrollViewRef.current.scrollTo({
+        y: Math.max(0, scrollPosition),
+        animated: true
       });
 
       // Center the tapped category in the horizontal scroll view if it's overflowed
@@ -243,7 +278,7 @@ export default function ShopScreen() {
           const scrollViewWidth = SCREEN_WIDTH - 24; // Account for padding
           const padding = 12; // Horizontal padding
           const currentScrollX = categoryScrollX.current;
-          
+
           // Calculate chip position relative to visible viewport
           const chipLeft = chipInfo.x - currentScrollX;
           const chipRight = chipLeft + chipInfo.width;
@@ -257,7 +292,7 @@ export default function ShopScreen() {
           if (isOverflowedLeft || isOverflowedRight) {
             // Center the chip
             const targetOffset = Math.max(0, chipInfo.x - (scrollViewWidth / 2) + (chipInfo.width / 2));
-            
+
             categoryScrollRef.current.scrollTo({
               x: targetOffset,
               animated: true,
@@ -271,7 +306,7 @@ export default function ShopScreen() {
             const estimatedChipWidth = 100;
             const scrollViewWidth = SCREEN_WIDTH - 24;
             const targetOffset = Math.max(0, (categoryIndex * estimatedChipWidth) - (scrollViewWidth / 2) + (estimatedChipWidth / 2));
-            
+
             categoryScrollRef.current.scrollTo({
               x: targetOffset,
               animated: true,
@@ -326,7 +361,7 @@ export default function ShopScreen() {
               console.error('Navigation error:', error);
             }
           }}
-          style={{ 
+          style={{
             width: 36,
             height: 36,
             borderRadius: isHeaderVisible ? 0 : 13,
@@ -380,14 +415,16 @@ export default function ShopScreen() {
             left: 0,
             right: 0,
             zIndex: 80,
-            backgroundColor: '#4B5563',
+            backgroundColor: 'white',
+            borderBottomWidth: 1,
+            borderBottomColor: '#f3f4f6',
           }}
         >
           <ScrollView
             ref={categoryScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
-            className="px-3 py-3"
+            className="px-2 py-3"
             contentContainerStyle={{ paddingRight: 12 }}
             onScroll={(e) => {
               categoryScrollX.current = e.nativeEvent.contentOffset.x;
@@ -402,16 +439,13 @@ export default function ShopScreen() {
                     categoryChipRefs.current[category.id] = { x, width };
                   }}
                   onPress={() => scrollToCategory(category.id)}
-                  className="px-4 py-2"
+                  className="px-4 py-2 mr-1 rounded-full bg-gray-50 border border-gray-200"
                   activeOpacity={0.7}
                 >
-                  <Text className="text-sm font-semibold text-gray-300">
+                  <Text className="text-sm font-semibold text-gray-700">
                     {category.name}
                   </Text>
                 </TouchableOpacity>
-                {index < categoriesWithItems.length - 1 && (
-                  <View className="w-px h-5 bg-gray-500 self-center" />
-                )}
               </React.Fragment>
             ))}
           </ScrollView>
@@ -426,10 +460,10 @@ export default function ShopScreen() {
         onScroll={(e) => {
           const y = e.nativeEvent.contentOffset.y;
           scrollY.setValue(y);
-          
+
           // Track if header is visible
           setIsHeaderVisible(y > 150);
-          
+
           // Make category bar sticky just BEFORE it's scrolled past (creating overlap for smooth transition)
           if (categoryBarY.current > 0) {
             const categoryBarHeight = 56; // Height of the category bar
@@ -444,7 +478,7 @@ export default function ShopScreen() {
           {shopDetails.image_url ? (
             <Image
               source={{ uri: shopDetails.image_url }}
-              style={{ width: SCREEN_WIDTH, height: 200 }}
+              style={{ width: SCREEN_WIDTH, height: 240 }}
               resizeMode="cover"
             />
           ) : (
@@ -452,94 +486,93 @@ export default function ShopScreen() {
               colors={['#1e3a8a', '#2563eb']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={{ width: SCREEN_WIDTH, height: 200 }}
+              style={{ width: SCREEN_WIDTH, height: 240 }}
             />
           )}
 
           {/* Gradient Overlay */}
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.7)']}
+            colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.8)']}
             style={{
               position: 'absolute',
               bottom: 0,
               left: 0,
               right: 0,
-              height: 100,
+              height: 160,
             }}
           />
 
           {/* Shop Name & Info Overlay */}
-          <View className="absolute bottom-0 left-0 right-0 px-4 pb-4">
-            <Text className="text-white text-2xl font-bold mb-1">{shopDetails.name}</Text>
+          <View className="absolute bottom-0 left-0 right-0 px-5 pb-6">
+            <Text className="text-white text-3xl font-bold mb-2 shadow-sm">{shopDetails.name}</Text>
             <View className="flex-row items-center">
-              <StarIcon size={16} color="#FCD34D" filled />
-              <Text className="text-white ml-1 text-sm">
-                {shopDetails.rating > 0 ? shopDetails.rating.toFixed(1) : 'New'} · {shopDetails.orders} orders
+              <View className="bg-white/20 backdrop-blur-md px-2 py-1 rounded-md flex-row items-center mr-2">
+                <StarIcon size={14} color="#FCD34D" filled />
+                <Text className="text-white ml-1 text-sm font-bold">
+                  {shopDetails.rating > 0 ? shopDetails.rating.toFixed(1) : 'New'}
+                </Text>
+              </View>
+              <Text className="text-white/90 text-sm font-medium">
+                • {shopDetails.orders} {t('shop.ordersServed')}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Info Cards - Grid Layout */}
-        <View className="px-4 py-3 bg-white" style={{ width: SCREEN_WIDTH }}>
-          <View className="flex-row flex-wrap" style={{ marginHorizontal: -4 }}>
-            {/* Delivery Fee - First Card */}
+        {/* Info Cards - Horizontal Scroll Pills */}
+        <View className="bg-white border-b border-gray-100 pb-4 pt-4">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 20 }}
+          >
+            {/* Delivery Fee */}
             {deliveryFee !== null && (
-              <View className="bg-blue-50 rounded-xl px-3 py-2.5 mb-2" style={{ width: '48%', marginHorizontal: '1%' }}>
-                <View className="flex-row items-center">
-                  <DeliveryRunnerIcon size={16} color="#3B82F6" />
-                  <View className="ml-1.5 flex-1">
-                    <Text className="text-blue-700 text-xs font-semibold">
-                      {deliveryFee > 0 ? `Rs ${Math.round(deliveryFee)} delivery` : 'Free delivery'}
-                    </Text>
-                  </View>
-                </View>
+              <View className="bg-blue-50 rounded-full px-4 py-2 mr-3 border border-blue-100 flex-row items-center">
+                <DeliveryRunnerIcon size={14} color="#2563eb" />
+                <Text className="text-blue-700 text-sm font-semibold ml-2">
+                  {deliveryFee > 0 ? `Rs ${Math.round(deliveryFee)} ${t('shop.delivery')}` : t('shop.freeDelivery')}
+                </Text>
               </View>
             )}
 
             {/* Minimum Order Value */}
             {shopDetails.deliveryLogic && (
-              <View className="bg-green-50 rounded-xl px-3 py-2.5 mb-2" style={{ width: '48%', marginHorizontal: '1%' }}>
-                <View className="flex-row items-center">
-                  <MoneyIcon size={16} color="#10B981" />
-                  <View className="ml-1.5 flex-1">
-                    <Text className="text-green-700 text-xs font-semibold">
-                      Min Order: Rs {shopDetails.deliveryLogic.minimumOrderValue}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {/* Least Order Value */}
-            {shopDetails.deliveryLogic && (
-              <View className="bg-amber-50 rounded-xl px-3 py-2.5 mb-2" style={{ width: '48%', marginHorizontal: '1%' }}>
-                <View className="flex-row items-center">
-                  <TagIcon size={16} color="#F59E0B" />
-                  <View className="ml-1.5 flex-1">
-                    <Text className="text-amber-700 text-xs font-semibold">
-                      Starts at: Rs {shopDetails.deliveryLogic.leastOrderValue}
-                    </Text>
-                  </View>
-                </View>
+              <View className="bg-gray-50 rounded-full px-4 py-2 mr-3 border border-gray-200 flex-row items-center">
+                <MoneyIcon size={14} color="#4b5563" />
+                <Text className="text-gray-700 text-sm font-semibold ml-2">
+                  {t('shop.minOrder', { amount: shopDetails.deliveryLogic.minimumOrderValue })}
+                </Text>
               </View>
             )}
 
             {/* Free Delivery Threshold */}
             {showFreeDeliveryInfo && shopDetails.deliveryLogic && (
-              <View className="bg-pink-50 rounded-xl px-3 py-2.5 mb-2" style={{ width: '48%', marginHorizontal: '1%' }}>
-                <View className="flex-row items-center">
-                  <GiftIcon size={16} color="#EC4899" />
-                  <View className="ml-1.5 flex-1">
-                    <Text className="text-pink-700 text-xs font-semibold">
-                      Free on Rs {shopDetails.deliveryLogic.freeDeliveryThreshold}+
-                    </Text>
-                  </View>
-                </View>
+              <View className="bg-pink-50 rounded-full px-4 py-2 mr-3 border border-pink-100 flex-row items-center">
+                <GiftIcon size={14} color="#db2777" />
+                <Text className="text-pink-700 text-sm font-semibold ml-2">
+                  {t('shop.freeOver', { amount: shopDetails.deliveryLogic.freeDeliveryThreshold })}
+                </Text>
               </View>
             )}
-          </View>
+          </ScrollView>
         </View>
+
+        {/* Closed / Holiday Banner */}
+        {isShopClosed && openingStatus && (
+          <View className="bg-red-50 border-b border-red-100 px-5 py-4">
+            <View className="flex-row items-center">
+              <View className="bg-red-100 rounded-full px-3 py-1.5 mr-3">
+                <Text className="text-red-700 text-sm font-bold">{t('shopCard.closed')}</Text>
+              </View>
+              {openingStatus.reason === 'holiday' && openingStatus.holidayDescription && (
+                <Text className="text-red-800 text-sm font-medium flex-1">
+                  {openingStatus.holidayDescription}
+                </Text>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Search Bar */}
         <View className="px-4 pb-0 bg-white" style={{ width: SCREEN_WIDTH }}>
@@ -549,15 +582,15 @@ export default function ShopScreen() {
             activeOpacity={0.7}
           >
             <Text className="text-gray-400 text-lg mr-3">🔍</Text>
-            <Text className="text-gray-500 text-base">Search for items...</Text>
+            <Text className="text-gray-500 text-base">{t('shop.searchPlaceholder')}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Category Navigation Bar - Becomes sticky on scroll */}
         {categoriesWithItems && categoriesWithItems.length > 0 && (
           <View
-            className="bg-gray-700"
-            style={{ 
+            className="bg-white border-b border-gray-100"
+            style={{
               width: SCREEN_WIDTH,
               opacity: categoryBarSticky ? 0 : 1,
             }}
@@ -570,7 +603,7 @@ export default function ShopScreen() {
               ref={categoryScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              className="px-3 py-3"
+              className="px-2 py-3"
               contentContainerStyle={{ paddingRight: 12 }}
               onScroll={(e) => {
                 categoryScrollX.current = e.nativeEvent.contentOffset.x;
@@ -585,16 +618,13 @@ export default function ShopScreen() {
                       categoryChipRefs.current[category.id] = { x, width };
                     }}
                     onPress={() => scrollToCategory(category.id)}
-                    className="px-4 py-2"
+                    className="px-4 py-2 mr-1 rounded-full bg-gray-50 border border-gray-200"
                     activeOpacity={0.7}
                   >
-                    <Text className="text-sm font-semibold text-gray-300">
+                    <Text className="text-sm font-semibold text-gray-700">
                       {category.name}
                     </Text>
                   </TouchableOpacity>
-                  {index < categoriesWithItems.length - 1 && (
-                    <View className="w-px h-5 bg-gray-500 self-center" />
-                  )}
                 </React.Fragment>
               ))}
             </ScrollView>
@@ -606,7 +636,7 @@ export default function ShopScreen() {
           {itemsLoading || categoriesLoading ? (
             <View className="py-12 items-center">
               <ActivityIndicator size="large" color="#2563eb" />
-              <Text className="text-gray-600 mt-4">Loading items...</Text>
+              <Text className="text-gray-600 mt-4">{t('shop.loadingItems')}</Text>
             </View>
           ) : categoriesWithItems && categoriesWithItems.length > 0 ? (
             categoriesWithItems.map((category: { id: string; name: string }) => (
@@ -629,10 +659,10 @@ export default function ShopScreen() {
                           categoryName: category.name,
                         })
                       }
-                      className="flex-row items-center"
+                      className={`flex-row items-center ${isRTL ? 'flex-row-reverse' : ''}`}
                     >
-                      <Text className="text-blue-600 font-semibold mr-1">See all</Text>
-                      <Text className="text-blue-600">→</Text>
+                      <Text className="text-blue-600 font-semibold mr-1">{t('shop.seeAll')}</Text>
+                      <Text className="text-blue-600">{isRTL ? '←' : '→'}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -647,59 +677,64 @@ export default function ShopScreen() {
                     {itemsByCategory[category.id].map((item) => {
                       const quantity = getItemQuantity(item.id);
                       return (
-                      <View key={item.id} className="mr-3 items-center" style={{ width: 155 }}>
-                        {/* Item Image with Card Style */}
-                        <View className="relative">
-                          {item.image_url ? (
-                            <View
-                              className="bg-white rounded-2xl overflow-hidden items-center justify-center"
-                              style={{
-                                width: 140,
-                                height: 140,
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 2 },
-                                shadowOpacity: 0.1,
-                                shadowRadius: 8,
-                                elevation: 3,
-                              }}
-                            >
-                              <Image
-                                source={{ uri: item.image_url }}
-                                style={{ width: 120, height: 120 }}
-                                resizeMode="contain"
-                                onError={(error) => {
-                                  console.log('Image load error for item:', item.name, item.image_url, error.nativeEvent.error);
-                                }}
-                                onLoad={() => {
-                                  console.log('Image loaded successfully:', item.name, item.image_url);
-                                }}
-                              />
-                                {/* Cart Controls */}
-                                {quantity === 0 ? (
-                              <TouchableOpacity
-                                    onPress={() => handleAddToCart(item)}
-                                className="absolute bottom-2 right-2 bg-blue-600 rounded-full items-center justify-center"
+                        <View key={item.id} className="mr-3 items-center" style={{ width: 155 }}>
+                          {/* Item Image with Card Style */}
+                          <View className="relative">
+                            {item.image_url ? (
+                              <View
+                                className="bg-white rounded-2xl overflow-hidden items-center justify-center"
                                 style={{
-                                  width: 44,
-                                  height: 44,
+                                  width: 140,
+                                  height: 140,
                                   shadowColor: '#000',
                                   shadowOffset: { width: 0, height: 2 },
-                                  shadowOpacity: 0.2,
-                                  shadowRadius: 4,
-                                  elevation: 4,
+                                  shadowOpacity: 0.1,
+                                  shadowRadius: 8,
+                                  elevation: 3,
                                 }}
-                                activeOpacity={0.7}
                               >
-                                <Text className="text-white text-xl font-bold">+</Text>
-                                  </TouchableOpacity>
-                                ) : (
-                                  <View className="absolute bottom-2 right-2 flex-row items-center bg-blue-600 rounded-full px-2 py-1.5"
+                                <Image
+                                  source={{ uri: item.image_url }}
+                                  style={{ width: 120, height: 120 }}
+                                  resizeMode="contain"
+                                  onError={(error) => {
+                                    console.log('Image load error for item:', item.name, item.image_url, error.nativeEvent.error);
+                                  }}
+                                  onLoad={() => {
+                                    console.log('Image loaded successfully:', item.name, item.image_url);
+                                  }}
+                                />
+                                {/* Cart Controls */}
+                                {quantity === 0 ? (
+                                  <TouchableOpacity
+                                    onPress={() => handleAddToCart(item)}
+                                    disabled={isShopClosed}
+                                    className="absolute bottom-2 right-2 rounded-full items-center justify-center"
                                     style={{
+                                      width: 44,
+                                      height: 44,
+                                      backgroundColor: isShopClosed ? '#9ca3af' : '#2563eb',
                                       shadowColor: '#000',
                                       shadowOffset: { width: 0, height: 2 },
                                       shadowOpacity: 0.2,
                                       shadowRadius: 4,
                                       elevation: 4,
+                                      opacity: isShopClosed ? 0.5 : 1,
+                                    }}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Text className="text-white text-xl font-bold">+</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <View className="absolute bottom-2 right-2 flex-row items-center rounded-full px-2 py-1.5"
+                                    style={{
+                                      backgroundColor: isShopClosed ? '#9ca3af' : '#2563eb',
+                                      shadowColor: '#000',
+                                      shadowOffset: { width: 0, height: 2 },
+                                      shadowOpacity: 0.2,
+                                      shadowRadius: 4,
+                                      elevation: 4,
+                                      opacity: isShopClosed ? 0.5 : 1,
                                     }}
                                   >
                                     <TouchableOpacity
@@ -715,59 +750,65 @@ export default function ShopScreen() {
                                     </Text>
                                     <TouchableOpacity
                                       onPress={() => handleAddToCart(item)}
+                                      disabled={isShopClosed}
                                       style={{ width: 40, height: 40 }}
                                       className="items-center justify-center"
                                       activeOpacity={0.7}
                                     >
                                       <Text className="text-white text-lg font-bold">+</Text>
-                              </TouchableOpacity>
+                                    </TouchableOpacity>
                                   </View>
                                 )}
-                            </View>
-                          ) : (
-                            <View
-                              className="bg-gray-50 rounded-2xl overflow-hidden items-center justify-center"
-                              style={{
-                                width: 140,
-                                height: 140,
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 2 },
-                                shadowOpacity: 0.1,
-                                shadowRadius: 8,
-                                elevation: 3,
-                              }}
-                            >
-                              <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
-                                <Text className="text-gray-400 text-2xl font-bold">
-                                  {item.name.slice(0, 1).toUpperCase()}
-                                </Text>
                               </View>
-                                {/* Cart Controls */}
-                                {quantity === 0 ? (
-                              <TouchableOpacity
-                                    onPress={() => handleAddToCart(item)}
-                                className="absolute bottom-2 right-2 bg-blue-600 rounded-full items-center justify-center"
+                            ) : (
+                              <View
+                                className="bg-gray-50 rounded-2xl overflow-hidden items-center justify-center"
                                 style={{
-                                  width: 44,
-                                  height: 44,
+                                  width: 140,
+                                  height: 140,
                                   shadowColor: '#000',
                                   shadowOffset: { width: 0, height: 2 },
-                                  shadowOpacity: 0.2,
-                                  shadowRadius: 4,
-                                  elevation: 4,
+                                  shadowOpacity: 0.1,
+                                  shadowRadius: 8,
+                                  elevation: 3,
                                 }}
-                                activeOpacity={0.7}
                               >
-                                <Text className="text-white text-xl font-bold">+</Text>
-                                  </TouchableOpacity>
-                                ) : (
-                                  <View className="absolute bottom-2 right-2 flex-row items-center bg-blue-600 rounded-full px-2 py-1.5"
+                                <View className="w-20 h-20 rounded-full bg-gray-200 items-center justify-center">
+                                  <Text className="text-gray-400 text-2xl font-bold">
+                                    {item.name.slice(0, 1).toUpperCase()}
+                                  </Text>
+                                </View>
+                                {/* Cart Controls */}
+                                {quantity === 0 ? (
+                                  <TouchableOpacity
+                                    onPress={() => handleAddToCart(item)}
+                                    disabled={isShopClosed}
+                                    className="absolute bottom-2 right-2 rounded-full items-center justify-center"
                                     style={{
+                                      width: 44,
+                                      height: 44,
+                                      backgroundColor: isShopClosed ? '#9ca3af' : '#2563eb',
                                       shadowColor: '#000',
                                       shadowOffset: { width: 0, height: 2 },
                                       shadowOpacity: 0.2,
                                       shadowRadius: 4,
                                       elevation: 4,
+                                      opacity: isShopClosed ? 0.5 : 1,
+                                    }}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Text className="text-white text-xl font-bold">+</Text>
+                                  </TouchableOpacity>
+                                ) : (
+                                  <View className="absolute bottom-2 right-2 flex-row items-center rounded-full px-2 py-1.5"
+                                    style={{
+                                      backgroundColor: isShopClosed ? '#9ca3af' : '#2563eb',
+                                      shadowColor: '#000',
+                                      shadowOffset: { width: 0, height: 2 },
+                                      shadowOpacity: 0.2,
+                                      shadowRadius: 4,
+                                      elevation: 4,
+                                      opacity: isShopClosed ? 0.5 : 1,
                                     }}
                                   >
                                     <TouchableOpacity
@@ -783,42 +824,43 @@ export default function ShopScreen() {
                                     </Text>
                                     <TouchableOpacity
                                       onPress={() => handleAddToCart(item)}
+                                      disabled={isShopClosed}
                                       style={{ width: 40, height: 40 }}
                                       className="items-center justify-center"
                                       activeOpacity={0.7}
                                     >
                                       <Text className="text-white text-lg font-bold">+</Text>
-                              </TouchableOpacity>
+                                    </TouchableOpacity>
                                   </View>
                                 )}
-                            </View>
-                          )}
-                        </View>
+                              </View>
+                            )}
+                          </View>
 
-                        {/* Item Name - Centered, Lighter, 3 lines */}
-                        <View className="mt-3 px-2 w-full">
-                          <Text
-                            className="text-sm text-gray-600 text-center leading-tight"
-                            numberOfLines={3}
-                            style={{ minHeight: 48 }}
-                          >
-                            {item.name}
-                          </Text>
-                        </View>
+                          {/* Item Name - Centered, Lighter, 3 lines */}
+                          <View className="mt-3 px-2 w-full">
+                            <Text
+                              className="text-sm text-gray-600 text-center leading-tight"
+                              numberOfLines={3}
+                              style={{ minHeight: 48 }}
+                            >
+                              {item.name}
+                            </Text>
+                          </View>
 
-                        {/* Price - Centered */}
-                        <View className="mt-1">
-                          <Text className="text-base font-bold text-gray-900 text-center">
-                            Rs {(item.price_cents / 100).toFixed(0)}
-                          </Text>
+                          {/* Price - Centered */}
+                          <View className="mt-1">
+                            <Text className="text-base font-bold text-gray-900 text-center">
+                              Rs {(item.price_cents / 100).toFixed(0)}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
                       );
                     })}
                   </ScrollView>
                 ) : (
                   <View className="px-4 py-6 bg-white rounded-2xl mx-4">
-                    <Text className="text-gray-500 text-center">No items in this category</Text>
+                    <Text className="text-gray-500 text-center">{t('shop.noItemsInCategory')}</Text>
                   </View>
                 )}
               </View>
@@ -826,7 +868,7 @@ export default function ShopScreen() {
           ) : (
             <View className="py-12 items-center">
               <Text className="text-gray-600 text-center px-8">
-                No categories or items available yet. Check back soon!
+                {t('shop.noContent')}
               </Text>
             </View>
           )}
@@ -836,8 +878,8 @@ export default function ShopScreen() {
         </View>
       </Animated.ScrollView>
 
-      {/* Sticky Cart Footer - Shows only when cart has items */}
-      {currentCart && currentCart.totalItems > 0 && (
+      {/* Sticky Cart Footer - Shows only when cart has items and shop is open */}
+      {currentCart && currentCart.totalItems > 0 && shopDetails && !isShopClosed && (
         <View
           style={{
             position: 'absolute',
@@ -868,9 +910,9 @@ export default function ShopScreen() {
                 <CartIcon size={22} color="#FFFFFF" />
               </View>
               <View className="flex-1">
-                <Text className="text-white font-bold text-lg">View your cart</Text>
+                <Text className="text-white font-bold text-lg">{t('shop.viewCart')}</Text>
                 <Text className="text-white/95 text-sm">
-                  {currentCart.totalItems} {currentCart.totalItems === 1 ? 'item' : 'items'}
+                  {currentCart.totalItems} {currentCart.totalItems === 1 ? t('shop.item') : t('shop.items')}
                 </Text>
               </View>
             </View>
@@ -888,7 +930,7 @@ export default function ShopScreen() {
         onPress={() => setSearchVisible(true)}
         style={{
           position: 'absolute',
-          bottom: currentCart && currentCart.totalItems > 0 
+          bottom: currentCart && currentCart.totalItems > 0
             ? Math.max(insets.bottom, 12) + 8 + 80  // Above cart footer (footer height ~100px)
             : insets.bottom + 24,
           right: 20,
@@ -915,15 +957,15 @@ export default function ShopScreen() {
         <SafeAreaView className="flex-1 bg-white" edges={['top']}>
           {/* Search Bar at Top */}
           <View className="bg-white px-4 py-3 flex-row items-center border-b border-gray-200">
-            <TouchableOpacity 
-              onPress={() => setSearchVisible(false)} 
+            <TouchableOpacity
+              onPress={() => setSearchVisible(false)}
               className="mr-3 w-8 h-8 items-center justify-center"
             >
               <BackIcon size={20} color="#374151" />
             </TouchableOpacity>
             <TextInput
-              className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-base"
-              placeholder="Search for items..."
+              className={`flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-base ${isRTL ? 'text-right' : 'text-left'}`}
+              placeholder={t('shop.searchPlaceholder')}
               placeholderTextColor="#9CA3AF"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -938,9 +980,9 @@ export default function ShopScreen() {
           ) : (
             <View className="flex-1 items-center justify-center px-8">
               <Text className="text-6xl mb-4">🔍</Text>
-              <Text className="text-gray-900 text-lg font-semibold mb-2">Search for items</Text>
+              <Text className="text-gray-900 text-lg font-semibold mb-2">{t('shop.searchTitle')}</Text>
               <Text className="text-gray-500 text-center">
-                Start typing to search through all available products
+                {t('shop.searchStart')}
               </Text>
             </View>
           )}
@@ -960,9 +1002,10 @@ function SearchResults({
   searchQuery: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { addItemToCart, removeItemFromCart, getShopCart } = useCart();
   const currentCart = getShopCart(shopId);
-  
+
   const { data: searchResults, isLoading } = useQuery(
     ['searchShopItems', shopId, searchQuery],
     async () => {
@@ -982,6 +1025,26 @@ function SearchResults({
     return result.data;
   });
 
+  // Compute real-time opening status for SearchResults
+  const openingStatus = React.useMemo(() => {
+    if (!shopDetails) return null;
+    return getCurrentOpeningStatus({
+      opening_hours: shopDetails.opening_hours ?? null,
+      holidays: shopDetails.holidays ?? null,
+      open_status_mode: shopDetails.open_status_mode ?? undefined,
+    });
+  }, [shopDetails]);
+
+  // Determine if shop is closed - be explicit and strict
+  const isShopClosed = React.useMemo(() => {
+    if (!shopDetails) return true; // If no shop details, assume closed
+    if (openingStatus !== null) {
+      return !openingStatus.isOpen; // Use computed status if available
+    }
+    // Fallback to shopDetails.is_open (which should already be computed real-time)
+    return !shopDetails.is_open;
+  }, [shopDetails, openingStatus]);
+
   // Filter out inactive items from search results
   // MUST be called before any early returns to maintain hook order
   const activeSearchResults = React.useMemo(() => {
@@ -996,9 +1059,9 @@ function SearchResults({
     return cartItem?.quantity || 0;
   };
 
-  // Handle adding item to cart
+  // Handle adding item to cart (disabled if shop is closed)
   const handleAddToCart = async (item: ShopItem) => {
-    if (!shopDetails) return;
+    if (!shopDetails || isShopClosed) return;
     ReactNativeHapticFeedback.trigger('impactLight');
     await addItemToCart(shopId, item, {
       name: shopDetails.name,
@@ -1094,30 +1157,35 @@ function SearchResults({
             {(() => {
               const quantity = getItemQuantity(item.id);
               return quantity === 0 ? (
-            <TouchableOpacity
+                <TouchableOpacity
                   onPress={() => handleAddToCart(item)}
-              className="absolute bottom-2 right-2 bg-blue-600 rounded-full items-center justify-center"
-              style={{
-                width: 44,
-                height: 44,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.2,
-                shadowRadius: 4,
-                elevation: 4,
-              }}
-              activeOpacity={0.7}
-            >
-              <Text className="text-white text-lg font-bold">+</Text>
-                </TouchableOpacity>
-              ) : (
-                <View className="absolute bottom-2 right-2 flex-row items-center bg-blue-600 rounded-full px-2 py-1.5"
+                  disabled={isShopClosed}
+                  className="absolute bottom-2 right-2 rounded-full items-center justify-center"
                   style={{
+                    width: 44,
+                    height: 44,
+                    backgroundColor: isShopClosed ? '#9ca3af' : '#2563eb',
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 2 },
                     shadowOpacity: 0.2,
                     shadowRadius: 4,
                     elevation: 4,
+                    opacity: isShopClosed ? 0.5 : 1,
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text className="text-white text-lg font-bold">+</Text>
+                </TouchableOpacity>
+              ) : (
+                <View className="absolute bottom-2 right-2 flex-row items-center rounded-full px-2 py-1.5"
+                  style={{
+                    backgroundColor: isShopClosed ? '#9ca3af' : '#2563eb',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.2,
+                    shadowRadius: 4,
+                    elevation: 4,
+                    opacity: isShopClosed ? 0.5 : 1,
                   }}
                 >
                   <TouchableOpacity
@@ -1133,12 +1201,13 @@ function SearchResults({
                   </Text>
                   <TouchableOpacity
                     onPress={() => handleAddToCart(item)}
+                    disabled={isShopClosed}
                     style={{ width: 40, height: 40 }}
                     className="items-center justify-center"
                     activeOpacity={0.7}
                   >
                     <Text className="text-white text-base font-bold">+</Text>
-            </TouchableOpacity>
+                  </TouchableOpacity>
                 </View>
               );
             })()}

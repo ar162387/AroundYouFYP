@@ -10,6 +10,7 @@ type InventoryListProps = {
   onToggleActive: (itemId: string, nextActive: boolean) => void;
   onEditItem: (item: InventoryItem) => void;
   onViewAudit: (item: InventoryItem) => void;
+  contentContainerStyle?: any;
 };
 
 export function InventoryList({
@@ -18,6 +19,7 @@ export function InventoryList({
   onToggleActive,
   onEditItem,
   onViewAudit,
+  contentContainerStyle,
 }: InventoryListProps) {
   const renderItem: ListRenderItem<InventoryItem> = ({ item }) => (
     <InventoryItemCard
@@ -36,7 +38,7 @@ export function InventoryList({
       estimatedItemSize={estimatedItemSize}
       ItemSeparatorComponent={() => <View className="h-4" />}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingVertical: 4 }}
+      contentContainerStyle={contentContainerStyle ?? { paddingVertical: 4 }}
     />
   );
 }

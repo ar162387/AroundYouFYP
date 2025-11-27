@@ -14,7 +14,7 @@ import type { RootStackParamList } from './types';
 
 import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/consumer/HomeScreen';
-import ProfileScreen from '../screens/ProfileScreen';
+import ProfileScreen from '../screens/consumer/ProfileScreen';
 import SearchScreen from '../screens/consumer/SearchScreen';
 import ShopScreen from '../screens/consumer/ShopScreen';
 import CategoryItemsScreen from '../screens/consumer/CategoryItemsScreen';
@@ -143,7 +143,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Shop"
           component={ShopScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -151,7 +151,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="CategoryItems"
           component={CategoryItemsScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -159,7 +159,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="AddressSearch"
           component={AddressSearchScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_bottom',
             presentation: 'modal',
@@ -168,7 +168,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="ConsumerAddressManagement"
           component={ConsumerAddressManagementScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -176,7 +176,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="ViewCart"
           component={ViewCartScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -184,7 +184,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Checkout"
           component={CheckoutScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -192,7 +192,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="OrderStatus"
           component={OrderStatusScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -200,7 +200,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Orders"
           component={OrdersListScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -208,7 +208,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="Login"
           component={LoginScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'fade',
           }}
@@ -216,7 +216,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="SignUp"
           component={SignUpScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'fade',
           }}
@@ -224,7 +224,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="MerchantRegistrationSurvey"
           component={MerchantRegistrationSurveyScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -232,7 +232,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="MerchantDashboard"
           component={MerchantDashboard}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'fade',
           }}
@@ -240,7 +240,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="CreateShop"
           component={CreateShopScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -248,7 +248,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="EditShop"
           component={EditShopScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
@@ -256,7 +256,7 @@ export default function AppNavigator() {
         <Stack.Screen
           name="ShopAddressMap"
           component={ShopAddressMapScreen}
-          options={{ 
+          options={{
             headerShown: false,
             animation: 'slide_from_right',
             presentation: 'modal',

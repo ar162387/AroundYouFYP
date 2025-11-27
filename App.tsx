@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import './src/i18n/i18n';
 import { AppState, AppStateStatus } from 'react-native';
 import { QueryClient, QueryClientProvider, useQueryClient } from 'react-query';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
@@ -33,14 +34,14 @@ function AppStateHandler() {
       ) {
         // App has come to the foreground - refresh connections
         console.log('App came to foreground - refreshing connections');
-        
+
         // Check connection health and reset if needed
         checkConnectionHealth()
           .then((isHealthy) => {
             if (!isHealthy) {
               console.log('Connection was stale and has been reset after app foreground');
             }
-            
+
             // Refresh Supabase session
             return supabase.auth.getSession();
           })
@@ -134,7 +135,7 @@ export default function App() {
         <AuthProvider>
           <LocationProvider>
             <CartProvider>
-            <AppNavigator />
+              <AppNavigator />
             </CartProvider>
           </LocationProvider>
         </AuthProvider>

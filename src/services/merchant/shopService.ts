@@ -1,6 +1,14 @@
 import { supabase } from '../supabase';
 import type { OrderStatus } from '../../types/orders';
 import Config from 'react-native-config';
+import type {
+  DayKey,
+  DayOpeningHours,
+  OpeningHoursConfig,
+  ShopHoliday,
+  OpenStatusMode,
+} from '../../utils/shopOpeningHours';
+import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
 
 export type ShopType = 'Grocery' | 'Meat' | 'Vegetable' | 'Stationery' | 'Dairy' | 'Pharmacy';
 
@@ -27,12 +35,23 @@ export interface MerchantShop {
   image_url: string | null;
   tags: string[];
   is_open: boolean;
+  // Optional scheduling fields (may be null for existing shops)
+  opening_hours?: OpeningHoursConfig | null;
+  holidays?: ShopHoliday[] | null;
+  open_status_mode?: OpenStatusMode | null;
   orders_today: number; // Calculated field, not in DB
   orders_cancelled_today: number; // Calculated field, not in DB
   revenue_today: number; // Calculated field, not in DB
   created_at: string;
   updated_at: string;
 }
+
+export type UpdateShopData = Partial<CreateShopData> & {
+  opening_hours?: OpeningHoursConfig | null;
+  holidays?: ShopHoliday[] | null;
+  open_status_mode?: OpenStatusMode | null;
+  is_open?: boolean;
+};
 
 // Helper function to upload using Supabase Storage API
 // Note: Supabase Storage uses S3 backend. The S3 credentials you created bypass RLS at the storage level.
@@ -282,7 +301,7 @@ export async function createShop(
 export async function updateShop(
   shopId: string,
   userId: string,
-  data: Partial<CreateShopData>
+  data: UpdateShopData
 ): Promise<{ shop: MerchantShop | null; error: { message: string } | null }> {
   try {
     // Verify the shop belongs to the user's merchant account
@@ -324,6 +343,10 @@ export async function updateShop(
       updateData.image_url = data.image_url === null ? null : (data.image_url || null);
     }
     if (data.tags !== undefined) updateData.tags = data.tags || [];
+    if (data.opening_hours !== undefined) updateData.opening_hours = data.opening_hours;
+    if (data.holidays !== undefined) updateData.holidays = data.holidays;
+    if (data.open_status_mode !== undefined) updateData.open_status_mode = data.open_status_mode;
+    if (data.is_open !== undefined) updateData.is_open = data.is_open;
 
     // Update shop
     const { data: shop, error } = await supabase
@@ -422,8 +445,16 @@ export async function getMerchantShops(
           }
         });
 
+        // Compute real-time opening status based on opening hours
+        const openingStatus = getCurrentOpeningStatus({
+          opening_hours: shop.opening_hours as any,
+          holidays: shop.holidays as any,
+          open_status_mode: shop.open_status_mode as any,
+        });
+
         return {
           ...shop,
+          is_open: openingStatus.isOpen, // Override stored value with computed real-time status
           orders_today: ordersToday,
           orders_cancelled_today: cancelledToday,
           revenue_today: revenueCents / 100,

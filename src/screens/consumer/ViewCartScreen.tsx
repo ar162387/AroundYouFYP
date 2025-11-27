@@ -21,6 +21,7 @@ import { validateCartOrderValue } from '../../services/consumer/shopService';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import BackIcon from '../../icons/BackIcon';
 import CartIcon from '../../icons/CartIcon';
+import { useTranslation } from 'react-i18next';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,6 +40,7 @@ interface CartTotals {
 }
 
 export default function ViewCartScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { shopId } = route.params;
@@ -87,7 +89,7 @@ export default function ViewCartScreen() {
     try {
       // Fetch fresh delivery logic from backend (real-time, not cached)
       const { data: deliveryLogic, error: deliveryLogicError } = await fetchDeliveryLogic(shopId);
-      
+
       if (deliveryLogicError) {
         console.error('Error fetching delivery logic:', deliveryLogicError);
       }
@@ -111,7 +113,7 @@ export default function ViewCartScreen() {
       // If no delivery logic exists, just show subtotal and validate
       if (!deliveryLogic) {
         const validationResult = await validateCartOrderValue(shopId, currentCart.totalPrice);
-        
+
         setTotals({
           subtotal: currentCart.totalPrice,
           deliveryFee: 0,
@@ -227,7 +229,7 @@ export default function ViewCartScreen() {
   // Handle navigate to shop
   const handleAddMoreItems = () => {
     if (!currentCart) return;
-    
+
     navigation.navigate('Shop', {
       shopId: currentCart.shopId,
       shop: {
@@ -253,12 +255,12 @@ export default function ViewCartScreen() {
       <SafeAreaView className="flex-1 bg-gray-50">
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-6xl mb-4">🛒</Text>
-          <Text className="text-gray-900 text-lg font-semibold mb-2">Cart is empty</Text>
+          <Text className="text-gray-900 text-lg font-semibold mb-2">{t('cart.empty')}</Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             className="mt-4 bg-blue-600 px-6 py-3 rounded-full"
           >
-            <Text className="text-white font-semibold">Go Back</Text>
+            <Text className="text-white font-semibold">{t('cart.goBack')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -279,7 +281,7 @@ export default function ViewCartScreen() {
           </TouchableOpacity>
           <View className="flex-1">
             <Text className="text-gray-900 text-lg font-bold">{currentCart.shopName}</Text>
-            <Text className="text-gray-500 text-sm">{currentCart.items.length} {currentCart.items.length === 1 ? 'item' : 'items'}</Text>
+            <Text className="text-gray-500 text-sm">{currentCart.items.length} {currentCart.items.length === 1 ? t('cart.item') : t('cart.items')}</Text>
           </View>
         </View>
       </SafeAreaView>
@@ -326,7 +328,7 @@ export default function ViewCartScreen() {
                   {item.name}
                 </Text>
                 <Text className="text-gray-600 text-sm mt-1">
-                  Rs {(item.price_cents / 100).toFixed(0)} each
+                  Rs {(item.price_cents / 100).toFixed(0)} {t('cart.each')}
                 </Text>
                 <Text className="text-gray-900 text-base font-semibold mt-1">
                   Rs {((item.price_cents * item.quantity) / 100).toFixed(0)}
@@ -366,7 +368,7 @@ export default function ViewCartScreen() {
           activeOpacity={0.7}
         >
           <Text className="text-gray-600 text-base mr-2">+</Text>
-          <Text className="text-gray-600 text-base font-medium">Add more items</Text>
+          <Text className="text-gray-600 text-base font-medium">{t('cart.addMore')}</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -393,7 +395,7 @@ export default function ViewCartScreen() {
         {/* Totals */}
         <View className="mb-4">
           <View className="flex-row justify-between mb-2">
-            <Text className="text-gray-600 text-base">Subtotal</Text>
+            <Text className="text-gray-600 text-base">{t('cart.subtotal')}</Text>
             <Text className="text-gray-900 text-base font-semibold">
               Rs {(totals.subtotal / 100).toFixed(0)}
             </Text>
@@ -401,7 +403,7 @@ export default function ViewCartScreen() {
 
           {totals.surcharge > 0 && (
             <View className="flex-row justify-between mb-2">
-              <Text className="text-gray-600 text-base">Small order surcharge</Text>
+              <Text className="text-gray-600 text-base">{t('cart.surcharge')}</Text>
               <Text className="text-gray-900 text-base font-semibold">
                 Rs {totals.surcharge.toFixed(0)}
               </Text>
@@ -410,12 +412,12 @@ export default function ViewCartScreen() {
 
           {totals.freeDeliveryApplied ? (
             <View className="flex-row justify-between mb-2">
-              <Text className="text-green-600 text-base font-semibold">Free delivery</Text>
+              <Text className="text-green-600 text-base font-semibold">{t('cart.freeDelivery')}</Text>
               <Text className="text-green-600 text-base font-semibold">Rs 0</Text>
             </View>
           ) : totals.deliveryFee > 0 ? (
             <View className="flex-row justify-between mb-2">
-              <Text className="text-gray-600 text-base">Delivery</Text>
+              <Text className="text-gray-600 text-base">{t('cart.delivery')}</Text>
               <Text className="text-gray-900 text-base font-semibold">
                 Rs {totals.deliveryFee.toFixed(0)}
               </Text>
@@ -425,12 +427,12 @@ export default function ViewCartScreen() {
           {totals.isCalculating && (
             <View className="flex-row items-center justify-center py-2">
               <ActivityIndicator size="small" color="#2563eb" />
-              <Text className="text-gray-500 text-sm ml-2">Calculating...</Text>
+              <Text className="text-gray-500 text-sm ml-2">{t('cart.calculating')}</Text>
             </View>
           )}
 
           <View className="flex-row justify-between mt-2 pt-2 border-t border-gray-200">
-            <Text className="text-gray-900 text-lg font-bold">Total</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('cart.total')}</Text>
             <Text className="text-gray-900 text-lg font-bold">
               Rs {(totals.total / 100).toFixed(0)}
             </Text>
@@ -441,10 +443,10 @@ export default function ViewCartScreen() {
         {!totals.meetsMinimumOrder && totals.minimumOrderValue !== null && (
           <View className="mb-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
             <Text className="text-amber-800 text-sm font-semibold text-center">
-              Minimum order value is Rs {totals.minimumOrderValue.toFixed(0)}
+              {t('cart.minOrderWarning', { amount: totals.minimumOrderValue.toFixed(0) })}
             </Text>
             <Text className="text-amber-700 text-xs text-center mt-1">
-              Add more items to proceed
+              {t('cart.addMoreToProceed')}
             </Text>
           </View>
         )}
@@ -462,19 +464,18 @@ export default function ViewCartScreen() {
             navigation.navigate('Checkout', { shopId });
           }}
           disabled={totals.isCalculating || !totals.meetsMinimumOrder}
-          className={`rounded-2xl py-4 px-6 items-center justify-center ${
-            totals.isCalculating || !totals.meetsMinimumOrder ? 'bg-gray-300' : 'bg-blue-600'
-          }`}
+          className={`rounded-2xl py-4 px-6 items-center justify-center ${totals.isCalculating || !totals.meetsMinimumOrder ? 'bg-gray-300' : 'bg-blue-600'
+            }`}
           activeOpacity={totals.isCalculating || !totals.meetsMinimumOrder ? 1 : 0.8}
         >
           {totals.isCalculating ? (
             <View className="flex-row items-center">
               <ActivityIndicator size="small" color="#FFFFFF" />
-              <Text className="text-white font-bold text-lg ml-2">Calculating...</Text>
+              <Text className="text-white font-bold text-lg ml-2">{t('cart.calculating')}</Text>
             </View>
           ) : (
             <View className="flex-row items-center">
-              <Text className="text-white font-bold text-lg mr-2">Proceed to Checkout</Text>
+              <Text className="text-white font-bold text-lg mr-2">{t('cart.proceedToCheckout')}</Text>
               <Text className="text-white font-bold text-lg">
                 Rs {(totals.total / 100).toFixed(0)}
               </Text>

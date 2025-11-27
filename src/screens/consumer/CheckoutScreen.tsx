@@ -26,6 +26,7 @@ import PinMarker from '../../icons/PinMarker';
 import MoneyIcon from '../../icons/MoneyIcon';
 import AddressSelectionBottomSheet from '../../components/consumer/AddressSelectionBottomSheet';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Checkout'>;
@@ -39,6 +40,7 @@ interface CheckoutTotals {
 }
 
 export default function CheckoutScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { shopId } = route.params;
@@ -47,7 +49,7 @@ export default function CheckoutScreen() {
   const { selectedAddress, setSelectedAddress } = useLocationSelection();
 
   const currentCart = getShopCart(shopId);
-  
+
   const [showAddressSheet, setShowAddressSheet] = useState(false);
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
   const [isCalculatingTotals, setIsCalculatingTotals] = useState(true);
@@ -255,16 +257,16 @@ export default function CheckoutScreen() {
       );
 
       if (error) {
-        Alert.alert('Validation Error', 'Could not validate delivery address');
+        Alert.alert(t('checkout.validationError'), t('checkout.validationMsg'));
         setIsValidatingAddress(false);
         return;
       }
 
       if (!data?.isWithinDeliveryZone) {
         Alert.alert(
-          'Delivery Unavailable',
-          'This address is outside the shop\'s delivery zone. Please select a different address.',
-          [{ text: 'OK' }]
+          t('checkout.deliveryUnavailable'),
+          t('checkout.unavailableMsg'),
+          [{ text: t('profile.ok') }]
         );
         setIsValidatingAddress(false);
         return;
@@ -273,7 +275,7 @@ export default function CheckoutScreen() {
       // Address is valid, set it and recalculate delivery fees
       setSelectedAddress(address);
       setAddressId(address.addressId);
-      
+
       // Totals will automatically recalculate via useEffect
       // This handles edge cases like:
       // - Moving from free delivery zone to paid delivery zone
@@ -281,29 +283,29 @@ export default function CheckoutScreen() {
       // - Any changes in delivery logic
     } catch (error) {
       console.error('Error validating address:', error);
-      Alert.alert('Error', 'Failed to validate address');
+      Alert.alert(t('profile.error'), t('checkout.validationMsg'));
     } finally {
       setIsValidatingAddress(false);
     }
   };
 
   const handlePlaceOrder = async () => {
-    if (isPlacingOrder || placeOrderMutation.isPending) {
+    if (isPlacingOrder || placeOrderMutation.isLoading) {
       return;
     }
 
     if (!selectedAddress) {
-      Alert.alert('Address Required', 'Please select a delivery address');
+      Alert.alert(t('checkout.addressRequired'), t('checkout.selectAddressMsg'));
       return;
     }
 
     if (isCalculatingTotals) {
-      Alert.alert('Please Wait', 'Still calculating delivery fees...');
+      Alert.alert(t('checkout.pleaseWait'), t('checkout.calculatingMsg'));
       return;
     }
 
     if (!addressId) {
-      Alert.alert('Address Error', 'Please select a saved address or save your current location first.');
+      Alert.alert(t('checkout.addressError'), t('checkout.saveAddressMsg'));
       return;
     }
 
@@ -326,7 +328,7 @@ export default function CheckoutScreen() {
       if (response.success && response.order) {
         // Clear cart for this shop
         await deleteShopCart(shopId);
-        
+
         // Navigate to order status screen
         navigation.reset({
           index: 1,
@@ -340,11 +342,11 @@ export default function CheckoutScreen() {
         const errorMessage = response.message || 'Could not place your order. Please try again.';
         if (errorMessage.includes('duplicate') || errorMessage.includes('23505')) {
           Alert.alert(
-            'Order Processing',
-            'Your order is being processed. Please wait a moment and check your orders.',
+            t('checkout.orderProcessing'),
+            t('checkout.processingMsg'),
             [
               {
-                text: 'OK',
+                text: t('profile.ok'),
                 onPress: () => {
                   // Navigate to orders list to see if order was created
                   navigation.navigate('OrdersList' as any);
@@ -353,23 +355,23 @@ export default function CheckoutScreen() {
             ]
           );
         } else {
-          Alert.alert('Order Failed', errorMessage);
+          Alert.alert(t('checkout.orderFailed'), errorMessage);
         }
       }
     } catch (error: any) {
       console.error('Error placing order:', error);
-      
+
       // Check for duplicate key error
       const errorCode = error?.code || error?.error?.code;
       const errorMessage = error?.message || error?.error?.message || '';
-      
+
       if (errorCode === '23505' || errorMessage.includes('duplicate key')) {
         Alert.alert(
-          'Order Processing',
-          'Your order is being processed. Please wait a moment and check your orders.',
+          t('checkout.orderProcessing'),
+          t('checkout.processingMsg'),
           [
             {
-              text: 'OK',
+              text: t('profile.ok'),
               onPress: () => {
                 // Navigate to orders list to see if order was created
                 navigation.navigate('OrdersList' as any);
@@ -378,7 +380,7 @@ export default function CheckoutScreen() {
           ]
         );
       } else {
-        Alert.alert('Error', 'Failed to place order. Please check your connection and try again.');
+        Alert.alert(t('profile.error'), t('checkout.failedMsg'));
       }
     } finally {
       setIsPlacingOrder(false);
@@ -390,12 +392,12 @@ export default function CheckoutScreen() {
       <SafeAreaView className="flex-1 bg-gray-50">
         <View className="flex-1 items-center justify-center px-8">
           <Text className="text-6xl mb-4">🛒</Text>
-          <Text className="text-gray-900 text-lg font-semibold mb-2">Cart is empty</Text>
+          <Text className="text-gray-900 text-lg font-semibold mb-2">{t('cart.empty')}</Text>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             className="mt-4 bg-blue-600 px-6 py-3 rounded-full"
           >
-            <Text className="text-white font-semibold">Go Back</Text>
+            <Text className="text-white font-semibold">{t('cart.goBack')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -410,7 +412,7 @@ export default function CheckoutScreen() {
     const zoom = 16; // Street-level zoom
     const size = '400x150'; // Width x Height
     const markerColor = '0x3B82F6'; // Blue marker
-    
+
     return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=${zoom}&size=${size}&scale=2&maptype=roadmap&markers=color:${markerColor}%7C${lat},${lon}&key=${googleApiKey}`;
   };
 
@@ -427,7 +429,7 @@ export default function CheckoutScreen() {
             <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
           <View className="flex-1">
-            <Text className="text-gray-900 text-lg font-bold">Checkout</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('checkout.title')}</Text>
             <Text className="text-gray-500 text-sm">{currentCart.shopName}</Text>
           </View>
         </View>
@@ -446,7 +448,7 @@ export default function CheckoutScreen() {
             <View className="mr-2">
               <LocationMarkerIcon size={22} color="#2563EB" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
             </View>
-            <Text className="text-lg font-bold text-gray-900">Delivery Address</Text>
+            <Text className="text-lg font-bold text-gray-900">{t('checkout.deliveryAddress')}</Text>
           </View>
 
           <TouchableOpacity
@@ -482,29 +484,29 @@ export default function CheckoutScreen() {
                     <PinMarker size={32} color="#3B82F6" />
                   </View>
                 </View>
-                
+
                 {/* Address Details */}
                 <View className="p-4">
                   <Text className="text-base font-semibold text-gray-900">
                     {selectedAddress.label}
                   </Text>
                   <Text className="text-sm text-gray-600 mt-1">{selectedAddress.city}</Text>
-                  
+
                   {/* Landmark from Database */}
                   {landmark && (
                     <View className="mt-3">
-                      <Text className="text-xs text-gray-500 mb-1">Landmark</Text>
+                      <Text className="text-xs text-gray-500 mb-1">{t('checkout.landmark')}</Text>
                       <Text className="text-sm text-gray-700">{landmark}</Text>
                     </View>
                   )}
-                  
-                  <Text className="text-blue-600 text-sm font-medium mt-3">Change Address</Text>
+
+                  <Text className="text-blue-600 text-sm font-medium mt-3">{t('checkout.changeAddress')}</Text>
                 </View>
               </>
             ) : (
               <View className="p-4">
-                <Text className="text-base font-semibold text-gray-900">Select Address</Text>
-                <Text className="text-sm text-gray-500 mt-1">Tap to choose delivery address</Text>
+                <Text className="text-base font-semibold text-gray-900">{t('checkout.selectAddress')}</Text>
+                <Text className="text-sm text-gray-500 mt-1">{t('checkout.tapToChoose')}</Text>
               </View>
             )}
             {isValidatingAddress && (
@@ -518,12 +520,12 @@ export default function CheckoutScreen() {
         {/* Delivery Instructions/Contact Details */}
         <View className="bg-white rounded-xl p-4 mb-4">
           <Text className="text-sm font-semibold text-gray-700 mb-2">
-            Delivery instructions/contact details
+            {t('checkout.instructionsTitle')}
           </Text>
           <TextInput
             value={deliveryInstructions}
             onChangeText={setDeliveryInstructions}
-            placeholder="Note to rider, contact details, or any special instructions"
+            placeholder={t('checkout.instructionsPlaceholder')}
             multiline
             numberOfLines={4}
             className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
@@ -536,24 +538,22 @@ export default function CheckoutScreen() {
         <View className="mb-4">
           <View className="flex-row items-center mb-2">
             <MoneyIcon size={20} color="#111827" />
-            <Text className="text-lg font-bold text-gray-900 ml-2">Payment Method</Text>
+            <Text className="text-lg font-bold text-gray-900 ml-2">{t('checkout.paymentMethod')}</Text>
           </View>
 
           <View className="bg-white rounded-xl overflow-hidden border border-gray-200">
             {/* Cash on Delivery */}
             <TouchableOpacity
               onPress={() => setPaymentMethod('cash')}
-              className={`flex-row items-center p-4 ${
-                paymentMethod === 'cash' ? 'bg-blue-50' : 'bg-white'
-              }`}
+              className={`flex-row items-center p-4 ${paymentMethod === 'cash' ? 'bg-blue-50' : 'bg-white'
+                }`}
               activeOpacity={0.7}
             >
               <View
-                className={`w-5 h-5 rounded-full border-2 mr-3 items-center justify-center ${
-                  paymentMethod === 'cash'
-                    ? 'border-blue-600 bg-blue-600'
-                    : 'border-gray-300'
-                }`}
+                className={`w-5 h-5 rounded-full border-2 mr-3 items-center justify-center ${paymentMethod === 'cash'
+                  ? 'border-blue-600 bg-blue-600'
+                  : 'border-gray-300'
+                  }`}
               >
                 {paymentMethod === 'cash' && (
                   <View className="w-2.5 h-2.5 rounded-full bg-white" />
@@ -561,14 +561,13 @@ export default function CheckoutScreen() {
               </View>
               <View className="flex-1">
                 <Text
-                  className={`text-base font-semibold ${
-                    paymentMethod === 'cash' ? 'text-blue-900' : 'text-gray-900'
-                  }`}
+                  className={`text-base font-semibold ${paymentMethod === 'cash' ? 'text-blue-900' : 'text-gray-900'
+                    }`}
                 >
-                  Cash on Delivery
+                  {t('checkout.cashOnDelivery')}
                 </Text>
                 <Text className="text-sm text-gray-500 mt-0.5">
-                  Pay with cash when your order arrives
+                  {t('checkout.cashDescription')}
                 </Text>
               </View>
               <Text className="text-2xl">💵</Text>
@@ -580,10 +579,10 @@ export default function CheckoutScreen() {
                 <View className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3" />
                 <View className="flex-1">
                   <Text className="text-base font-semibold text-gray-900">
-                    Card Payment
+                    {t('checkout.cardPayment')}
                   </Text>
                   <Text className="text-sm text-gray-500 mt-0.5">
-                    Coming soon
+                    {t('checkout.comingSoon')}
                   </Text>
                 </View>
                 <Text className="text-2xl">💳</Text>
@@ -596,10 +595,10 @@ export default function CheckoutScreen() {
                 <View className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3" />
                 <View className="flex-1">
                   <Text className="text-base font-semibold text-gray-900">
-                    Mobile Wallet
+                    {t('checkout.mobileWallet')}
                   </Text>
                   <Text className="text-sm text-gray-500 mt-0.5">
-                    JazzCash, Easypaisa - Coming soon
+                    {t('checkout.walletDescription')}
                   </Text>
                 </View>
                 <Text className="text-2xl">📱</Text>
@@ -610,15 +609,14 @@ export default function CheckoutScreen() {
 
         {/* Order Summary Section */}
         <View className="bg-white rounded-xl p-4 mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Order Summary</Text>
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('checkout.orderSummary')}</Text>
 
           {/* Items List */}
           {currentCart.items.map((item, index) => (
             <View
               key={item.id}
-              className={`flex-row justify-between py-2 ${
-                index < currentCart.items.length - 1 ? 'border-b border-gray-100' : ''
-              }`}
+              className={`flex-row justify-between py-2 ${index < currentCart.items.length - 1 ? 'border-b border-gray-100' : ''
+                }`}
             >
               <View className="flex-1">
                 <Text className="text-gray-900 text-base">
@@ -634,7 +632,7 @@ export default function CheckoutScreen() {
           {/* Totals */}
           <View className="mt-4 pt-4 border-t border-gray-200">
             <View className="flex-row justify-between mb-2">
-              <Text className="text-gray-600 text-base">Subtotal</Text>
+              <Text className="text-gray-600 text-base">{t('cart.subtotal')}</Text>
               <Text className="text-gray-900 text-base font-semibold">
                 Rs {(totals.subtotal / 100).toFixed(0)}
               </Text>
@@ -642,7 +640,7 @@ export default function CheckoutScreen() {
 
             {totals.surcharge > 0 && (
               <View className="flex-row justify-between mb-2">
-                <Text className="text-gray-600 text-base">Small order surcharge</Text>
+                <Text className="text-gray-600 text-base">{t('cart.surcharge')}</Text>
                 <Text className="text-gray-900 text-base font-semibold">
                   Rs {totals.surcharge.toFixed(0)}
                 </Text>
@@ -651,14 +649,14 @@ export default function CheckoutScreen() {
 
             {totals.freeDeliveryApplied ? (
               <View className="flex-row justify-between mb-2">
-                <Text className="text-green-600 text-base font-semibold">Delivery</Text>
+                <Text className="text-green-600 text-base font-semibold">{t('cart.delivery')}</Text>
                 <Text className="text-green-600 text-base font-semibold line-through">
                   Rs {totals.deliveryFee.toFixed(0)}
                 </Text>
               </View>
             ) : totals.deliveryFee > 0 ? (
               <View className="flex-row justify-between mb-2">
-                <Text className="text-gray-600 text-base">Delivery</Text>
+                <Text className="text-gray-600 text-base">{t('cart.delivery')}</Text>
                 <Text className="text-gray-900 text-base font-semibold">
                   Rs {totals.deliveryFee.toFixed(0)}
                 </Text>
@@ -667,7 +665,7 @@ export default function CheckoutScreen() {
 
             {/* Total in Order Summary */}
             <View className="flex-row justify-between mt-3 pt-3 border-t border-gray-200">
-              <Text className="text-gray-900 text-lg font-bold">Total</Text>
+              <Text className="text-gray-900 text-lg font-bold">{t('cart.total')}</Text>
               {isCalculatingTotals ? (
                 <ActivityIndicator size="small" color="#2563eb" />
               ) : (
@@ -682,8 +680,8 @@ export default function CheckoutScreen() {
         {/* Terms & Conditions - Display Only */}
         <View className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4">
           <Text className="text-gray-600 text-xs text-center">
-            By placing this order, you agree to all{' '}
-            <Text className="text-gray-900 font-semibold">terms & conditions</Text>
+            {t('checkout.termsText')}{' '}
+            <Text className="text-gray-900 font-semibold">{t('checkout.termsLink')}</Text>
           </Text>
         </View>
       </ScrollView>
@@ -710,7 +708,7 @@ export default function CheckoutScreen() {
       >
         {/* Total */}
         <View className="flex-row justify-between items-center mb-3">
-          <Text className="text-gray-900 text-xl font-bold">Total</Text>
+          <Text className="text-gray-900 text-xl font-bold">{t('cart.total')}</Text>
           <Text className="text-gray-900 text-xl font-bold">
             {isCalculatingTotals ? (
               <ActivityIndicator size="small" color="#2563eb" />
@@ -723,20 +721,19 @@ export default function CheckoutScreen() {
         {/* Place Order Button */}
         <TouchableOpacity
           onPress={handlePlaceOrder}
-          disabled={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isPending}
-          className={`rounded-2xl py-4 px-6 items-center justify-center ${
-            !selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isPending
-              ? 'bg-gray-300'
-              : 'bg-blue-600'
-          }`}
-          activeOpacity={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isPending ? 1 : 0.8}
+          disabled={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isLoading}
+          className={`rounded-2xl py-4 px-6 items-center justify-center ${!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isLoading
+            ? 'bg-gray-300'
+            : 'bg-blue-600'
+            }`}
+          activeOpacity={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isLoading ? 1 : 0.8}
         >
           <View className="flex-row items-center justify-center">
-            {(isPlacingOrder || placeOrderMutation.isPending) && (
+            {(isPlacingOrder || placeOrderMutation.isLoading) && (
               <ActivityIndicator size="small" color="#FFFFFF" />
             )}
             <Text className="text-white font-bold text-lg ml-2">
-              {isPlacingOrder || placeOrderMutation.isPending ? 'Placing order…' : 'Place Order'}
+              {isPlacingOrder || placeOrderMutation.isLoading ? t('checkout.placingOrder') : t('checkout.placeOrder')}
             </Text>
           </View>
         </TouchableOpacity>

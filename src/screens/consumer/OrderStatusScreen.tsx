@@ -24,11 +24,13 @@ import {
   OrderDeliveredIcon,
   OrderCancelledIcon,
 } from '../../icons/OrderStatusIcons';
+import { useTranslation } from 'react-i18next';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'OrderStatus'>;
 
 export default function OrderStatusScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { orderId } = route.params;
@@ -40,12 +42,12 @@ export default function OrderStatusScreen() {
 
   const handleCancelOrder = () => {
     Alert.alert(
-      'Cancel Order',
-      'Are you sure you want to cancel this order?',
+      t('orders.cancelConfirmationTitle'),
+      t('orders.cancelConfirmationMsg'),
       [
-        { text: 'No', style: 'cancel' },
+        { text: t('orders.no'), style: 'cancel' },
         {
-          text: 'Yes, Cancel',
+          text: t('orders.yesCancel'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -56,13 +58,13 @@ export default function OrderStatusScreen() {
               if (result.success) {
                 // Refetch order to get updated status immediately
                 await refetch();
-                Alert.alert('Order Cancelled', 'Your order has been cancelled.');
+                Alert.alert(t('orders.cancelledTitle'), t('orders.cancelSuccess'));
               } else {
-                Alert.alert('Error', result.message || 'Failed to cancel order');
+                Alert.alert(t('profile.error'), result.message || t('orders.cancelFailed'));
               }
             } catch (error) {
               console.error('Error cancelling order:', error);
-              Alert.alert('Error', 'Failed to cancel order. Please try again.');
+              Alert.alert(t('profile.error'), t('orders.cancelFailed'));
             }
           },
         },
@@ -107,7 +109,7 @@ export default function OrderStatusScreen() {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
         <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="text-gray-600 mt-4">Loading order...</Text>
+        <Text className="text-gray-600 mt-4">{t('orders.loadingOrder')}</Text>
       </SafeAreaView>
     );
   }
@@ -116,12 +118,12 @@ export default function OrderStatusScreen() {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-8">
         <Text className="text-6xl mb-4">📦</Text>
-        <Text className="text-gray-900 text-lg font-semibold mb-2">Order not found</Text>
+        <Text className="text-gray-900 text-lg font-semibold mb-2">{t('orders.notFound')}</Text>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           className="mt-4 bg-blue-600 px-6 py-3 rounded-full"
         >
-          <Text className="text-white font-semibold">Go Back</Text>
+          <Text className="text-white font-semibold">{t('cart.goBack')}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -142,7 +144,7 @@ export default function OrderStatusScreen() {
             <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
           <View className="flex-1">
-            <Text className="text-gray-900 text-lg font-bold">Order Status</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('orders.statusTitle')}</Text>
             <Text className="text-gray-500 text-sm">{order.order_number}</Text>
           </View>
         </View>
@@ -172,10 +174,10 @@ export default function OrderStatusScreen() {
             className="text-2xl font-bold mb-2"
             style={{ color: statusDisplay.color }}
           >
-            {statusDisplay.title}
+            {t(`orders.status.${order.status}`)}
           </Text>
           <Text className="text-gray-600 text-center mb-4">
-            {statusDisplay.description}
+            {t(`orders.statusDescription.${order.status}`)}
           </Text>
 
         </View>
@@ -185,7 +187,7 @@ export default function OrderStatusScreen() {
           <View className="bg-white rounded-xl p-4 mb-4">
             <View className="flex-row items-center mb-3">
               <DeliveryRunnerIcon size={20} color="#111827" />
-              <Text className="text-lg font-bold text-gray-900 ml-2">Delivery Runner</Text>
+              <Text className="text-lg font-bold text-gray-900 ml-2">{t('orders.deliveryRunner')}</Text>
             </View>
             <View className="flex-row items-center justify-between">
               <View className="flex-1">
@@ -198,7 +200,7 @@ export default function OrderStatusScreen() {
                 onPress={() => handleCallRunner(order.delivery_runner!.phone_number)}
                 className="bg-blue-600 px-4 py-2 rounded-lg"
               >
-                <Text className="text-white font-semibold">Call</Text>
+                <Text className="text-white font-semibold">{t('orders.call')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -206,7 +208,7 @@ export default function OrderStatusScreen() {
 
         {/* Shop Info */}
         <View className="bg-white rounded-xl p-4 mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Shop Details</Text>
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('orders.shopDetails')}</Text>
           <Text className="text-gray-900 text-base font-semibold">{order.shop.name}</Text>
           <Text className="text-gray-600 text-sm mt-1">{order.shop.shop_type}</Text>
           <Text className="text-gray-600 text-sm mt-1">{order.shop.address}</Text>
@@ -214,7 +216,7 @@ export default function OrderStatusScreen() {
 
         {/* Delivery Address */}
         <View className="bg-white rounded-xl p-4 mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Delivery Address</Text>
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('checkout.deliveryAddress')}</Text>
           <Text className="text-gray-900 text-base">
             {order.delivery_address.street_address}
           </Text>
@@ -224,7 +226,7 @@ export default function OrderStatusScreen() {
           </Text>
           {order.delivery_address.landmark && (
             <View className="mt-2">
-              <Text className="text-xs text-gray-500">Landmark</Text>
+              <Text className="text-xs text-gray-500">{t('checkout.landmark')}</Text>
               <Text className="text-gray-700 text-sm">{order.delivery_address.landmark}</Text>
             </View>
           )}
@@ -233,20 +235,19 @@ export default function OrderStatusScreen() {
         {/* Special Instructions */}
         {order.special_instructions && (
           <View className="bg-white rounded-xl p-4 mb-4">
-            <Text className="text-lg font-bold text-gray-900 mb-2">Special Instructions</Text>
+            <Text className="text-lg font-bold text-gray-900 mb-2">{t('orders.specialInstructions')}</Text>
             <Text className="text-gray-700 text-sm">{order.special_instructions}</Text>
           </View>
         )}
 
         {/* Order Items */}
         <View className="bg-white rounded-xl p-4 mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Order Items</Text>
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('orders.orderItems')}</Text>
           {order.order_items.map((item, index) => (
             <View
               key={item.id}
-              className={`flex-row justify-between py-2 ${
-                index < order.order_items.length - 1 ? 'border-b border-gray-100' : ''
-              }`}
+              className={`flex-row justify-between py-2 ${index < order.order_items.length - 1 ? 'border-b border-gray-100' : ''
+                }`}
             >
               <View className="flex-1">
                 <Text className="text-gray-900 text-base font-medium">
@@ -265,10 +266,10 @@ export default function OrderStatusScreen() {
 
         {/* Payment Summary */}
         <View className="bg-white rounded-xl p-4 mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Payment Summary</Text>
-          
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('orders.paymentSummary')}</Text>
+
           <View className="flex-row justify-between mb-2">
-            <Text className="text-gray-600 text-base">Subtotal</Text>
+            <Text className="text-gray-600 text-base">{t('cart.subtotal')}</Text>
             <Text className="text-gray-900 text-base font-semibold">
               {formatPrice(order.subtotal_cents)}
             </Text>
@@ -276,7 +277,7 @@ export default function OrderStatusScreen() {
 
           {order.surcharge_cents > 0 && (
             <View className="flex-row justify-between mb-2">
-              <Text className="text-gray-600 text-base">Small order surcharge</Text>
+              <Text className="text-gray-600 text-base">{t('cart.surcharge')}</Text>
               <Text className="text-gray-900 text-base font-semibold">
                 {formatPrice(order.surcharge_cents)}
               </Text>
@@ -284,14 +285,14 @@ export default function OrderStatusScreen() {
           )}
 
           <View className="flex-row justify-between mb-2">
-            <Text className="text-gray-600 text-base">Delivery fee</Text>
+            <Text className="text-gray-600 text-base">{t('cart.delivery')}</Text>
             <Text className="text-gray-900 text-base font-semibold">
               {formatPrice(order.delivery_fee_cents)}
             </Text>
           </View>
 
           <View className="flex-row justify-between mt-3 pt-3 border-t border-gray-200">
-            <Text className="text-gray-900 text-lg font-bold">Total</Text>
+            <Text className="text-gray-900 text-lg font-bold">{t('cart.total')}</Text>
             <Text className="text-gray-900 text-lg font-bold">
               {formatPrice(order.total_cents)}
             </Text>
@@ -299,7 +300,7 @@ export default function OrderStatusScreen() {
 
           <View className="mt-3 pt-3 border-t border-gray-200">
             <View className="flex-row justify-between">
-              <Text className="text-gray-600 text-base">Payment method</Text>
+              <Text className="text-gray-600 text-base">{t('orders.paymentMethod')}</Text>
               <Text className="text-gray-900 text-base font-semibold capitalize">
                 {order.payment_method}
               </Text>
@@ -314,24 +315,24 @@ export default function OrderStatusScreen() {
             className="bg-red-50 border border-red-200 rounded-xl p-4 items-center mb-4"
             activeOpacity={0.7}
           >
-            <Text className="text-red-600 font-semibold">Cancel Order</Text>
+            <Text className="text-red-600 font-semibold">{t('orders.cancelOrder')}</Text>
           </TouchableOpacity>
         )}
 
         {cancelOrderMutation.isLoading && (
           <View className="bg-gray-50 rounded-xl p-4 items-center mb-4">
             <ActivityIndicator size="small" color="#EF4444" />
-            <Text className="text-gray-600 text-sm mt-2">Cancelling order...</Text>
+            <Text className="text-gray-600 text-sm mt-2">{t('orders.cancelling')}</Text>
           </View>
         )}
 
         {/* Cancellation Info */}
         {order.status === 'cancelled' && (
           <View className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-            <Text className="text-red-900 font-semibold mb-1">Order Cancelled</Text>
+            <Text className="text-red-900 font-semibold mb-1">{t('orders.cancelledTitle')}</Text>
             {order.cancellation_reason && (
               <Text className="text-red-700 text-sm">
-                Reason: {order.cancellation_reason}
+                {t('orders.cancellationReason')}: {order.cancellation_reason}
               </Text>
             )}
           </View>

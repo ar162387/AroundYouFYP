@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 import type { RootStackParamList } from '../../../../navigation/types';
@@ -32,6 +33,7 @@ type OrdersSectionProps = {
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export default function OrdersSection({ shop }: OrdersSectionProps) {
+  const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
 
   const {
@@ -70,7 +72,7 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
     return (
       <View className="flex-1 items-center justify-center p-8">
         <ActivityIndicator size="large" color="#3B82F6" />
-        <Text className="text-gray-600 mt-4">Loading orders...</Text>
+        <Text className="text-gray-600 mt-4">{t('merchant.orders.loading')}</Text>
       </View>
     );
   }
@@ -80,10 +82,10 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
       <View className="flex-1 items-center justify-center p-8">
         <Text className="text-6xl mb-4">📦</Text>
         <Text className="text-gray-900 text-lg font-semibold mb-2 text-center">
-          No orders yet
+          {t('merchant.orders.noOrders')}
         </Text>
         <Text className="text-gray-500 text-center">
-          Your orders will appear here when customers place them
+          {t('merchant.orders.noOrdersDesc')}
         </Text>
       </View>
     );
@@ -111,7 +113,7 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
                     selectedTimeFilter === filter ? 'text-white' : 'text-gray-700'
                   }`}
                 >
-                  {getFilterLabel(filter)}
+                  {getFilterLabel(filter, t)}
                 </Text>
               </TouchableOpacity>
             ),
@@ -130,7 +132,7 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
         {filteredOrders.length === 0 ? (
           <View className="py-8 items-center">
             <Text className="text-gray-500 text-center">
-              No orders for this period
+              {t('merchant.orders.noOrdersForPeriod')}
             </Text>
           </View>
         ) : selectedTimeFilter === 'today' && groupedFilteredOrders ? (
@@ -161,6 +163,7 @@ interface OrderCardProps {
 }
 
 function OrderCard({ order, onPress }: OrderCardProps) {
+  const { t } = useTranslation();
   const statusDisplay = getOrderStatusDisplay(order.status);
   const placedDate = new Date(order.placed_at);
   const timeLabel = placedDate.toLocaleTimeString('en-PK', {
@@ -266,7 +269,7 @@ function OrderCard({ order, onPress }: OrderCardProps) {
           </Text>
         ))}
         {remainingCount > 0 && (
-          <Text className="text-gray-400 text-xs">+{remainingCount} more</Text>
+          <Text className="text-gray-400 text-xs">{t('merchant.orders.moreItems', { count: remainingCount })}</Text>
         )}
       </View>
 
@@ -275,25 +278,25 @@ function OrderCard({ order, onPress }: OrderCardProps) {
           {formatPrice(order.total_cents)}
         </Text>
         <Text className="text-blue-600 text-sm font-semibold">
-          View Details →
+          {t('merchant.orders.viewDetails')}
         </Text>
       </View>
     </TouchableOpacity>
   );
 }
 
-function getFilterLabel(filter: OrderTimeFilter): string {
+function getFilterLabel(filter: OrderTimeFilter, t: (key: string) => string): string {
   switch (filter) {
     case 'today':
-      return 'Today';
+      return t('merchant.orders.filters.today');
     case 'yesterday':
-      return 'Yesterday';
+      return t('merchant.orders.filters.yesterday');
     case '7days':
-      return 'Last 7 Days';
+      return t('merchant.orders.filters.last7Days');
     case '30days':
-      return 'Last 30 Days';
+      return t('merchant.orders.filters.last30Days');
     case 'all':
-      return 'All Time';
+      return t('merchant.orders.filters.allTime');
     default:
       return filter;
   }
