@@ -245,6 +245,7 @@ export default function CheckoutScreen() {
     coords: { latitude: number; longitude: number };
     isCurrent: boolean;
     addressId?: string;
+    landmark?: string | null;
   }) => {
     setIsValidatingAddress(true);
 
@@ -275,6 +276,8 @@ export default function CheckoutScreen() {
       // Address is valid, set it and recalculate delivery fees
       setSelectedAddress(address);
       setAddressId(address.addressId);
+      setLandmark(address.landmark || null);
+      setShowAddressSheet(false);
 
       // Totals will automatically recalculate via useEffect
       // This handles edge cases like:

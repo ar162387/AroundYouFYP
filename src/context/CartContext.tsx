@@ -33,6 +33,7 @@ interface CartContextType {
   updateItemQuantity: (shopId: string, itemId: string, quantity: number) => Promise<void>;
   deleteShopCart: (shopId: string) => Promise<void>;
   getShopCart: (shopId: string) => ShopCart | null;
+  getAllCarts: () => ShopCart[];
   clearAllCarts: () => Promise<void>;
 }
 
@@ -187,6 +188,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return carts[shopId] || null;
   };
 
+  const getAllCarts = (): ShopCart[] => {
+    return Object.values(carts);
+  };
+
   const clearAllCarts = async () => {
     await saveCarts({});
   };
@@ -199,6 +204,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     updateItemQuantity,
     deleteShopCart,
     getShopCart,
+    getAllCarts,
     clearAllCarts,
   };
 

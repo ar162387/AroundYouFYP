@@ -468,3 +468,59 @@ export async function getMerchantShops(
   }
 }
 
+// Delete a shop
+export async function deleteShop(
+  shopId: string,
+  userId: string
+): Promise<{ error: { message: string } | null }> {
+  try {
+    // Verify the shop belongs to the user's merchant account
+    const { data: merchantAccount, error: merchantError } = await supabase
+      .from('merchant_accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (merchantError) {
+      return { error: { message: 'Merchant account not found.' } };
+    }
+
+    // Verify shop ownership
+    const { data: existingShop, error: shopError } = await supabase
+      .from('shops')
+      .select('merchant_id')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError || !existingShop) {
+      return { error: { message: 'Shop not found.' } };
+    }
+
+    if (existingShop.merchant_id !== merchantAccount.id) {
+      return { error: { message: 'You do not have permission to delete this shop.' } };
+    }
+
+    // Count orders for informational message (orders will be preserved with NULL shop_id)
+    const { count: orderCount } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('shop_id', shopId);
+
+    // Delete the shop
+    // Orders will have their shop_id set to NULL automatically due to ON DELETE SET NULL constraint
+    // This preserves order history while allowing shop deletion
+    const { error: deleteError } = await supabase
+      .from('shops')
+      .delete()
+      .eq('id', shopId);
+
+    if (deleteError) {
+      return { error: { message: deleteError.message } };
+    }
+
+    return { error: null };
+  } catch (error: any) {
+    return { error: { message: error.message || 'An error occurred' } };
+  }
+}
+

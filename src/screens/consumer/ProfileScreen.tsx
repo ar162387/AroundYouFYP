@@ -10,6 +10,7 @@ import FavoriteIcon from '../../icons/FavoriteIcon';
 import * as merchantService from '../../services/merchant/merchantService';
 import { useTranslation } from 'react-i18next';
 import LanguageActionSheet from '../../components/LanguageActionSheet';
+import * as notificationPreferencesService from '../../services/notificationPreferencesService';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -25,7 +26,10 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     loadDefaultRole();
-  }, []);
+    if (user) {
+      loadNotificationPreferences();
+    }
+  }, [user]);
 
   const loadDefaultRole = async () => {
     try {
@@ -78,6 +82,45 @@ export default function ProfileScreen() {
       Alert.alert('Error', error.message || 'Failed to check merchant account');
     } finally {
       setIsSwitchingToMerchant(false);
+    }
+  };
+
+  const loadNotificationPreferences = async () => {
+    if (!user) return;
+    
+    try {
+      const { data } = await notificationPreferencesService.getNotificationPreferences(
+        user.id,
+        'consumer'
+      );
+      // Default to true if no preference exists
+      setPushEnabled(data?.allow_push_notifications ?? true);
+    } catch (error) {
+      console.error('Error loading notification preferences:', error);
+    }
+  };
+
+  const handleNotificationToggle = async (value: boolean) => {
+    if (!user) return;
+    
+    setPushEnabled(value);
+    
+    try {
+      const { error } = await notificationPreferencesService.updateNotificationPreferences(
+        user.id,
+        'consumer',
+        value
+      );
+      
+      if (error) {
+        // Revert on error
+        setPushEnabled(!value);
+        Alert.alert('Error', 'Failed to update notification preferences');
+      }
+    } catch (error) {
+      // Revert on error
+      setPushEnabled(!value);
+      Alert.alert('Error', 'Failed to update notification preferences');
     }
   };
 
@@ -212,9 +255,10 @@ export default function ProfileScreen() {
             right={
               <Switch
                 value={pushEnabled}
-                onValueChange={setPushEnabled}
+                onValueChange={handleNotificationToggle}
                 thumbColor={pushEnabled ? '#2563eb' : '#f4f3f4'}
                 trackColor={{ true: '#93c5fd', false: '#d1d5db' }}
+                disabled={!user}
               />
             }
           />

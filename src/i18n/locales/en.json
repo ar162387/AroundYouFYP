@@ -199,6 +199,10 @@
             "noOrders": "No orders yet.",
             "noOrdersDesc": "Your orders will appear here when customers place them",
             "noOrdersForPeriod": "No orders for this period",
+            "noActiveOrders": "No Active Orders",
+            "noActiveOrdersDesc": "You don't have any active orders at the moment",
+            "order": "order",
+            "orders": "orders",
             "viewDetails": "View Details →",
             "moreItems": "+{{count}} more",
             "filters": {
@@ -251,7 +255,14 @@
             "noRunners": "No delivery runners available. Add runners in shop settings.",
             "free": "Free",
             "delivering": "Delivering: {{orderNumber}}",
-            "assigning": "Assigning runner..."
+            "assigning": "Assigning runner...",
+            "status": {
+                "pending": "Pending Confirmation",
+                "confirmed": "Preparing Your Order",
+                "out_for_delivery": "Out for Delivery",
+                "delivered": "Delivered",
+                "cancelled": "Cancelled"
+            }
         },
         "shopCard": {
             "orders": "Orders",
@@ -534,6 +545,48 @@
             "noShopsDesc": "Create your first shop and start selling online to customers around you",
             "createFirst": "Create Your First Shop",
             "createNew": "+ Create New Shop"
+        },
+        "settings": {
+            "shopInformation": "Shop Information",
+            "edit": "Edit",
+            "name": "Name",
+            "description": "Description",
+            "shopType": "Shop Type",
+            "tags": "Tags",
+            "dangerZone": "Danger Zone",
+            "deleteShop": "Delete Shop",
+            "delete": "Delete",
+            "deleteShopTitle": "Delete Shop",
+            "deleteShopMessage": "Are you sure you want to delete \"{{shopName}}\"? This action cannot be undone and will remove all associated data including orders, inventory, and delivery settings.",
+            "deleteShopWarning": "Once you delete a shop, there is no going back. Order history will be preserved but the shop reference will be removed from orders.",
+            "deleteSuccess": "Shop deleted successfully. Order history has been preserved.",
+            "deleteError": "Failed to delete shop. Please try again.",
+            "cancel": "Cancel",
+            "success": "Success",
+            "error": "Error",
+            "ok": "OK",
+            "userNotFound": "User not found"
+        },
+        "verification": {
+            "warningTitle": "Verify Your Identity",
+            "warningMessage": "Your shops are not visible to customers until your identity is verified. Please complete verification to start receiving orders.",
+            "warningMessagePending": "Your verification is pending. Your shops will become visible once approved.",
+            "formTitle": "Identity Verification",
+            "formDescription": "Please provide your CNIC details for identity verification. Your information will be reviewed and your shops will become visible once approved.",
+            "nameAsPerCNIC": "Name as per CNIC",
+            "nameAsPerCNICDesc": "Enter your full name exactly as it appears on your CNIC",
+            "nameAsPerCNICPlaceholder": "Enter your full name",
+            "cnic": "CNIC Number",
+            "cnicDesc": "Enter your CNIC number in the format: 12345-1234567-1",
+            "cnicExpiry": "CNIC Expiry Date",
+            "cnicExpiryDesc": "Enter the expiry date of your CNIC (YYYY-MM-DD)",
+            "cancel": "Cancel",
+            "submit": "Submit for Verification",
+            "submitting": "Submitting...",
+            "submitSuccess": "Verification submitted successfully",
+            "submitSuccessMessage": "Your verification request has been submitted. Your shops will become visible once approved.",
+            "submitError": "Failed to submit verification",
+            "submitErrorMessage": "Please check your information and try again."
         },
         "addressMap": {
             "title": "Select Shop Address",

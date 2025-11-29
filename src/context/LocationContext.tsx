@@ -8,6 +8,8 @@ export type SelectedAddress = {
   city: string; // e.g., "Lahore"
   coords?: Coordinates | null;
   isCurrent?: boolean; // true if derived from GPS
+  addressId?: string;
+  landmark?: string | null;
 };
 
 type LocationContextValue = {
@@ -29,6 +31,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         city: confirmedLocation.city || '',
         coords: confirmedLocation.coords,
         isCurrent: false,
+        landmark: null,
       };
     }
     return null;
@@ -44,6 +47,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         city: confirmedLocation.city || '',
         coords: confirmedLocation.coords,
         isCurrent: false,
+        landmark: null,
       };
       setSelectedAddressState(restoredAddress);
     }

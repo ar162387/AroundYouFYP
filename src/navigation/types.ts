@@ -28,6 +28,7 @@ export type RootStackParamList = {
   MerchantShopPortal: { shop: MerchantShop };
   ManageDeliveryAreas: { shop: MerchantShop };
   MerchantOrder: { shopId: string; orderId: string };
+  ShoppingAssistant: undefined;
 };
 
 declare global {

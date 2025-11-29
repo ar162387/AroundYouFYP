@@ -4,6 +4,7 @@ import { useUserLocation } from './useUserLocation';
 import { findShopsByLocation } from '../../services/consumer/shopService';
 import { calculateShopsDeliveryFees } from '../../services/consumer/deliveryFeeService';
 import type { ConsumerShop } from '../../services/consumer/shopService';
+import { getConnectionResetCount } from '../../services/supabase';
 
 export function useShopsByLocation() {
   const { selectedAddress } = useLocationSelection();
@@ -25,6 +26,7 @@ export function useShopsByLocation() {
   // Track last fetched coordinates to prevent duplicate fetches
   const lastFetchedCoordsRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+  const lastConnectionResetCountRef = useRef<number>(0);
   
   // Create a stable key from coordinates
   const coordsKey = coords 
@@ -67,18 +69,39 @@ export function useShopsByLocation() {
         const shopsData = result.data || [];
         console.log('Setting shops:', shopsData.length);
         
-        // Calculate delivery fees for all shops
-        const shopsWithFees = await calculateShopsDeliveryFees(
-          shopsData,
-          coords.latitude,
-          coords.longitude
-        );
-        
-        if (isMountedRef.current) {
-          setShops(shopsWithFees);
-          setError(null);
-          // Mark these coordinates as fetched
-          lastFetchedCoordsRef.current = coordsKey;
+        // Calculate delivery fees for all shops with timeout protection
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('Delivery fee calculation timeout'));
+            }, 15000); // 15 second timeout for fee calculation
+          });
+          
+          const shopsWithFees = await Promise.race([
+            calculateShopsDeliveryFees(
+              shopsData,
+              coords.latitude,
+              coords.longitude
+            ),
+            timeoutPromise,
+          ]);
+          
+          if (isMountedRef.current) {
+            setShops(shopsWithFees);
+            setError(null);
+            // Mark these coordinates as fetched
+            lastFetchedCoordsRef.current = coordsKey;
+          }
+        } catch (feeError: any) {
+          // If fee calculation fails or times out, still show shops without fees
+          console.warn('Delivery fee calculation failed, showing shops without fees:', feeError);
+          if (isMountedRef.current) {
+            // Set shops with default delivery fee (0 or undefined)
+            setShops(shopsData);
+            setError(null);
+            // Mark these coordinates as fetched
+            lastFetchedCoordsRef.current = coordsKey;
+          }
         }
       }
     } catch (err: any) {
@@ -87,9 +110,16 @@ export function useShopsByLocation() {
       setError(err?.message || 'An error occurred');
       setShops([]);
     } finally {
+      // Always clear loading state, even if there was an error or timeout
       if (isMountedRef.current) {
         setLoading(false);
       }
+      // Add a safety timeout to ensure loading is cleared even if something goes wrong
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
+      }, 2000);
     }
   }, [coords, coordsKey]);
 
@@ -100,8 +130,27 @@ export function useShopsByLocation() {
     await fetchShops(true);
   }, [fetchShops]);
 
+  // Monitor connection resets and refetch when connection is restored
+  useEffect(() => {
+    const checkConnectionReset = setInterval(() => {
+      const currentResetCount = getConnectionResetCount();
+      if (currentResetCount > lastConnectionResetCountRef.current) {
+        // Connection was reset, clear last fetched coords to trigger refetch
+        console.log('[useShopsByLocation] Connection reset detected, triggering refetch...');
+        lastConnectionResetCountRef.current = currentResetCount;
+        lastFetchedCoordsRef.current = null;
+        if (coords && isMountedRef.current) {
+          fetchShops(true); // Force refresh
+        }
+      }
+    }, 2000); // Check every 2 seconds
+
+    return () => clearInterval(checkConnectionReset);
+  }, [coords, fetchShops]);
+
   useEffect(() => {
     isMountedRef.current = true;
+    lastConnectionResetCountRef.current = getConnectionResetCount();
     fetchShops();
 
     return () => {

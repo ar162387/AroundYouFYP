@@ -10,6 +10,7 @@ import { useEffect } from 'react';
 import {
   getShopOrders,
   getFilteredShopOrders,
+  getAllMerchantOrders,
   confirmOrder,
   assignRunnerAndDispatch,
   markOrderDelivered,
@@ -34,6 +35,7 @@ export const merchantOrderKeys = {
   all: ['merchant-orders'] as const,
   lists: () => [...merchantOrderKeys.all, 'list'] as const,
   list: (shopId: string) => [...merchantOrderKeys.lists(), shopId] as const,
+  allMerchant: (userId: string) => [...merchantOrderKeys.all, 'all-merchant', userId] as const,
   filtered: (shopId: string, filters: OrderFilters) =>
     [...merchantOrderKeys.lists(), shopId, 'filtered', filters] as const,
   runners: (shopId: string) =>
@@ -71,6 +73,18 @@ export function useShopOrders(shopId: string | undefined) {
   }, [shopId, queryClient]);
 
   return query;
+}
+
+/**
+ * Get all orders for all merchant shops
+ */
+export function useAllMerchantOrders(userId: string | undefined) {
+  return useQuery({
+    queryKey: merchantOrderKeys.allMerchant(userId!),
+    queryFn: () => getAllMerchantOrders(userId!),
+    enabled: !!userId,
+    staleTime: 0, // Always fetch fresh data
+  });
 }
 
 /**
@@ -162,9 +176,14 @@ export function useShopOrderTimeSeries(
  * Note: Real-time subscription will update cache automatically
  */
 export function useConfirmOrder() {
+  const queryClient = useQueryClient();
+  
   return useMutation({
     mutationFn: (orderId: string) => confirmOrder(orderId),
-    // No onSuccess invalidation - real-time subscription handles cache updates
+    onSuccess: () => {
+      // Invalidate all merchant orders query to update the list screen
+      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+    },
   });
 }
 
@@ -186,7 +205,9 @@ export function useAssignRunnerAndDispatch() {
       shopId?: string;
     }) => assignRunnerAndDispatch(orderId, runnerId),
     onSuccess: (_, variables) => {
-      // Only invalidate runner status (not orders - real-time handles that)
+      // Invalidate all merchant orders query to update the list screen
+      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+      // Invalidate runner status
       if (variables.shopId) {
         queryClient.invalidateQueries({ queryKey: merchantOrderKeys.runners(variables.shopId) });
       }
@@ -199,9 +220,14 @@ export function useAssignRunnerAndDispatch() {
  * Note: Real-time subscription will update cache automatically
  */
 export function useMarkOrderDelivered() {
+  const queryClient = useQueryClient();
+  
   return useMutation({
     mutationFn: (orderId: string) => markOrderDelivered(orderId),
-    // No onSuccess invalidation - real-time subscription handles cache updates
+    onSuccess: () => {
+      // Invalidate all merchant orders query to update the list screen
+      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+    },
   });
 }
 
@@ -210,10 +236,15 @@ export function useMarkOrderDelivered() {
  * Note: Real-time subscription will update cache automatically
  */
 export function useCancelOrder() {
+  const queryClient = useQueryClient();
+  
   return useMutation({
     mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
       cancelOrderService(orderId, reason),
-    // No onSuccess invalidation - real-time subscription handles cache updates
+    onSuccess: () => {
+      // Invalidate all merchant orders query to update the list screen
+      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+    },
   });
 }
 

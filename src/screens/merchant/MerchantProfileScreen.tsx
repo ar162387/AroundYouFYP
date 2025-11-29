@@ -7,17 +7,22 @@ import { useAuth } from '../../context/AuthContext';
 import * as merchantService from '../../services/merchant/merchantService';
 import { useTranslation } from 'react-i18next';
 import LanguageActionSheet from '../../components/LanguageActionSheet';
+import { VerificationFormSheet } from '../../components/merchant/VerificationFormSheet';
+import * as notificationPreferencesService from '../../services/notificationPreferencesService';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MerchantProfileScreen() {
   const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === 'ur';
   const [languageSheetVisible, setLanguageSheetVisible] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [merchantAccount, setMerchantAccount] = useState<merchantService.MerchantAccount | null>(null);
   const [isLoadingMerchant, setIsLoadingMerchant] = useState(true);
   const [isConsumerDefault, setIsConsumerDefault] = useState(false);
+  const [verificationFormVisible, setVerificationFormVisible] = useState(false);
+  const [submittingVerification, setSubmittingVerification] = useState(false);
   const { user, signOut, setDefaultRole, getDefaultRole } = useAuth();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
 
@@ -59,6 +64,9 @@ export default function MerchantProfileScreen() {
   useEffect(() => {
     loadMerchantAccount();
     loadDefaultRole();
+    if (user) {
+      loadNotificationPreferences();
+    }
   }, [user]);
 
   // Refresh default role when screen comes into focus
@@ -89,6 +97,45 @@ export default function MerchantProfileScreen() {
         },
       ]
     );
+  };
+
+  const loadNotificationPreferences = async () => {
+    if (!user) return;
+    
+    try {
+      const { data } = await notificationPreferencesService.getNotificationPreferences(
+        user.id,
+        'merchant'
+      );
+      // Default to true if no preference exists
+      setPushEnabled(data?.allow_push_notifications ?? true);
+    } catch (error) {
+      console.error('Error loading notification preferences:', error);
+    }
+  };
+
+  const handleNotificationToggle = async (value: boolean) => {
+    if (!user) return;
+    
+    setPushEnabled(value);
+    
+    try {
+      const { error } = await notificationPreferencesService.updateNotificationPreferences(
+        user.id,
+        'merchant',
+        value
+      );
+      
+      if (error) {
+        // Revert on error
+        setPushEnabled(!value);
+        Alert.alert('Error', 'Failed to update notification preferences');
+      }
+    } catch (error) {
+      // Revert on error
+      setPushEnabled(!value);
+      Alert.alert('Error', 'Failed to update notification preferences');
+    }
   };
 
   const handleSetAsDefault = async (value: boolean) => {
@@ -168,6 +215,40 @@ export default function MerchantProfileScreen() {
     }
   };
 
+  const handleVerificationSubmit = async (data: merchantService.VerificationData) => {
+    if (!user) return;
+
+    setSubmittingVerification(true);
+    try {
+      const { merchant, error } = await merchantService.submitVerification(user.id, data);
+      if (error) {
+        Alert.alert(
+          t('merchant.verification.submitError'),
+          error.message || t('merchant.verification.submitErrorMessage')
+        );
+        return;
+      }
+
+      if (merchant) {
+        setMerchantAccount(merchant);
+        setVerificationFormVisible(false);
+        Alert.alert(
+          t('merchant.verification.submitSuccess'),
+          t('merchant.verification.submitSuccessMessage')
+        );
+      }
+    } catch (error: any) {
+      Alert.alert(
+        t('merchant.verification.submitError'),
+        error.message || t('merchant.verification.submitErrorMessage')
+      );
+    } finally {
+      setSubmittingVerification(false);
+    }
+  };
+
+  const showVerificationWarning = merchantAccount && merchantAccount.status !== 'verified';
+
   return (
     <View className="flex-1 bg-gray-50">
       {/* Header */}
@@ -186,6 +267,42 @@ export default function MerchantProfileScreen() {
           </View>
         ) : (
           <>
+            {/* Verification Warning Banner */}
+            {showVerificationWarning && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (merchantAccount?.status === 'none') {
+                    setVerificationFormVisible(true);
+                  }
+                }}
+                className={`mx-4 mt-3 mb-0 p-4 rounded-xl border ${
+                  merchantAccount?.status === 'pending'
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : 'bg-orange-50 border-orange-200'
+                }`}
+              >
+                <View className={`flex-row items-start ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <Text className="text-2xl mr-2">⚠️</Text>
+                  <View className="flex-1">
+                    <Text className={`text-base font-semibold text-gray-900 mb-1 ${isRTL ? 'text-right' : 'text-left'}`}>
+                      {t('merchant.verification.warningTitle')}
+                    </Text>
+                    <Text className={`text-sm text-gray-700 ${isRTL ? 'text-right' : 'text-left'}`}>
+                      {merchantAccount?.status === 'pending'
+                        ? t('merchant.verification.warningMessagePending')
+                        : t('merchant.verification.warningMessage')}
+                    </Text>
+                    {merchantAccount?.status === 'none' && (
+                      <Text className={`text-sm text-blue-600 font-semibold mt-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {t('merchant.verification.warningTitle')} →
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            )}
+
             {/* User Info */}
             <View className="bg-white px-4 py-5 mt-3">
               <Text className="text-gray-500 text-xs">{t('profile.name')}</Text>
@@ -233,9 +350,10 @@ export default function MerchantProfileScreen() {
                 right={
                   <Switch
                     value={pushEnabled}
-                    onValueChange={setPushEnabled}
+                    onValueChange={handleNotificationToggle}
                     thumbColor={pushEnabled ? '#2563eb' : '#f4f3f4'}
                     trackColor={{ true: '#93c5fd', false: '#d1d5db' }}
+                    disabled={!user}
                   />
                 }
               />
@@ -292,6 +410,17 @@ export default function MerchantProfileScreen() {
       <LanguageActionSheet
         visible={languageSheetVisible}
         onClose={() => setLanguageSheetVisible(false)}
+      />
+
+      {/* Verification Form Sheet */}
+      <VerificationFormSheet
+        visible={verificationFormVisible}
+        merchantAccount={merchantAccount}
+        userEmail={user?.email}
+        userName={user?.name}
+        loading={submittingVerification}
+        onClose={() => setVerificationFormVisible(false)}
+        onSubmit={handleVerificationSubmit}
       />
     </View >
   );

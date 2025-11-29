@@ -20,6 +20,7 @@ type AddressSelectionBottomSheetProps = {
     coords: { latitude: number; longitude: number };
     isCurrent: boolean;
     addressId?: string;
+    landmark?: string | null;
   }) => void;
 };
 
@@ -75,8 +76,8 @@ export default function AddressSelectionBottomSheet({
       coords,
       isCurrent: false,
       addressId: address.id,
+      landmark: address.landmark || null,
     });
-    onClose();
   };
 
   // Group addresses: with titles first, then without titles

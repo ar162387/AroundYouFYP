@@ -1,7 +1,7 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 
 import { loogin } from '../../lib/loogin';
-import { supabase } from '../supabase';
+import { supabase, executeWithRetry, isTimeoutOrConnectionError } from '../supabase';
 
 const log = loogin.scope('deliveryLogicService');
 
@@ -94,22 +94,35 @@ function mapRow(row: any): DeliveryLogic {
 export async function fetchDeliveryLogic(shopId: string): Promise<ServiceResult<DeliveryLogic | null>> {
   log.debug('fetchDeliveryLogic', { shopId });
 
-  const { data, error} = await supabase
-    .from(TABLE)
-    .select('*')
-    .eq('shop_id', shopId)
-    .maybeSingle();
+  try {
+    const result = await executeWithRetry(async (client) => {
+      const { data, error } = await client
+        .from(TABLE)
+        .select('*')
+        .eq('shop_id', shopId)
+        .maybeSingle();
+      return { data, error };
+    });
 
-  if (error) {
-    log.error('Failed to fetch delivery logic', error);
-    return { data: null, error };
+    const { data, error } = result;
+
+    if (error) {
+      log.error('Failed to fetch delivery logic', error);
+      return { data: null, error };
+    }
+
+    if (!data) {
+      return { data: null, error: null };
+    }
+
+    return { data: mapRow(data), error: null };
+  } catch (error: any) {
+    log.error('Exception fetching delivery logic:', error);
+    if (isTimeoutOrConnectionError(error)) {
+      return { data: null, error: error as PostgrestError };
+    }
+    return { data: null, error: error as PostgrestError };
   }
-
-  if (!data) {
-    return { data: null, error: null };
-  }
-
-  return { data: mapRow(data), error: null };
 }
 
 export async function createDeliveryLogic(

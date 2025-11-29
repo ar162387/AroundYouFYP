@@ -199,6 +199,10 @@
             "noOrders": "Abhi tak koi order nahi.",
             "noOrdersDesc": "Jab gahak order dein ge to aap ke orders yahan zahir honge",
             "noOrdersForPeriod": "Is muddat ke liye koi order nahi",
+            "noActiveOrders": "Koi Fa'al Order Nahi",
+            "noActiveOrdersDesc": "Fil waqt aap ke paas koi fa'al order nahi",
+            "order": "order",
+            "orders": "orders",
             "viewDetails": "Tafseelat Dekhein →",
             "moreItems": "+{{count}} mazeed",
             "filters": {
@@ -251,7 +255,14 @@
             "noRunners": "Koi delivery runner dastayab nahi hai. Dukan ki settings mein runners shamil karein.",
             "free": "Free",
             "delivering": "Delivery kar raha hai: {{orderNumber}}",
-            "assigning": "Runner assign ho raha hai..."
+            "assigning": "Runner assign ho raha hai...",
+            "status": {
+                "pending": "Tasdeeq ka Intezar",
+                "confirmed": "Order Tayyar Ho Raha Hai",
+                "out_for_delivery": "Delivery ke Liye Rawana",
+                "delivered": "Deliver Ho Gaya",
+                "cancelled": "Mansookh Shuda"
+            }
         },
         "shopCard": {
             "orders": "Orders",
@@ -534,6 +545,48 @@
             "noShopsDesc": "Apni pehli dukan banayein aur apne ird gird ke gahakon ko online farokht karna shuru karein",
             "createFirst": "Apni Pehli Dukan Banayein",
             "createNew": "+ Nayi Dukan Banayein"
+        },
+        "settings": {
+            "shopInformation": "Dukan Ki Malumat",
+            "edit": "Tarmeem",
+            "name": "Naam",
+            "description": "Tafseel",
+            "shopType": "Dukan Ki Qisam",
+            "tags": "Tags",
+            "dangerZone": "Khatray Ka Zone",
+            "deleteShop": "Dukan Hazf Karein",
+            "delete": "Hazf Karein",
+            "deleteShopTitle": "Dukan Hazf Karein",
+            "deleteShopMessage": "Kya aap waqai \"{{shopName}}\" ko hazf karna chahte hain? Yeh amal wapas nahi kiya ja sakta aur tamam mutaliqa data bishumol orders, inventory, aur delivery ki tarteebat ko hata dega.",
+            "deleteShopWarning": "Ek bar jab aap dukan hazf kar dete hain, to wapasi ka koi rasta nahi hai. Order ki tareekh mehfooz rahegi lekin dukan ka hawala orders se hata diya jayega.",
+            "deleteSuccess": "Dukan kamyabi se hazf ho gayi. Order ki tareekh mehfooz rahi hai.",
+            "deleteError": "Dukan hazf karne mein nakam. Baraye karam dobara koshish karein.",
+            "cancel": "Mansookh Karein",
+            "success": "Kamyabi",
+            "error": "Kharabi",
+            "ok": "Theek Hai",
+            "userNotFound": "Sarmaya nahi mila"
+        },
+        "verification": {
+            "warningTitle": "Apni Shanakht Ki Tasdeeq Karein",
+            "warningMessage": "Aap ki dukanain sarmayon ko is waqt tak nazar nahi aayengi jab tak aap ki shanakht ki tasdeeq nahi ho jati. Baraye karam order wasool karna shuru karne ke liye tasdeeq mukammal karein.",
+            "warningMessagePending": "Aap ki tasdeeq zair-e-iltaqa hai. Manzoori ke baad aap ki dukanain nazar anay lagengi.",
+            "formTitle": "Shanakht Ki Tasdeeq",
+            "formDescription": "Baraye karam shanakht ki tasdeeq ke liye apni shanakhti card ki tafseelat faraham karein. Aap ki malumat ka jaiza liya jayega aur manzoori ke baad aap ki dukanain nazar anay lagengi.",
+            "nameAsPerCNIC": "Shanakhti Card Ke Mutabiq Naam",
+            "nameAsPerCNICDesc": "Apna pura naam bilkul wahi darj karein jaisa ke aap ki shanakhti card par hai",
+            "nameAsPerCNICPlaceholder": "Apna pura naam darj karein",
+            "cnic": "Shanakhti Card Number",
+            "cnicDesc": "Apna shanakhti card number is format mein darj karein: 12345-1234567-1",
+            "cnicExpiry": "Shanakhti Card Ki Meyaad Khatam Honay Ki Tareekh",
+            "cnicExpiryDesc": "Apni shanakhti card ki meyaad khatam honay ki tareekh darj karein (YYYY-MM-DD)",
+            "cancel": "Mansookh Karein",
+            "submit": "Tasdeeq Ke Liye Jama Karein",
+            "submitting": "Jama kar rahe hain...",
+            "submitSuccess": "Tasdeeq kamyabi se jama kar di gayi",
+            "submitSuccessMessage": "Aap ki tasdeeq ki darkhwast jama kar di gayi hai. Manzoori ke baad aap ki dukanain nazar anay lagengi.",
+            "submitError": "Tasdeeq jama karne mein nakam",
+            "submitErrorMessage": "Baraye karam apni malumat check karein aur dobara koshish karein."
         },
         "addressMap": {
             "title": "Dukan ka Pata Muntakhib Karein",

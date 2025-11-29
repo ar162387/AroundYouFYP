@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StatusBar, Dimensions, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StatusBar, Dimensions, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -12,6 +12,8 @@ import ShopListSkeleton from '../../skeleton/ShopListSkeleton';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import { useTranslation } from 'react-i18next';
 import AppLogo from '../../icons/AppLogo';
+import * as merchantService from '../../services/merchant/merchantService';
+import { VerificationFormSheet } from '../../components/merchant/VerificationFormSheet';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -27,6 +29,9 @@ export default function MerchantShopsScreen() {
   const [shops, setShops] = useState<MerchantShop[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [merchantAccount, setMerchantAccount] = useState<merchantService.MerchantAccount | null>(null);
+  const [verificationFormVisible, setVerificationFormVisible] = useState(false);
+  const [submittingVerification, setSubmittingVerification] = useState(false);
 
   // Calculate heights: header 40%, white section 70%, overlap 10%
   const headerHeight = SCREEN_HEIGHT * 0.4;
@@ -51,8 +56,24 @@ export default function MerchantShopsScreen() {
     }
   };
 
+  const loadMerchantAccount = async () => {
+    if (!user) return;
+
+    try {
+      const { merchant, error } = await merchantService.getMerchantAccount(user.id);
+      if (error && error.message) {
+        console.error('Error loading merchant account:', error.message);
+        return;
+      }
+      setMerchantAccount(merchant);
+    } catch (error) {
+      console.error('Error loading merchant account:', error);
+    }
+  };
+
   useEffect(() => {
     loadShops();
+    loadMerchantAccount();
   }, [user]);
 
   // Auto-refresh when screen comes into focus (e.g., returning from CreateShop)
@@ -101,6 +122,40 @@ export default function MerchantShopsScreen() {
     } catch { }
     navigation.navigate('MerchantShopPortal', { shop });
   };
+
+  const handleVerificationSubmit = async (data: merchantService.VerificationData) => {
+    if (!user) return;
+
+    setSubmittingVerification(true);
+    try {
+      const { merchant, error } = await merchantService.submitVerification(user.id, data);
+      if (error) {
+        Alert.alert(
+          t('merchant.verification.submitError'),
+          error.message || t('merchant.verification.submitErrorMessage')
+        );
+        return;
+      }
+
+      if (merchant) {
+        setMerchantAccount(merchant);
+        setVerificationFormVisible(false);
+        Alert.alert(
+          t('merchant.verification.submitSuccess'),
+          t('merchant.verification.submitSuccessMessage')
+        );
+      }
+    } catch (error: any) {
+      Alert.alert(
+        t('merchant.verification.submitError'),
+        error.message || t('merchant.verification.submitErrorMessage')
+      );
+    } finally {
+      setSubmittingVerification(false);
+    }
+  };
+
+  const showVerificationWarning = merchantAccount && merchantAccount.status !== 'verified';
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={[]}>
@@ -164,6 +219,41 @@ export default function MerchantShopsScreen() {
               <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
+            {/* Verification Warning Banner */}
+            {showVerificationWarning && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (merchantAccount?.status === 'none') {
+                    setVerificationFormVisible(true);
+                  }
+                }}
+                className={`mx-4 mt-4 mb-4 p-4 rounded-xl border ${
+                  merchantAccount?.status === 'pending'
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : 'bg-orange-50 border-orange-200'
+                }`}
+              >
+                <View className={`flex-row items-start ${isRTL ? 'flex-row-reverse' : ''}`}>
+                  <Text className="text-2xl mr-2">⚠️</Text>
+                  <View className="flex-1">
+                    <Text className={`text-base font-semibold text-gray-900 mb-1 ${isRTL ? 'text-right' : 'text-left'}`}>
+                      {t('merchant.verification.warningTitle')}
+                    </Text>
+                    <Text className={`text-sm text-gray-700 ${isRTL ? 'text-right' : 'text-left'}`}>
+                      {merchantAccount?.status === 'pending'
+                        ? t('merchant.verification.warningMessagePending')
+                        : t('merchant.verification.warningMessage')}
+                    </Text>
+                    {merchantAccount?.status === 'none' && (
+                      <Text className={`text-sm text-blue-600 font-semibold mt-2 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {t('merchant.verification.warningTitle')} →
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            )}
             {loading ? (
               <ShopListSkeleton count={3} />
             ) : shops.length === 0 ? (
@@ -220,6 +310,17 @@ export default function MerchantShopsScreen() {
           </ScrollView>
         </View>
       </View>
+
+      {/* Verification Form Sheet */}
+      <VerificationFormSheet
+        visible={verificationFormVisible}
+        merchantAccount={merchantAccount}
+        userEmail={user?.email}
+        userName={user?.name}
+        loading={submittingVerification}
+        onClose={() => setVerificationFormVisible(false)}
+        onSubmit={handleVerificationSubmit}
+      />
     </SafeAreaView>
   );
 }

@@ -156,7 +156,10 @@ export default function MerchantShopPortalScreen() {
           return (
             <SettingsSection
               shop={shop}
-              onOpenOpeningHours={() => setActiveTab('openingHours')}
+              onShopDeleted={() => {
+                // Navigate back to shops list when shop is deleted
+                navigation.navigate('MerchantShops');
+              }}
             />
           );
         case 'dashboard':
@@ -259,6 +262,9 @@ export default function MerchantShopPortalScreen() {
               onMomentumScrollEnd={handleMomentumScrollEnd}
               decelerationRate="fast"
               bounces={false}
+              nestedScrollEnabled={true}
+              // Allow nested horizontal scrolls to work properly
+              simultaneousHandlers={undefined}
             >
               {TABS.map((tab) => (
                 <View key={tab.key} style={{ width: screenWidth, flex: 1 }}>

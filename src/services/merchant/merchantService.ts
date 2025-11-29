@@ -10,6 +10,9 @@ export interface MerchantAccount {
   shop_type: ShopType;
   number_of_shops: NumberOfShops;
   status: MerchantStatus;
+  name_as_per_cnic?: string | null;
+  cnic?: string | null;
+  cnic_expiry?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -17,6 +20,12 @@ export interface MerchantAccount {
 export interface CreateMerchantAccountData {
   shop_type: ShopType;
   number_of_shops: NumberOfShops;
+}
+
+export interface VerificationData {
+  name_as_per_cnic: string;
+  cnic: string;
+  cnic_expiry: string; // ISO date string
 }
 
 // Create merchant account
@@ -89,6 +98,47 @@ export async function updateMerchantStatus(
     return { error: null };
   } catch (error: any) {
     return { error: { message: error.message || 'An error occurred' } };
+  }
+}
+
+// Submit verification information
+export async function submitVerification(
+  userId: string,
+  data: VerificationData
+): Promise<{ merchant: MerchantAccount | null; error: { message: string } | null }> {
+  try {
+    // First get the merchant account
+    const { merchant: existingMerchant, error: fetchError } = await getMerchantAccount(userId);
+    
+    if (fetchError) {
+      return { merchant: null, error: fetchError };
+    }
+
+    if (!existingMerchant) {
+      return { merchant: null, error: { message: 'Merchant account not found' } };
+    }
+
+    // Update with verification data and set status to pending
+    const { data: merchant, error } = await supabase
+      .from('merchant_accounts')
+      .update({
+        name_as_per_cnic: data.name_as_per_cnic,
+        cnic: data.cnic,
+        cnic_expiry: data.cnic_expiry,
+        status: 'pending',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existingMerchant.id)
+      .select()
+      .single();
+
+    if (error) {
+      return { merchant: null, error: { message: error.message } };
+    }
+
+    return { merchant, error: null };
+  } catch (error: any) {
+    return { merchant: null, error: { message: error.message || 'An error occurred' } };
   }
 }
 

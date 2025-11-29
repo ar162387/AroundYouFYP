@@ -9,7 +9,9 @@ import { LocationProvider } from './src/context/LocationContext';
 import { CartProvider } from './src/context/CartContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import AppNavigator from './src/navigation/AppNavigator';
+import { NotificationSetup } from './src/components/NotificationSetup';
 import { supabase, checkConnectionHealth, resetSupabaseConnection, isTimeoutOrConnectionError } from './src/services/supabase';
+import { useConnectionResetMonitor } from './src/hooks/useConnectionResetMonitor';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +27,9 @@ const queryClient = new QueryClient({
 function AppStateHandler() {
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const queryClient = useQueryClient();
+  
+  // Monitor connection resets and invalidate queries when connection is restored
+  useConnectionResetMonitor();
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -135,6 +140,7 @@ export default function App() {
         <AuthProvider>
           <LocationProvider>
             <CartProvider>
+              <NotificationSetup />
               <AppNavigator />
             </CartProvider>
           </LocationProvider>

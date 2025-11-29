@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function OrdersSection({ shop }: OrdersSectionProps) {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
+  const filterScrollRef = useRef<ScrollView>(null);
 
   const {
     data: orders,
@@ -95,9 +96,16 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
     <View className="flex-1">
       <View className="bg-white border-b border-gray-200">
         <ScrollView
+          ref={filterScrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
+          nestedScrollEnabled={true}
+          scrollEventThrottle={16}
+          // Prevent parent horizontal scroll when scrolling filter chips
+          directionalLockEnabled={true}
+          alwaysBounceHorizontal={true}
+          alwaysBounceVertical={false}
         >
           {(['today', 'yesterday', '7days', '30days', 'all'] as OrderTimeFilter[]).map(
             (filter) => (
@@ -164,7 +172,15 @@ interface OrderCardProps {
 
 function OrderCard({ order, onPress }: OrderCardProps) {
   const { t } = useTranslation();
-  const statusDisplay = getOrderStatusDisplay(order.status);
+  const statusDisplay = useMemo(() => {
+    const baseDisplay = getOrderStatusDisplay(order.status);
+    // Override title with translation
+    const statusKey = `merchant.orders.status.${order.status}`;
+    return {
+      ...baseDisplay,
+      title: t(statusKey, { defaultValue: baseDisplay.title }),
+    };
+  }, [order.status, t]);
   const placedDate = new Date(order.placed_at);
   const timeLabel = placedDate.toLocaleTimeString('en-PK', {
     hour: '2-digit',

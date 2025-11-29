@@ -759,22 +759,7 @@ export async function fetchShopDetails(
 - Deep linking support ready
 - Screen options configured per route
 
-### 3. Error Boundary (`src/components/ErrorBoundary.tsx`)
-
-**Features**:
-- Catches React component errors
-- Displays user-friendly error UI
-- Allows error recovery
-- Logs errors for debugging
-
-### 4. Connection Manager (`src/utils/connectionManager.ts`)
-
-**Features**:
-- Custom fetch with 30s timeout
-- Automatic connection reset on timeout
-- Health check every 5 minutes
-- Session preservation across resets
-- Retry logic with exponential backoff
+#
 
 ---
 

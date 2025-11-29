@@ -21,6 +21,7 @@ import ShopTypeImage from '../../icons/shopTypeRemote';
 import type { ShopType } from '../../services/merchant/shopService';
 import AppLogo from '../../icons/AppLogo';
 import { useTranslation } from 'react-i18next';
+import ChatIcon from '../../icons/ChatIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -487,6 +488,48 @@ export default function HomeScreen() {
       >
         <ActiveOrderBanner />
       </View>
+
+      {/* Floating Shopping Assistant Button - Premium Message Bubble */}
+      <TouchableOpacity
+        onPress={() => {
+          try {
+            ReactNativeHapticFeedback.trigger('selection');
+          } catch { }
+          navigation.navigate('ShoppingAssistant');
+        }}
+        activeOpacity={0.9}
+        style={{
+          position: 'absolute',
+          bottom: Math.max(80, TAB_BAR_HEIGHT + 16),
+          right: 16,
+          width: 60,
+          height: 60,
+          borderRadius: 30,
+          backgroundColor: '#2563eb',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 15,
+          shadowColor: '#2563eb',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.4,
+          shadowRadius: 12,
+          elevation: 10,
+        }}
+      >
+        <ChatIcon size={28} color="#FFFFFF" />
+        {/* Pulse indicator */}
+        <View
+          style={{
+            position: 'absolute',
+            width: 60,
+            height: 60,
+            borderRadius: 30,
+            borderWidth: 2,
+            borderColor: '#2563eb',
+            opacity: 0.3,
+          }}
+        />
+      </TouchableOpacity>
 
       <AddressBottomSheet visible={sheetVisible} onClose={() => setSheetVisible(false)} />
 

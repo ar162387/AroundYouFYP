@@ -3,6 +3,8 @@ import { View, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { RootStackParamList } from './types';
+import { navigationRef } from './navigationRef';
 
 import MarketIcon from '../icons/MarketIcon';
 import SearchIcon from '../icons/SearchIcon';
@@ -10,7 +12,7 @@ import CartIcon from '../icons/CartIcon';
 import ProfileIcon from '../icons/ProfileIcon';
 import { useCart } from '../context/CartContext';
 
-import type { RootStackParamList } from './types';
+
 
 import SplashScreen from '../screens/SplashScreen';
 import HomeScreen from '../screens/consumer/HomeScreen';
@@ -38,6 +40,7 @@ import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
 import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPortalScreen';
 import ManageDeliveryAreasScreen from '../screens/merchant/shop/ManageDeliveryAreasScreen';
 import MerchantOrderScreen from '../screens/merchant/orders/MerchantOrderScreen';
+import ShoppingAssistantScreen from '../screens/consumer/ShoppingAssistantScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -107,7 +110,7 @@ function Tabs() {
 
 export default function AppNavigator() {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         initialRouteName="Splash"
         screenOptions={{
@@ -284,6 +287,15 @@ export default function AppNavigator() {
           options={{
             headerShown: false,
             animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="ShoppingAssistant"
+          component={ShoppingAssistantScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_bottom',
+            presentation: 'modal',
           }}
         />
       </Stack.Navigator>

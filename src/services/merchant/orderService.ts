@@ -47,6 +47,57 @@ export async function getShopOrders(shopId: string): Promise<OrderWithAll[]> {
 }
 
 /**
+ * Get all orders for all shops owned by a merchant
+ */
+export async function getAllMerchantOrders(userId: string): Promise<OrderWithAll[]> {
+  try {
+    // First, get merchant account
+    const { data: merchantAccount, error: merchantError } = await supabase
+      .from('merchant_accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (merchantError || !merchantAccount) {
+      return [];
+    }
+
+    // Get all shop IDs for this merchant
+    const { data: shops, error: shopsError } = await supabase
+      .from('shops')
+      .select('id')
+      .eq('merchant_id', merchantAccount.id);
+
+    if (shopsError || !shops || shops.length === 0) {
+      return [];
+    }
+
+    const shopIds = shops.map((shop) => shop.id);
+
+    // Get all orders for these shops
+    const { data, error } = await supabase
+      .from('orders')
+      .select(
+        `
+        *,
+        order_items(*),
+        shop:shops(id, name, image_url, shop_type, address, latitude, longitude),
+        delivery_runner:delivery_runners(id, name, phone_number)
+      `
+      )
+      .in('shop_id', shopIds)
+      .order('placed_at', { ascending: false });
+
+    if (error) throw error;
+
+    return (data || []) as any;
+  } catch (error) {
+    console.error('Error getting all merchant orders:', error);
+    return [];
+  }
+}
+
+/**
  * Get filtered orders for a shop
  */
 export async function getFilteredShopOrders(

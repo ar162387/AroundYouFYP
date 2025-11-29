@@ -48,26 +48,58 @@ export async function calculateShopDeliveryFee(
  * Calculate delivery fees for multiple shops in batch
  * This is more efficient than calling calculateShopDeliveryFee for each shop individually
  * Returns shops with delivery_fee and distanceInMeters
+ * Uses Promise.allSettled to handle individual failures gracefully
  */
 export async function calculateShopsDeliveryFees(
   shops: ConsumerShop[],
   consumerLatitude: number,
   consumerLongitude: number
 ): Promise<(ConsumerShop & { distanceInMeters?: number })[]> {
-  // Fetch all delivery logic records in parallel
-  const deliveryLogicPromises = shops.map(shop => fetchDeliveryLogic(shop.id));
-  const deliveryLogicResults = await Promise.all(deliveryLogicPromises);
+  // Fetch all delivery logic records in parallel with individual timeouts
+  // Use allSettled so one failure doesn't block others
+  const deliveryLogicPromises = shops.map(async (shop) => {
+    try {
+      // Add timeout for each individual fetch (10 seconds per shop)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Delivery logic fetch timeout')), 10000);
+      });
+      
+      const result = await Promise.race([
+        fetchDeliveryLogic(shop.id),
+        timeoutPromise,
+      ]);
+      
+      return { shop, result, error: null };
+    } catch (error: any) {
+      return { shop, result: null, error };
+    }
+  });
+  
+  const deliveryLogicResults = await Promise.allSettled(deliveryLogicPromises);
 
   // Calculate fees for each shop
   return shops.map((shop, index) => {
-    const { data: deliveryLogic, error } = deliveryLogicResults[index];
+    const result = deliveryLogicResults[index];
+    
+    // Handle failed promise
+    if (result.status === 'rejected') {
+      console.warn(`Failed to fetch delivery logic for shop ${shop.id} (${shop.name}):`, result.reason);
+      return shop; // Return shop without fee calculation
+    }
+    
+    const { result: deliveryLogicData, error } = result.value;
+    
+    // If the individual fetch failed or timed out
+    if (error || !deliveryLogicData) {
+      console.warn(`Error fetching delivery logic for shop ${shop.id} (${shop.name}):`, error?.message || 'Unknown error');
+      return shop; // Return shop without fee calculation
+    }
+    
+    const { data: deliveryLogic } = deliveryLogicData;
 
     // Log for debugging
     if (!shop.latitude || !shop.longitude) {
       console.warn(`Shop ${shop.id} (${shop.name}) missing coordinates`);
-    }
-    if (error) {
-      console.warn(`Error fetching delivery logic for shop ${shop.id} (${shop.name}):`, error.message);
     }
     if (!deliveryLogic) {
       console.warn(`No delivery logic found for shop ${shop.id} (${shop.name})`);

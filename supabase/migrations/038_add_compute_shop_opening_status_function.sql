@@ -132,7 +132,8 @@ RETURNS TABLE (
   shop_type TEXT,
   opening_hours JSONB,
   holidays JSONB,
-  open_status_mode TEXT
+  open_status_mode TEXT,
+  delivered_orders_count BIGINT
 ) AS $$
 BEGIN
   RETURN QUERY
@@ -149,7 +150,15 @@ BEGIN
     s.shop_type,
     s.opening_hours,
     s.holidays,
-    s.open_status_mode
+    s.open_status_mode,
+    COALESCE(
+      (SELECT COUNT(*)::BIGINT
+       FROM public.orders o
+       WHERE o.shop_id = s.id
+         AND o.status = 'delivered'
+      ),
+      0
+    ) AS delivered_orders_count
   FROM public.shops s
   INNER JOIN public.shop_delivery_areas sda ON sda.shop_id = s.id
   WHERE ST_Contains(sda.geom, ST_GeomFromText(point_wkt, 4326))  -- Only filter by delivery area, show all shops regardless of open/closed status

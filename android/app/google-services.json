@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1676740848",
+    "project_id": "aroundyou-1019e",
+    "storage_bucket": "aroundyou-1019e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1676740848:android:547bc977c7053b86a3da35",
+        "android_client_info": {
+          "package_name": "com.aroundyou.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMvBHzy9YfZfqEG80lLN0P6XP7XnJtOXI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
