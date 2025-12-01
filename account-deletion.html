@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delete Account - Around You</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            margin-top: 40px;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            color: #1e3a8a;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+        }
+        
+        .section h2 {
+            color: #1e3a8a;
+            font-size: 20px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 10px;
+        }
+        
+        .steps {
+            list-style: none;
+            counter-reset: step-counter;
+        }
+        
+        .steps li {
+            counter-increment: step-counter;
+            margin-bottom: 15px;
+            padding-left: 40px;
+            position: relative;
+        }
+        
+        .steps li::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: #2563eb;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .warning strong {
+            color: #92400e;
+        }
+        
+        .info-box {
+            background: #eff6ff;
+            border-left: 4px solid #2563eb;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .contact-info {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+        }
+        
+        .contact-info h3 {
+            color: #1e3a8a;
+            margin-bottom: 10px;
+        }
+        
+        .contact-info p {
+            margin: 5px 0;
+        }
+        
+        .contact-info a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+        
+        .contact-info a:hover {
+            text-decoration: underline;
+        }
+        
+        ul {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+        
+        ul li {
+            margin-bottom: 8px;
+        }
+        
+        .app-name {
+            font-weight: bold;
+            color: #1e3a8a;
+        }
+        
+        .form-section {
+            background: #f9fafb;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 30px 0;
+            border: 2px solid #e5e7eb;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #374151;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .form-group label.required::after {
+            content: " *";
+            color: #ef4444;
+        }
+        
+        .form-group input[type="email"],
+        .form-group input[type="text"],
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            margin-top: 4px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        
+        .checkbox-group label {
+            margin-bottom: 0;
+            font-weight: 400;
+            cursor: pointer;
+            line-height: 1.5;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            background: #2563eb;
+            color: white;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 10px;
+        }
+        
+        .submit-btn:hover {
+            background: #1e40af;
+        }
+        
+        .submit-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .success-message {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+        
+        .success-message strong {
+            color: #065f46;
+        }
+        
+        .error-message {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+            display: none;
+            color: #991b1b;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Request Account Deletion</h1>
+        <p class="subtitle">Around You - Delete Your Account and Data</p>
+        
+        <div class="section">
+            <h2>Request Account Deletion</h2>
+            <p>Fill out the form below to request deletion of your account. We will process your request within 30 days.</p>
+            
+            <!-- Success Message -->
+            <div class="success-message" id="successMessage">
+                <strong>✓ Request Submitted Successfully!</strong>
+                <p style="margin-top: 8px; margin-bottom: 0;">We have received your account deletion request. You will receive a confirmation email shortly. We will process your request within 30 days.</p>
+            </div>
+            
+            <!-- Error Message -->
+            <div class="error-message" id="errorMessage">
+                <strong>✗ Error Submitting Request</strong>
+                <p style="margin-top: 8px; margin-bottom: 0;">There was an error submitting your request. Please try again or contact us directly at <a href="mailto:[INSERT_CONTACT_EMAIL]" style="color: #991b1b; text-decoration: underline;">[INSERT_CONTACT_EMAIL]</a></p>
+            </div>
+            
+            <!-- Deletion Request Form -->
+            <div class="form-section">
+                <form id="deletionForm" action="https://formsubmit.co/ar162387@gmail.com" method="POST">
+                    <!-- FormSubmit Configuration -->
+                    <input type="hidden" name="_subject" value="Account Deletion Request - Around You">
+                    <input type="hidden" name="_captcha" value="false">
+                    <input type="hidden" name="_template" value="box">
+                    <input type="hidden" name="_next" value="">
+                    
+                    <div class="form-group">
+                        <label for="email" class="required">Account Email Address</label>
+                        <input 
+                            type="email" 
+                            id="email" 
+                            name="email" 
+                            required 
+                            placeholder="your.email@example.com"
+                            autocomplete="email"
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="name">Full Name (Optional)</label>
+                        <input 
+                            type="text" 
+                            id="name" 
+                            name="name" 
+                            placeholder="Your full name"
+                            autocomplete="name"
+                        >
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="reason">Reason for Deletion (Optional)</label>
+                        <select id="reason" name="reason">
+                            <option value="">Select a reason (optional)</option>
+                            <option value="no-longer-using">No longer using the app</option>
+                            <option value="privacy-concerns">Privacy concerns</option>
+                            <option value="found-alternative">Found an alternative service</option>
+                            <option value="too-many-emails">Too many emails/notifications</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="additionalInfo">Additional Information (Optional)</label>
+                        <textarea 
+                            id="additionalInfo" 
+                            name="additional_info" 
+                            placeholder="Any additional information that may help us process your request..."
+                        ></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input 
+                                type="checkbox" 
+                                id="confirm" 
+                                name="confirm" 
+                                required
+                            >
+                            <label for="confirm">
+                                I understand that account deletion is permanent and cannot be undone. I confirm that I want to delete my account and all associated data (except data retained for legal compliance as stated in the Privacy Policy).
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input 
+                                type="checkbox" 
+                                id="noActiveOrders" 
+                                name="no_active_orders" 
+                                required
+                            >
+                            <label for="noActiveOrders">
+                                I confirm that I have no active orders or pending transactions. I understand that accounts with active orders cannot be deleted.
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        Submit Deletion Request
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="warning">
+            <strong>Important:</strong> Account deletion is permanent and cannot be undone. Please ensure you want to delete your account before proceeding.
+        </div>
+        
+        <div class="section">
+            <h2>What Data Will Be Deleted</h2>
+            <p>When you request account deletion, the following data will be permanently deleted:</p>
+            <ul>
+                <li>Your user account and profile information</li>
+                <li>Your saved delivery addresses</li>
+                <li>Your cart items and preferences</li>
+                <li>Your notification preferences</li>
+                <li>Your app usage data and analytics</li>
+            </ul>
+        </div>
+        
+        <div class="section">
+            <h2>What Data May Be Retained</h2>
+            <p>For legal and business purposes, we may retain certain information:</p>
+            <ul>
+                <li><strong>Transaction Records:</strong> Order history and payment records may be retained for accounting and tax purposes (typically 7 years as required by law)</li>
+                <li><strong>Legal Compliance:</strong> Information required to comply with legal obligations, resolve disputes, or enforce agreements</li>
+                <li><strong>Anonymized Data:</strong> Aggregated, anonymized data that cannot identify you may be retained for analytics purposes</li>
+            </ul>
+        </div>
+        
+        <div class="info-box">
+            <strong>Note:</strong> If you have active orders or pending transactions, please wait until these are completed before requesting account deletion. We cannot delete accounts with active orders.
+        </div>
+        
+        <div class="section">
+            <h2>Alternative: Contact Us Directly</h2>
+            <p>If you prefer, you can also contact us directly via email:</p>
+            <div class="contact-info">
+                <p><strong>Email:</strong> <a href="mailto:[INSERT_CONTACT_EMAIL]">[INSERT_CONTACT_EMAIL]</a></p>
+                <p><strong>Subject Line:</strong> "Account Deletion Request"</p>
+                <p><strong>Include in your email:</strong></p>
+                <ul>
+                    <li>Your account email address</li>
+                    <li>Confirmation that you want to delete your account</li>
+                    <li>Any additional information that may help us process your request</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="section" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #666; font-size: 14px;">
+                For more information about how we handle your data, please review our 
+                <a href="[INSERT_PRIVACY_POLICY_URL]" style="color: #2563eb;">Privacy Policy</a>.
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // Handle form submission
+        document.getElementById('deletionForm').addEventListener('submit', function(e) {
+            const submitBtn = document.getElementById('submitBtn');
+            const successMessage = document.getElementById('successMessage');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Hide previous messages
+            successMessage.classList.remove('show');
+            errorMessage.classList.remove('show');
+            
+            // Disable submit button
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            
+            // Set the redirect URL to show success message
+            const form = this;
+            const currentUrl = window.location.href.split('?')[0];
+            const nextUrl = currentUrl + '?success=true';
+            form.querySelector('input[name="_next"]').value = nextUrl;
+        });
+        
+        // Check if form was submitted successfully (from URL parameter)
+        window.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('success') === 'true') {
+                document.getElementById('successMessage').classList.add('show');
+                document.getElementById('deletionForm').style.display = 'none';
+                // Scroll to success message
+                document.getElementById('successMessage').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+        
+        // Form validation
+        document.getElementById('deletionForm').addEventListener('submit', function(e) {
+            const confirmCheckbox = document.getElementById('confirm');
+            const noActiveOrdersCheckbox = document.getElementById('noActiveOrders');
+            const emailInput = document.getElementById('email');
+            
+            if (!confirmCheckbox.checked) {
+                e.preventDefault();
+                alert('Please confirm that you understand account deletion is permanent.');
+                return false;
+            }
+            
+            if (!noActiveOrdersCheckbox.checked) {
+                e.preventDefault();
+                alert('Please confirm that you have no active orders or pending transactions.');
+                return false;
+            }
+            
+            if (!emailInput.value || !emailInput.validity.valid) {
+                e.preventDefault();
+                alert('Please enter a valid email address.');
+                return false;
+            }
+        });
+    </script>
+</body>
+</html>
+

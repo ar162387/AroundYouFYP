@@ -1,33 +1,68 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Switch, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Switch, TouchableOpacity, Alert, ActivityIndicator, StatusBar, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import OrdersIcon from '../../icons/OrdersIcon';
 import AddressIcon from '../../icons/AddressIcon';
-import FavoriteIcon from '../../icons/FavoriteIcon';
+import LanguageIcon from '../../icons/LanguageIcon';
+import NotificationIcon from '../../icons/NotificationIcon';
+import DocumentIcon from '../../icons/DocumentIcon';
+import SwitchIcon from '../../icons/SwitchIcon';
+import SettingsIcon from '../../icons/SettingsIcon';
+import FeedbackIcon from '../../icons/FeedbackIcon';
+import DeleteIcon from '../../icons/DeleteIcon';
+import HelpIcon from '../../icons/HelpIcon';
 import * as merchantService from '../../services/merchant/merchantService';
 import { useTranslation } from 'react-i18next';
 import LanguageActionSheet from '../../components/LanguageActionSheet';
 import * as notificationPreferencesService from '../../services/notificationPreferencesService';
+import LinearGradient from 'react-native-linear-gradient';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen() {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets();
   const [languageSheetVisible, setLanguageSheetVisible] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isConsumerDefault, setIsConsumerDefault] = useState(true);
   const [isSwitchingToMerchant, setIsSwitchingToMerchant] = useState(false);
+  const [merchantAccount, setMerchantAccount] = useState<merchantService.MerchantAccount | null>(null);
+  const [loadingMerchant, setLoadingMerchant] = useState(false);
   const { user, signOut, setDefaultRole, getDefaultRole } = useAuth();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+
+  const loadMerchantAccount = async () => {
+    if (!user) {
+      setMerchantAccount(null);
+      setLoadingMerchant(false);
+      return;
+    }
+
+    setLoadingMerchant(true);
+    try {
+      const { merchant, error } = await merchantService.getMerchantAccount(user.id);
+      if (error && error.message) {
+        console.error('Error loading merchant account:', error.message);
+      }
+      setMerchantAccount(merchant);
+    } catch (error) {
+      console.error('Error loading merchant account:', error);
+      setMerchantAccount(null);
+    } finally {
+      setLoadingMerchant(false);
+    }
+  };
 
   useEffect(() => {
     loadDefaultRole();
     if (user) {
       loadNotificationPreferences();
+      loadMerchantAccount();
     }
   }, [user]);
 
@@ -170,10 +205,37 @@ export default function ProfileScreen() {
     );
   };
 
+
+  const handlePrivacyPolicyPress = () => {
+    navigation.navigate('PrivacyPolicy', { accountType: 'consumer' });
+  };
+
   return (
     <View className="flex-1 bg-gray-50">
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {/* Gradient overlay behind notch/status bar */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          zIndex: 30,
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={["#2563eb", "#1d4ed8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </View>
+
       {/* Header */}
-      <View className="pt-12 pb-4 px-4 bg-white border-b border-gray-200">
+      <View className="pt-12 pb-4 px-4 bg-white border-b border-gray-200" style={{ paddingTop: insets.top + 48 }}>
         <Text className="text-2xl font-bold text-gray-900">{t('profile.title')}</Text>
       </View>
 
@@ -214,16 +276,11 @@ export default function ProfileScreen() {
 
             {/* Quick Actions */}
             <View className="px-4 mt-4">
-              <View className="flex-row justify-between">
+              <View className="flex-row gap-3">
                 <SquareAction
                   title={t('profile.orders')}
                   icon={<OrdersIcon size={32} color="#3B82F6" />}
                   onPress={() => navigation.navigate('Orders')}
-                />
-                <SquareAction
-                  title={t('profile.favourites')}
-                  icon={<FavoriteIcon size={32} color="#3B82F6" />}
-                  onPress={() => { }}
                 />
                 <SquareAction
                   title={t('profile.addresses')}
@@ -238,6 +295,7 @@ export default function ProfileScreen() {
         {/* Settings List */}
         <View className="bg-white mt-4">
           <ListItem
+            icon={<LanguageIcon size={20} color="#6B7280" />}
             title={t('profile.language')}
             right={<Text className="text-gray-500">{
               i18n.language === 'ur' ? 'اردو' :
@@ -251,6 +309,7 @@ export default function ProfileScreen() {
           />
           <Separator />
           <ListItem
+            icon={<NotificationIcon size={20} color="#6B7280" />}
             title={t('profile.pushNotifications')}
             right={
               <Switch
@@ -263,17 +322,23 @@ export default function ProfileScreen() {
             }
           />
           <Separator />
-          <ListItem title={t('profile.termsPolicies')} onPress={() => { }} />
+          <ListItem 
+            icon={<DocumentIcon size={20} color="#6B7280" />}
+            title={t('profile.termsPolicies')} 
+            onPress={handlePrivacyPolicyPress} 
+          />
           <Separator />
           {user && (
             <>
               <ListItem
+                icon={<SwitchIcon size={20} color="#6B7280" />}
                 title={t('profile.switchToMerchant')}
                 onPress={handleSwitchToMerchant}
                 right={isSwitchingToMerchant ? <ActivityIndicator size="small" color="#2563eb" /> : undefined}
               />
               <Separator />
               <ListItem
+                icon={<SettingsIcon size={20} color="#6B7280" />}
                 title={t('profile.setDefaultRole')}
                 right={
                   <Switch
@@ -291,9 +356,28 @@ export default function ProfileScreen() {
               <Separator />
             </>
           )}
-          <ListItem title={t('profile.suggestionComplaint')} onPress={() => { }} />
+          <ListItem 
+            icon={<FeedbackIcon size={20} color="#6B7280" />}
+            title={t('profile.suggestionComplaint')} 
+            onPress={() => navigation.navigate('SuggestionsComplaints')} 
+          />
           <Separator />
-          <ListItem title={t('profile.faqs')} onPress={() => { }} />
+          {user && (
+            <>
+              <ListItem 
+                icon={<DeleteIcon size={20} color="#EF4444" />}
+                title={t('profile.deleteAccount') || 'Delete Account'} 
+                onPress={() => navigation.navigate('AccountDeletion', { accountType: 'consumer' })}
+                right={<Text className="text-red-600 text-sm">⚠️</Text>}
+              />
+              <Separator />
+            </>
+          )}
+          <ListItem 
+            icon={<HelpIcon size={20} color="#6B7280" />}
+            title={t('profile.faqs')} 
+            onPress={() => navigation.navigate('ConsumerFAQ')} 
+          />
         </View>
 
         {/* Logout Button */}
@@ -329,7 +413,7 @@ function SquareAction({ title, icon, onPress }: { title: string; icon: React.Rea
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.8}
-      className="w-[31%] aspect-square bg-white rounded-2xl items-center justify-center shadow"
+      className="flex-1 aspect-square bg-white rounded-2xl items-center justify-center shadow"
     >
       <View className="mb-2">{icon}</View>
       <Text className="text-gray-800 font-semibold text-sm text-center">{title}</Text>
@@ -337,14 +421,17 @@ function SquareAction({ title, icon, onPress }: { title: string; icon: React.Rea
   );
 }
 
-function ListItem({ title, right, onPress }: { title: string; right?: React.ReactNode; onPress?: () => void }) {
+function ListItem({ icon, title, right, onPress }: { icon?: React.ReactNode; title: string; right?: React.ReactNode; onPress?: () => void }) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
       className="flex-row items-center justify-between px-4 py-4"
     >
-      <Text className="text-gray-900 text-base font-medium">{title}</Text>
+      <View className="flex-row items-center flex-1">
+        {icon && <View className="mr-3">{icon}</View>}
+        <Text className="text-gray-900 text-base font-medium">{title}</Text>
+      </View>
       {right}
     </TouchableOpacity>
   );

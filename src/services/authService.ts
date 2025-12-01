@@ -416,3 +416,22 @@ export async function updateUserRole(
   }
 }
 
+// Delete user profile (consumer account) and all related data
+export async function deleteUserProfile(
+  userId: string
+): Promise<{ error: AuthError | null }> {
+  try {
+    // Use the PostgreSQL function to delete account and all related data
+    // This function handles all cascading deletions properly
+    const { error } = await supabase.rpc('delete_user_account');
+
+    if (error) {
+      return { error: { message: error.message } };
+    }
+
+    return { error: null };
+  } catch (error: any) {
+    return { error: { message: error.message || 'An error occurred' } };
+  }
+}
+

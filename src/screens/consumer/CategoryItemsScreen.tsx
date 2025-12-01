@@ -88,7 +88,7 @@ export default function CategoryItemsScreen() {
       <StatusBar barStyle="light-content" />
 
       {/* Header */}
-      <LinearGradient colors={['#1e3a8a', '#2563eb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+      <LinearGradient colors={["#2563eb", "#1d4ed8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
         <SafeAreaView edges={['top']} style={{ backgroundColor: 'transparent' }}>
           <View className="flex-row items-center px-4 py-4">
             <TouchableOpacity

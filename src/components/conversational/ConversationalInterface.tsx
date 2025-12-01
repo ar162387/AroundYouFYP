@@ -20,21 +20,25 @@ import {
   ToastAndroid,
   Animated,
   Keyboard,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useConversation } from '../../context/ConversationContext';
 import { useCart } from '../../context/CartContext';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useAuth } from '../../context/AuthContext';
 import { executeFunctionCall, type FunctionExecutionContext } from '../../services/ai/functionRouter';
+import AuthModal from './AuthModal';
 import { retrievePreferencesBySimilarity, formatPreferencesForLLM } from '../../services/ai/memoryRetrievalService';
+import type { SearchProgress } from '../../services/ai/intelligentSearchService';
 import MessageBubble from './MessageBubble';
-import VoiceInputButton from './VoiceInputButton';
 import type { ShopItem } from '../../services/consumer/shopService';
 import { fetchShopDetails, fetchShopItems, validateDeliveryAddress } from '../../services/consumer/shopService';
 import { getUserAddresses } from '../../services/consumer/addressService';
 import AddressSelectionBottomSheet from '../consumer/AddressSelectionBottomSheet';
 import type { Message } from '../../services/ai/conversationManager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import LinearGradient from 'react-native-linear-gradient';
 
 const ORDER_COMPLETED_FLAG_KEY = 'aroundyou_order_completed';
 
@@ -139,9 +143,10 @@ function extractShopIdsFromArgs(functionName: string, args: Record<string, any>)
 
 export default function ConversationalInterface() {
   const { conversationManager, messages, isLoading, error, sendMessage, continueConversation, refreshMessages, clearConversation, checkAndResetIfNeeded } = useConversation();
-  const { addItemToCart, removeItemFromCart, updateItemQuantity, getShopCart, getAllCarts, deleteShopCart } = useCart();
+  const { addItemToCart, addItemToCartWithQuantity, removeItemFromCart, updateItemQuantity, getShopCart, getAllCarts, deleteShopCart } = useCart();
   const { selectedAddress, setSelectedAddress } = useLocationSelection();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [inputText, setInputText] = useState('');
   const [showTechnicalDetails, setShowTechnicalDetails] = useState<Record<number, boolean>>({});
@@ -151,11 +156,156 @@ export default function ConversationalInterface() {
   const [addressChangeContext, setAddressChangeContext] = useState<{ shopId?: string } | null>(null);
   const lastCartActionRef = useRef<{ name: string; args: Record<string, any>; shopIds: string[] } | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingPlaceOrder, setPendingPlaceOrder] = useState<{
+    functionName: string;
+    functionArgs: Record<string, any>;
+  } | null>(null);
+  const retryingPlaceOrderRef = useRef(false);
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages arrive or content updates (for streaming)
   useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  }, [messages]);
+    if (messages.length > 0) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages.length, messages]); // Also depend on messages content for streaming updates
+
+  // Internal function to send a message (used by both handleSendMessage and handleSuggestionClick)
+  const sendMessageInternal = async (userMessage: string) => {
+    if (!userMessage.trim() || isLoading) return;
+
+    // Check if we need to reset due to order completion
+    const shouldReset = await checkAndResetIfNeeded();
+    if (shouldReset) {
+      // Conversation was reset, continue with new message
+    }
+
+    try {
+      // Retrieve user preferences for context
+      const preferences = await retrievePreferencesBySimilarity(userMessage, {
+        limit: 3,
+        minConfidence: 0.5,
+      });
+
+      let additionalContext = '';
+      if (preferences.data && preferences.data.length > 0) {
+        additionalContext += formatPreferencesForLLM(preferences.data) + '\n\n';
+      }
+
+      // Add location context
+      if (selectedAddress) {
+        additionalContext += `User location: ${selectedAddress.label}, ${selectedAddress.city}\n`;
+      }
+
+      // Use streaming for better UX (only for non-function-call responses)
+      // Streaming callback to update UI in real-time
+      const onStreamChunk = (chunk: string) => {
+        // Messages are updated in real-time by the conversation manager
+        refreshMessages();
+      };
+
+      // Send message with streaming support
+      let maxIterations = 10;
+      let iteration = 0;
+      let currentResult = await sendMessage(userMessage, additionalContext || undefined, onStreamChunk);
+
+      // Handle multiple function calls in sequence
+      while (currentResult?.functionCall && iteration < maxIterations) {
+        iteration++;
+
+        try {
+          const functionArgs = JSON.parse(currentResult.functionCall.arguments || '{}');
+          console.log(`[ConversationalInterface] Executing function: ${currentResult.functionCall.name}`, functionArgs);
+
+          // Check authentication for placeOrder
+          if (currentResult.functionCall.name === 'placeOrder' && !user) {
+            // Store pending placeOrder call
+            setPendingPlaceOrder({
+              functionName: currentResult.functionCall.name,
+              functionArgs,
+            });
+            setShowAuthModal(true);
+            // Wait for authentication - the auth modal will trigger retry via useEffect
+            break;
+          }
+
+          if (CART_MUTATION_FUNCTIONS.has(currentResult.functionCall.name)) {
+            const shopIds = extractShopIdsFromArgs(currentResult.functionCall.name, functionArgs);
+            if (shopIds.length > 0) {
+              lastCartActionRef.current = {
+                name: currentResult.functionCall.name,
+                args: functionArgs,
+                shopIds,
+              };
+            }
+          }
+
+          const functionResult = await executeFunctionCall(
+            currentResult.functionCall.name,
+            functionArgs,
+            functionContext
+          );
+
+          console.log(`[ConversationalInterface] Function result:`, functionResult);
+
+          const resultToPass = functionResult.success
+            ? functionResult.result
+            : {
+              success: false,
+              error: functionResult.error || 'Unknown error occurred'
+            };
+
+          conversationManager.addFunctionResult(currentResult.functionCall.name, resultToPass);
+          refreshMessages();
+
+          const nextResult = await continueConversation();
+
+          if (nextResult?.functionCall &&
+            nextResult.functionCall.name === currentResult.functionCall.name &&
+            nextResult.functionCall.arguments === currentResult.functionCall.arguments) {
+            console.warn('[ConversationalInterface] Detected loop in function calls. Stopping.');
+            break;
+          }
+
+          currentResult = nextResult;
+        } catch (err: any) {
+          console.error('[ConversationalInterface] Error executing function:', err);
+          if (currentResult?.functionCall) {
+            conversationManager.addFunctionResult(currentResult.functionCall.name, { error: err.message });
+            refreshMessages();
+            currentResult = await continueConversation();
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Clear progress when done (but only after a delay to ensure UI updates)
+      setTimeout(() => {
+      setSearchProgress(null);
+      }, 500);
+
+      if (iteration >= maxIterations) {
+        console.warn('[ConversationalInterface] Reached max function call iterations');
+      }
+    } catch (err: any) {
+      console.error('Error sending message:', err);
+    }
+  };
+
+  // Handle suggestion click - send message and switch to messages view
+  const handleSuggestionClick = async (suggestionText: string) => {
+    // Extract the message from suggestion text (e.g., "💡 Try: "Find bread near me"" -> "Find bread near me")
+    const match = suggestionText.match(/Try:\s*"([^"]+)"/);
+    const message = match ? match[1] : suggestionText.replace(/^[^\s]+\s+Try:\s*"/, '').replace(/"$/, '');
+
+    if (message && message.trim()) {
+      await sendMessageInternal(message.trim());
+    }
+  };
 
   // Handle keyboard show/hide
   useEffect(() => {
@@ -185,6 +335,7 @@ export default function ConversationalInterface() {
   // Create function execution context
   const functionContext: FunctionExecutionContext = {
     addItemToCartFn: addItemToCart,
+    addItemToCartWithQuantityFn: addItemToCartWithQuantity,
     removeItemFromCartFn: removeItemFromCart,
     updateItemQuantityFn: updateItemQuantity,
     getShopCartFn: getShopCart,
@@ -208,21 +359,21 @@ export default function ConversationalInterface() {
     },
     currentAddress: selectedAddress
       ? {
-          // Use a real saved address ID when available; otherwise fall back to an internal
-          // placeholder so downstream consumers always receive a string.
-          id: selectedAddress.addressId || 'context-address',
-          user_id: 'current',
-          title: null,
-          street_address: selectedAddress.label,
-          city: selectedAddress.city,
-          region: null,
-          latitude: selectedAddress.coords?.latitude || 0,
-          longitude: selectedAddress.coords?.longitude || 0,
-          landmark: selectedAddress.landmark || null,
-          formatted_address: selectedAddress.label,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
+        // Use a real saved address ID when available; otherwise fall back to an internal
+        // placeholder so downstream consumers always receive a string.
+        id: selectedAddress.addressId || 'context-address',
+        user_id: 'current',
+        title: null,
+        street_address: selectedAddress.label,
+        city: selectedAddress.city,
+        region: null,
+        latitude: selectedAddress.coords?.latitude || 0,
+        longitude: selectedAddress.coords?.longitude || 0,
+        landmark: selectedAddress.landmark || null,
+        formatted_address: selectedAddress.label,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
       : undefined,
     getShopDetailsFn: async (shopId: string) => {
       const result = await fetchShopDetails(shopId);
@@ -237,7 +388,52 @@ export default function ConversationalInterface() {
       }
       return null;
     },
+    onProgress: (progress: SearchProgress) => {
+      console.log('[ConversationalInterface] Progress update:', progress);
+      setSearchProgress(progress);
+    },
   };
+
+  // Retry placeOrder after authentication (moved here so functionContext is available)
+  useEffect(() => {
+    if (user && pendingPlaceOrder && !showAuthModal && !retryingPlaceOrderRef.current) {
+      // User is now authenticated, retry the placeOrder
+      retryingPlaceOrderRef.current = true;
+      const retryPlaceOrder = async () => {
+        try {
+          const functionResult = await executeFunctionCall(
+            pendingPlaceOrder.functionName,
+            pendingPlaceOrder.functionArgs,
+            functionContext
+          );
+
+          const resultToPass = functionResult.success
+            ? functionResult.result
+            : {
+                success: false,
+                error: functionResult.error || 'Unknown error occurred',
+              };
+
+          conversationManager.addFunctionResult(pendingPlaceOrder.functionName, resultToPass);
+          refreshMessages();
+
+          // Continue conversation after function result
+          await continueConversation();
+        } catch (err: any) {
+          console.error('[ConversationalInterface] Error retrying placeOrder:', err);
+          conversationManager.addFunctionResult(pendingPlaceOrder.functionName, {
+            error: err.message,
+          });
+          refreshMessages();
+        } finally {
+          setPendingPlaceOrder(null);
+          retryingPlaceOrderRef.current = false;
+        }
+      };
+
+      retryPlaceOrder();
+    }
+  }, [user, pendingPlaceOrder, showAuthModal, functionContext, conversationManager, refreshMessages, continueConversation]);
 
   const showOutOfAreaMessage = (shopName?: string) => {
     const message = shopName
@@ -368,118 +564,16 @@ export default function ConversationalInterface() {
         }
       }
     };
-    
+
     checkOrderCompletion();
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
-
-    // Check if we need to reset due to order completion
-    const shouldReset = await checkAndResetIfNeeded();
-    if (shouldReset) {
-      // Conversation was reset, continue with new message
-    }
-
     const userMessage = inputText.trim();
+    if (!userMessage || isLoading) return;
+
     setInputText('');
-
-    try {
-      // Retrieve user preferences for context
-      const preferences = await retrievePreferencesBySimilarity(userMessage, {
-        limit: 3,
-        minConfidence: 0.5,
-      });
-
-      let additionalContext = '';
-      if (preferences.data && preferences.data.length > 0) {
-        additionalContext += formatPreferencesForLLM(preferences.data) + '\n\n';
-      }
-
-      // Add location context
-      if (selectedAddress) {
-        additionalContext += `User location: ${selectedAddress.label}, ${selectedAddress.city}\n`;
-      }
-
-      // Send message and handle function calls in a loop
-      let maxIterations = 10; // Prevent infinite loops
-      let iteration = 0;
-      let currentResult = await sendMessage(userMessage, additionalContext || undefined);
-
-      // Handle multiple function calls in sequence (e.g., multiple searches, then add to cart)
-      while (currentResult?.functionCall && iteration < maxIterations) {
-        iteration++;
-
-        // Execute function call
-        try {
-          const functionArgs = JSON.parse(currentResult.functionCall.arguments || '{}');
-          console.log(`[ConversationalInterface] Executing function: ${currentResult.functionCall.name}`, functionArgs);
-
-          if (CART_MUTATION_FUNCTIONS.has(currentResult.functionCall.name)) {
-            const shopIds = extractShopIdsFromArgs(currentResult.functionCall.name, functionArgs);
-            if (shopIds.length > 0) {
-              lastCartActionRef.current = {
-                name: currentResult.functionCall.name,
-                args: functionArgs,
-                shopIds,
-              };
-            }
-          }
-
-          const functionResult = await executeFunctionCall(
-            currentResult.functionCall.name,
-            functionArgs,
-            functionContext
-          );
-
-          console.log(`[ConversationalInterface] Function result:`, functionResult);
-
-          // Add function result to conversation
-          // Always pass a valid object - include error if success is false
-          const resultToPass = functionResult.success 
-            ? functionResult.result 
-            : { 
-                success: false, 
-                error: functionResult.error || 'Unknown error occurred' 
-              };
-          
-          conversationManager.addFunctionResult(currentResult.functionCall.name, resultToPass);
-
-          // Refresh messages to show the function result (even if hidden)
-          refreshMessages();
-
-          // Get next LLM response (which might be another function call)
-          // Use context's continueConversation to ensure messages are updated
-          const nextResult = await continueConversation();
-
-          // Prevent endless loops: if the next result is the same function call with same args, stop.
-          if (nextResult?.functionCall &&
-            nextResult.functionCall.name === currentResult.functionCall.name &&
-            nextResult.functionCall.arguments === currentResult.functionCall.arguments) {
-            console.warn('[ConversationalInterface] Detected loop in function calls. Stopping.');
-            break;
-          }
-
-          currentResult = nextResult;
-        } catch (err: any) {
-          console.error('[ConversationalInterface] Error executing function:', err);
-          if (currentResult?.functionCall) {
-            // If error, we still need to tell the LLM about it
-            conversationManager.addFunctionResult(currentResult.functionCall.name, { error: err.message });
-            refreshMessages();
-            currentResult = await continueConversation();
-          } else {
-            break; // Stop if we can't continue
-          }
-        }
-      }
-
-      if (iteration >= maxIterations) {
-        console.warn('[ConversationalInterface] Reached max function call iterations');
-      }
-    } catch (err: any) {
-      console.error('Error sending message:', err);
-    }
+    await sendMessageInternal(userMessage);
   };
 
   /**
@@ -605,6 +699,10 @@ export default function ConversationalInterface() {
       session = null;
     };
 
+    // Track search calls and their results separately to stack them
+    const searchCallMap = new Map<number, { call: Message; result?: Message }>();
+    let searchCallIndex = 0;
+
     for (const message of messages) {
       const isSearchCall =
         message.role === 'assistant' &&
@@ -616,47 +714,37 @@ export default function ConversationalInterface() {
         isSearchFunctionName(message.name);
 
       if (isSearchCall) {
-        if (!session) {
-          startSessionWithCall(message);
-        } else {
-          const ensuredSession = session as SearchSession;
-          ensuredSession.functionName = message.function_call?.name || ensuredSession.functionName;
-          ensuredSession.callMessage = { ...message };
-          result[ensuredSession.callIndex] = ensuredSession.callMessage;
-        }
+        // Flush any existing session
+        flushSession();
+        // Add search call directly to result (stack them, don't merge)
+        result.push(message);
+        // Track it for result matching
+        searchCallMap.set(searchCallIndex, { call: message });
+        searchCallIndex++;
         continue;
       }
 
       if (isSearchResult) {
-        if (!session) {
-          // Rare but handle by starting a session so UI stays consistent
-          startSessionWithCall({
-            role: 'assistant',
-            content: '',
-            function_call: { name: message.name || 'intelligentSearch', arguments: '{}' },
-            timestamp: message.timestamp,
-          });
+        // Find the most recent search call without a result
+        let assigned = false;
+        for (let i = searchCallIndex - 1; i >= 0; i--) {
+          const entry = searchCallMap.get(i);
+          if (entry && !entry.result) {
+            entry.result = message;
+            // Add result right after the call in result array
+            const callIndex = result.findIndex(m => m === entry.call);
+            if (callIndex >= 0) {
+              result.splice(callIndex + 1, 0, message);
+            } else {
+              result.push(message);
+            }
+            assigned = true;
+            break;
+          }
         }
-
-        const parsed = parseFunctionResult(message);
-        const shops = parsed?.shops;
-        if (Array.isArray(shops)) {
-          session!.combinedResult.shops = mergeShops(
-            session!.combinedResult.shops || [],
-            shops
-          );
-        }
-        session!.combinedResult = {
-          ...session!.combinedResult,
-          ...parsed,
-          shops: session!.combinedResult.shops,
-        };
-
-        ensureSessionResultsMessage();
-        if (session!.resultMessage) {
-          session!.resultMessage.content = JSON.stringify(session!.combinedResult);
-          session!.resultMessage.function_result = session!.combinedResult;
-          result[session!.resultIndex!] = session!.resultMessage;
+        if (!assigned) {
+          // No matching call found, just add the result
+          result.push(message);
         }
         continue;
       }
@@ -666,9 +754,15 @@ export default function ConversationalInterface() {
       result.push(message);
     }
 
+    // Results are already added in the loop above, so nothing to do here
+
     flushSession();
     return result;
   }, [messages]);
+
+  // Track if we should show welcome view (show when no messages, hide once user interacts)
+  const visibleMessages = displayMessages.filter((msg) => msg.role !== 'system');
+  const shouldShowWelcome = messages.length === 0 && visibleMessages.length === 0;
 
   return (
     <KeyboardAvoidingView
@@ -676,62 +770,129 @@ export default function ConversationalInterface() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.messagesContainer}
-        contentContainerStyle={styles.messagesContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {messages.length === 0 && (
-          <View style={styles.welcomeContainer}>
+      {shouldShowWelcome ? (
+        // Welcome View - shown when no messages
+        <View style={styles.welcomeViewContainer}>
+          <View style={styles.welcomeContent}>
             <View style={styles.welcomeBubble}>
               <Text style={styles.welcomeTitle}>👋 Welcome to your Shopping Assistant</Text>
               <Text style={styles.welcomeText}>
                 I can help you find items, add them to your cart, and place orders. Just ask me naturally!
               </Text>
               <View style={styles.suggestionChips}>
-                <Text style={styles.suggestionText}>💡 Try: "Find bread near me"</Text>
-                <Text style={styles.suggestionText}>🛒 Try: "Add milk to cart"</Text>
-                <Text style={styles.suggestionText}>📍 Try: "Show me grocery stores"</Text>
+                <TouchableOpacity
+                  style={styles.suggestionChip}
+                  onPress={() => handleSuggestionClick('💡 Try: "Find bread near me"')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.suggestionText}>💡 Try: "Find bread near me"</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.suggestionChip}
+                  onPress={() => handleSuggestionClick('🛒 Try: "Add milk to cart"')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.suggestionText}>🛒 Try: "Add milk to cart"</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.suggestionChip}
+                  onPress={() => handleSuggestionClick('📍 Try: "Show me grocery stores"')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.suggestionText}>📍 Try: "Show me grocery stores"</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
-        )}
+        </View>
+      ) : (
+        // Messages View - shown when there are messages
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.messagesContainer}
+          contentContainerStyle={styles.messagesContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {displayMessages
+            .filter((msg) => msg.role !== 'system') // Don't show system messages
+            .map((message, index) => {
+              // Check if this is the last assistant message and we're currently streaming
+              const isLastAssistantMessage =
+                message.role === 'assistant' &&
+                !message.function_call &&
+                index === displayMessages.filter(m => m.role !== 'system').length - 1;
+              const isStreaming = isLoading && isLastAssistantMessage && !message.function_call;
 
-        {displayMessages
-          .filter((msg) => msg.role !== 'system') // Don't show system messages
-          .map((message, index) => (
-            <MessageBubble
-              key={index}
-              message={message}
-              showTechnicalDetails={showTechnicalDetails[index] || false}
-              onToggleTechnicalDetails={() => {
-                setShowTechnicalDetails(prev => ({
-                  ...prev,
-                  [index]: !prev[index]
-                }));
-              }}
-              onChangeAddress={openAddressSheet}
-              isLoading={isLoading}
-            />
-          ))}
+              // Check if this is a search result and if it's the last one
+              const isSearchResult = message.role === 'function' &&
+                (message.name === 'intelligentSearch' || message.name === 'searchItemsInShop');
 
-        {isLoading && (
-          <View style={styles.thinkingContainer}>
-            <View style={styles.thinkingHeader}>
-              <OscillatingDots />
-              <Text style={styles.thinkingText}>AI is thinking...</Text>
+              // Find the last search result index
+              let lastSearchResultIndex = -1;
+              for (let i = displayMessages.length - 1; i >= 0; i--) {
+                const msg = displayMessages[i];
+                if (msg.role === 'function' &&
+                  (msg.name === 'intelligentSearch' || msg.name === 'searchItemsInShop')) {
+                  lastSearchResultIndex = i;
+                  break;
+                }
+              }
+
+              const isLastSearchResult = isSearchResult
+                ? index === lastSearchResultIndex
+                : true; // Default to true for non-search results
+
+              const isLastMessage = index === displayMessages.length - 1;
+              // Show progress on function call messages for intelligentSearch/searchItemsInShop
+              const isIntelligentSearchCall = message.function_call && 
+                (message.function_call.name === 'intelligentSearch' || message.function_call.name === 'searchItemsInShop');
+              // Show progress if:
+              // 1. It's an intelligent search call AND we have progress (even if not loading anymore)
+              // 2. OR it's the last message AND we're loading AND have progress
+              const showProgress = (isIntelligentSearchCall && searchProgress) || (isLastMessage && isLoading && searchProgress);
+              // Keep loading state for intelligent search calls while we have progress
+              const isIntelligentSearchLoading = isIntelligentSearchCall && (isLoading || (searchProgress ? searchProgress.currentStepId !== null : false));
+
+              return (
+                <MessageBubble
+                  key={index}
+                  message={message}
+                  showTechnicalDetails={showTechnicalDetails[index] || false}
+                  onToggleTechnicalDetails={() => {
+                    setShowTechnicalDetails(prev => ({
+                      ...prev,
+                      [index]: !prev[index]
+                    }));
+                  }}
+                  onChangeAddress={openAddressSheet}
+                  isLoading={isIntelligentSearchLoading}
+                  isStreaming={isStreaming}
+                  isLastSearchResult={isLastSearchResult}
+                  progress={showProgress ? searchProgress : undefined}
+                />
+              );
+            })}
+
+          {/* 
+            Standalone "Thinking" card removed as progress is now integrated into the active message bubble.
+            We only show a generic loader if there are NO messages yet (unlikely) or if loading but no progress state.
+           */}
+          {isLoading && !searchProgress && displayMessages.length === 0 && (
+            <View style={styles.thinkingContainer}>
+              <View style={styles.thinkingHeader}>
+                <OscillatingDots />
+                <Text style={styles.thinkingText}>AI is thinking...</Text>
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
-        {error && (
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
-          </View>
-        )}
-
-      </ScrollView>
+          {error && (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>⚠️ {error}</Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
 
       <View style={styles.inputContainer}>
         <TextInput
@@ -740,10 +901,16 @@ export default function ConversationalInterface() {
           value={inputText}
           onChangeText={(text) => {
             setInputText(text);
+            // When user starts typing, ensure we're in messages view
+            if (shouldShowWelcome && text.length > 0) {
+              // This will trigger re-render and switch to messages view
+            }
             // Scroll to bottom when user types
-            setTimeout(() => {
-              scrollViewRef.current?.scrollToEnd({ animated: true });
-            }, 100);
+            if (!shouldShowWelcome) {
+              setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+              }, 100);
+            }
           }}
           placeholder="Type your message or speak..."
           placeholderTextColor="#9ca3af"
@@ -757,7 +924,6 @@ export default function ConversationalInterface() {
             }, 100);
           }}
         />
-        <VoiceInputButton onTranscript={setInputText} />
         <TouchableOpacity
           style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
           onPress={handleSendMessage}
@@ -775,6 +941,18 @@ export default function ConversationalInterface() {
         }}
         onSelectAddress={handleSelectAddress}
       />
+
+      <AuthModal
+        visible={showAuthModal}
+        onClose={() => {
+          setShowAuthModal(false);
+          setPendingPlaceOrder(null);
+        }}
+        onSuccess={() => {
+          setShowAuthModal(false);
+          // The useEffect will handle retrying placeOrder
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -788,18 +966,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesContent: {
-    paddingVertical: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    flexGrow: 1,
+  },
+  welcomeViewContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 16,
   },
-  welcomeContainer: {
+  welcomeContent: {
+    width: '100%',
+    maxWidth: 400,
     alignItems: 'center',
-    marginVertical: 20,
   },
   welcomeBubble: {
-    maxWidth: '85%',
+    width: '100%',
     backgroundColor: '#ffffff',
     borderRadius: 24,
-    padding: 20,
+    padding: 24,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     shadowColor: '#000',
@@ -822,13 +1009,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   suggestionChips: {
-    gap: 8,
+    marginTop: 8,
+    width: '100%',
+  },
+  suggestionChip: {
+    marginBottom: 8,
   },
   suggestionText: {
     fontSize: 13,
     color: '#374151',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     backgroundColor: '#f3f4f6',
     borderRadius: 12,
     overflow: 'hidden',
@@ -884,9 +1075,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
   },
   input: {
     flex: 1,
@@ -898,9 +1089,14 @@ const styles = StyleSheet.create({
     maxHeight: 100,
     fontSize: 16,
     color: '#111827',
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#ffffff',
     marginRight: 8,
     lineHeight: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   sendButton: {
     backgroundColor: '#2563eb',
@@ -911,9 +1107,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     shadowColor: '#2563eb',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.5,
-    elevation: 2,
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   sendButtonDisabled: {
     backgroundColor: '#d1d5db',

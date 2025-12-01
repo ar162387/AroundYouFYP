@@ -1,19 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import FavoriteIcon from '../../icons/FavoriteIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
 import { useTranslation } from 'react-i18next';
 
 interface HeaderProps {
-  onFavPress?: () => void;
   onLocationPress?: () => void;
   locationLabel?: string;
 }
 
 export default function Header({
-  onFavPress,
   onLocationPress,
   locationLabel,
 }: HeaderProps) {
@@ -28,11 +25,11 @@ export default function Header({
       className="pb-4 px-5"
       style={{ paddingTop: insets.top + 12 }}
     >
-      <View className="flex-row items-center justify-between">
-        {/* Left: Tappable Location (left-aligned) */}
+      <View className="flex-row items-center">
+        {/* Tappable Location (full width) */}
         <TouchableOpacity
           onPress={onLocationPress}
-          className="flex-1 mr-4 flex-row items-center bg-white/10 px-3 py-2 rounded-full border border-white/10"
+          className="flex-1 flex-row items-center bg-white/10 px-3 py-2 rounded-full border border-white/10"
           activeOpacity={0.7}
         >
           <LocationMarkerIcon size={18} color="#ffffff" innerColor="#2563eb" accentColor="rgba(255,255,255,0.3)" />
@@ -43,15 +40,6 @@ export default function Header({
             </Text>
           </View>
           <Text className="text-white/80 text-xs">▼</Text>
-        </TouchableOpacity>
-
-        {/* Right: Favorites icon */}
-        <TouchableOpacity
-          onPress={onFavPress}
-          className="w-11 h-11 rounded-full bg-white/10 items-center justify-center border border-white/10"
-          activeOpacity={0.7}
-        >
-          <FavoriteIcon size={22} color="#ffffff" />
         </TouchableOpacity>
       </View>
     </LinearGradient>

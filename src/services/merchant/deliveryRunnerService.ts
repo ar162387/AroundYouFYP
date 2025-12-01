@@ -103,6 +103,48 @@ export async function updateDeliveryRunner(
 export async function deleteDeliveryRunner(runnerId: string): Promise<ServiceResult<null>> {
   log.debug('deleteDeliveryRunner', { runnerId });
 
+  // Check if there are any ACTIVE orders (out_for_delivery) with this runner
+  // These are truly active and should prevent deletion
+  const { data: activeOrders, error: activeCheckError } = await supabase
+    .from('orders')
+    .select('id, order_number, status')
+    .eq('delivery_runner_id', runnerId)
+    .eq('status', 'out_for_delivery');
+
+  if (activeCheckError) {
+    log.error('Failed to check active orders', activeCheckError);
+    return { data: null, error: activeCheckError };
+  }
+
+  if (activeOrders && activeOrders.length > 0) {
+    const errorMessage = `Cannot delete delivery runner. There are ${activeOrders.length} active order(s) currently out for delivery assigned to this runner. Please wait until these orders are delivered or reassign them to another runner.`;
+    log.error('Cannot delete runner with active orders', { runnerId, activeOrdersCount: activeOrders.length });
+    const syntheticError: PostgrestError = {
+      name: 'PostgrestError',
+      code: '23514',
+      message: errorMessage,
+      details: '',
+      hint: '',
+    };
+    return {
+      data: null,
+      error: syntheticError,
+    };
+  }
+
+  // Set delivery_runner_id to NULL for all orders (delivered, pending, confirmed, cancelled)
+  // Delivered orders can now have NULL runner_id due to the updated constraint
+  const { error: updateError } = await supabase
+    .from('orders')
+    .update({ delivery_runner_id: null })
+    .eq('delivery_runner_id', runnerId);
+
+  if (updateError) {
+    log.error('Failed to update orders before deleting runner', updateError);
+    return { data: null, error: updateError };
+  }
+
+  // Now safe to delete the runner
   const { error } = await supabase.from(TABLE).delete().eq('id', runnerId);
 
   if (error) {

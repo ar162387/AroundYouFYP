@@ -13,6 +13,7 @@ import { retrievePreferencesBySimilarity } from './memoryRetrievalService';
 import { createChatCompletion } from './openAIService';
 import type { ConsumerShop } from '../consumer/shopService';
 import type { SearchItemResultWithShop } from './inventorySearchRAG';
+import { calculateDistance, fetchDeliveryLogic, fetchDeliveryLogicBatch, calculateTotalDeliveryFee } from '../merchant/deliveryLogicService';
 
 export interface IntelligentSearchResult {
   shop: ConsumerShop;
@@ -41,6 +42,24 @@ export interface SearchIntent {
     quantity?: number; // Extracted quantity from query (e.g., "2 always" = 2)
   }>;
   reasoning: string; // LLM's thought process
+}
+
+export type SearchStepStatus = 'pending' | 'active' | 'completed' | 'error';
+
+export interface SearchStep {
+  id: string;
+  label: string;
+  status: SearchStepStatus;
+  details?: any;
+}
+
+export interface SearchProgress {
+  steps: SearchStep[];
+  currentStepId: string | null;
+  intent?: {
+    primaryQuery: string;
+    expandedQueries: string[];
+  };
 }
 
 type ServiceResult<T> = { data: T | null; error: string | null };
@@ -249,16 +268,16 @@ Response: {
     }
 
     const responseText = result.data.choices[0]?.message?.content || '';
-    
+
     // Try to parse JSON from response
     let intent: SearchIntent;
     try {
       // Extract JSON from markdown code blocks if present
-      const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) || 
-                       responseText.match(/(\{[\s\S]*\})/);
+      const jsonMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/) ||
+        responseText.match(/(\{[\s\S]*\})/);
       const jsonStr = jsonMatch ? jsonMatch[1] : responseText;
       intent = JSON.parse(jsonStr);
-      
+
       // Post-process: Ensure quantities are valid (never 0, default to 1 if missing)
       if (intent.extractedItems) {
         intent.extractedItems = intent.extractedItems.map((item: any) => {
@@ -293,7 +312,7 @@ Response: {
         categories: [],
         brands: [],
         itemTypes: [],
-          extractedItems: [{ name: userQuery, searchTerms: [userQuery], quantity: 1 }],
+        extractedItems: [{ name: userQuery, searchTerms: [userQuery], quantity: 1 }],
         reasoning: 'Fallback: Exception occurred, using direct query match',
       },
       error: error?.message || 'Failed to understand search intent',
@@ -307,7 +326,7 @@ Response: {
 async function getAvailableCategories(shopIds: string[]): Promise<string[]> {
   try {
     const categorySet = new Set<string>();
-    
+
     // Fetch categories from all shops in parallel
     const categoryPromises = shopIds.map(async (shopId) => {
       const { data } = await fetchShopCategories(shopId);
@@ -315,7 +334,7 @@ async function getAvailableCategories(shopIds: string[]): Promise<string[]> {
     });
 
     const categoryArrays = await Promise.all(categoryPromises);
-    
+
     categoryArrays.forEach((categories) => {
       categories.forEach((cat) => {
         categorySet.add(cat.name);
@@ -353,10 +372,10 @@ async function searchItemsByCategories(
 
       // Find matching categories
       const matchingCategoryIds: string[] = [];
-      
+
       for (const category of categories) {
         const categoryNameLower = category.name.toLowerCase();
-        
+
         // Check if category name matches any of the requested categories
         const matchesCategory = categoryNames.some((reqCat) =>
           categoryNameLower.includes(reqCat.toLowerCase()) ||
@@ -379,7 +398,7 @@ async function searchItemsByCategories(
         // Fetch items for each matching category
         for (const categoryId of matchingCategoryIds) {
           const { data: items, error } = await fetchShopItems(shopId, categoryId);
-          
+
           if (items && items.length > 0 && !error) {
             const shopName = shopNameMap.get(shopId) || 'Unknown Shop';
 
@@ -427,6 +446,7 @@ export async function intelligentSearch(
     maxShops?: number;
     itemsPerShop?: number;
     minSimilarity?: number;
+    onProgress?: (progress: SearchProgress) => void;
   }
 ): Promise<ServiceResult<IntelligentSearchResponse>> {
   console.log('\n=================================================================');
@@ -437,13 +457,125 @@ export async function intelligentSearch(
   console.log(`⚙️  Options:`, options);
   console.log('=================================================================\n');
 
+  // Initialize progress state
+  const steps: SearchStep[] = [
+    { id: 'understand_intent', label: 'Thinking...', status: 'pending' },
+    { id: 'find_shops', label: 'Finding nearby shops', status: 'pending' },
+    { id: 'semantic_search', label: 'Searching for items', status: 'pending' },
+    { id: 'expanding_search', label: 'Expanding search...', status: 'pending' },
+    { id: 'ranking', label: 'Ranking results', status: 'pending' },
+  ];
+
+  const updateProgress = (stepId: string, status: SearchStepStatus, details?: any) => {
+    if (!options?.onProgress) return;
+
+    const stepIndex = steps.findIndex(s => s.id === stepId);
+    if (stepIndex === -1) return;
+
+    // Update current step
+    steps[stepIndex] = { ...steps[stepIndex], status, details };
+
+    // Mark previous steps as completed if we're moving forward
+    if (status === 'active') {
+      for (let i = 0; i < stepIndex; i++) {
+        if (steps[i].status !== 'completed') {
+          steps[i].status = 'completed';
+        }
+      }
+    }
+
+    options.onProgress({
+      steps: [...steps],
+      currentStepId: status === 'active' ? stepId : null,
+      // We'll update this later when we have the intent
+    });
+  };
+
+  // Helper to update progress with intent
+  const updateProgressWithIntent = (stepId: string, status: SearchStepStatus, intentData: SearchIntent, details?: any) => {
+    if (!options?.onProgress) return;
+
+    const stepIndex = steps.findIndex(s => s.id === stepId);
+    if (stepIndex !== -1) {
+      steps[stepIndex] = { ...steps[stepIndex], status, details };
+    }
+
+    if (status === 'active') {
+      for (let i = 0; i < stepIndex; i++) {
+        if (steps[i].status !== 'completed') {
+          steps[i].status = 'completed';
+        }
+      }
+    }
+
+    options.onProgress({
+      steps: [...steps],
+      currentStepId: status === 'active' ? stepId : null,
+      intent: {
+        primaryQuery: intentData.primaryQuery,
+        expandedQueries: intentData.expandedQueries
+      }
+    });
+  };
+
   try {
+    // Step 0: Understand intent (moved first as per user request "start with thinking label")
+    console.log('\n[IntelligentSearch] 🧠 STEP 0: Understanding search intent with LLM...');
+    updateProgress('understand_intent', 'active');
+
+    // We need available categories for intent understanding, but we can fetch them in parallel or after shops
+    // For now, let's just do intent understanding first with empty categories if needed, 
+    // or we can re-order. The user wants "Thinking" first.
+    // Let's fetch shops first but only show "Thinking" in UI until we have intent?
+    // No, "Finding shops" is a physical action.
+    // User said: "start with thinking label showing llm reasonuing"
+
+    // Let's do intent understanding first.
+    const intentResult = await understandSearchIntent(userQuery, []); // Pass empty categories for now
+    console.log('[IntelligentSearch] ✅ Intent understanding complete');
+
+    let intent = intentResult.data || {
+      primaryQuery: userQuery,
+      expandedQueries: [userQuery],
+      categories: [],
+      brands: [],
+      itemTypes: [],
+      extractedItems: [{ name: userQuery, searchTerms: [userQuery], quantity: 1 }],
+      reasoning: 'Fallback: Using default intent',
+    };
+
+    // Post-process: Ensure quantities are valid (never 0, default to 1 if missing)
+    if (intent.extractedItems) {
+      intent.extractedItems = intent.extractedItems.map((item: any) => {
+        // If quantity is 0, undefined, null, or negative, default to 1
+        if (!item.quantity || item.quantity <= 0 || isNaN(item.quantity)) {
+          item.quantity = 1;
+        }
+        return item;
+      });
+    }
+
+    updateProgressWithIntent('understand_intent', 'completed', intent, {
+      reasoning: intent.reasoning,
+      extracted: intent.extractedItems.map(i => `${i.name} (Qty: ${i.quantity || 1})`).join(', '),
+      extractedItems: intent.extractedItems.map(item => ({
+        name: item.name,
+        brand: item.brand,
+        category: item.category,
+        quantity: item.quantity || 1,
+        searchTerms: item.searchTerms
+      }))
+    });
+
     // Step 1: Find shops in user's area
     console.log('[IntelligentSearch] 📍 STEP 1: Finding shops by location...');
+    updateProgress('find_shops', 'active');
+
     const shopsResult = await findShopsByLocation(latitude, longitude);
     console.log(`[IntelligentSearch] ✅ Found ${shopsResult.data?.length || 0} shops in area`);
 
     if (shopsResult.error || !shopsResult.data) {
+      updateProgress('find_shops', 'error', { error: shopsResult.error?.message });
       return {
         data: null,
         error: shopsResult.error?.message || 'Failed to find shops',
@@ -455,9 +587,17 @@ export async function intelligentSearch(
     const topShops = shops.slice(0, maxShops);
     const shopIds = topShops.map((shop) => shop.id);
 
+    updateProgress('find_shops', 'completed', {
+      found: `${topShops.length} shop${topShops.length !== 1 ? 's' : ''} in area`,
+      shops: topShops.map((shop) => ({
+        id: shop.id,
+        name: shop.name,
+      }))
+    });
+
     if (shopIds.length === 0) {
       console.log('[IntelligentSearch] ⚠️  No shops found in area');
-      return { 
+      return {
         data: {
           results: [],
           reasoning: 'No shops found in your delivery area.',
@@ -470,8 +610,8 @@ export async function intelligentSearch(
             extractedItems: [],
             reasoning: 'No shops available',
           },
-        }, 
-        error: null 
+        },
+        error: null
       };
     }
 
@@ -480,40 +620,21 @@ export async function intelligentSearch(
       console.log(`  ${i + 1}. ${shop.name} (${shop.id.substring(0, 8)}...)`);
     });
 
-    // Step 2: Get available categories for context
-    console.log('\n[IntelligentSearch] 📂 STEP 2: Fetching available categories...');
+    // Removed duplicate Step 2 & 3 blocks since we moved intent understanding to start
+    // We still need to fetch categories for context if we want to use them in future, 
+    // but for now we can skip or do it silently.
+
+    // Step 2: Get available categories (silently or as part of finding shops)
+    // We'll skip the progress update for this to keep UI clean as per user request
     const availableCategories = await getAvailableCategories(shopIds);
+
     console.log(`[IntelligentSearch] ✅ Found ${availableCategories.length} unique categories:`, availableCategories.join(', '));
 
-    // Step 3: Use LLM to understand intent and expand query
-    console.log('\n[IntelligentSearch] 🧠 STEP 3: Understanding search intent with LLM...');
-    const intentResult = await understandSearchIntent(userQuery, availableCategories);
-    console.log('[IntelligentSearch] ✅ Intent understanding complete');
-
-    if (intentResult.error) {
-      console.warn('[IntelligentSearch] Intent understanding failed, using simple search:', intentResult.error);
-    }
-
-    let intent = intentResult.data || {
-      primaryQuery: userQuery,
-      expandedQueries: [userQuery],
-      categories: [],
-      brands: [],
-      itemTypes: [],
-      extractedItems: [{ name: userQuery, searchTerms: [userQuery], quantity: 1 }],
-      reasoning: 'Fallback: Using default intent',
-    };
-    
-    // Post-process: Ensure quantities are valid (never 0, default to 1 if missing)
-    if (intent.extractedItems) {
-      intent.extractedItems = intent.extractedItems.map((item: any) => {
-        // If quantity is 0, undefined, null, or negative, default to 1
-        if (!item.quantity || item.quantity <= 0 || isNaN(item.quantity)) {
-          item.quantity = 1;
-        }
-        return item;
-      });
-    }
+    // Step 3: Use LLM to understand intent and expand query (already done as Step 0)
+    // We can now re-run intent understanding with available categories if needed,
+    // or just use the initial intent and enrich it. For now, we'll stick to the initial intent.
+    // If we want to use categories for intent, we'd move intent understanding after category fetching.
+    // For this change, we're keeping intent understanding first as per instruction.
 
     console.log('\n[IntelligentSearch] 💭 LLM REASONING (see UI thinking stream for full text):');
     console.log('─────────────────────────────────────────────────────────────────');
@@ -532,20 +653,57 @@ export async function intelligentSearch(
     });
 
     // Step 4: Search items using semantic search with expanded queries
-    console.log('\n[IntelligentSearch] 🔍 STEP 4: Semantic search with expanded queries...');
+    console.log('\n[IntelligentSearch] 🔍 STEP 2: Semantic search with expanded queries...');
+
+    // Format label to show what we are searching for
+    const searchLabel = intent.extractedItems.length > 0
+      ? `Searching for ${intent.extractedItems.map(i => `"${i.name}"`).join(', ')}...`
+      : 'Searching for items...';
+
+    // Update label dynamically
+    const semanticStepIndex = steps.findIndex(s => s.id === 'semantic_search');
+    if (semanticStepIndex !== -1) {
+      steps[semanticStepIndex].label = searchLabel;
+      // Update the step in the array so it's reflected in progress
+      steps[semanticStepIndex] = { ...steps[semanticStepIndex], label: searchLabel };
+    }
+
+    // Update progress with primary query, expanded queries, and extracted items
+    updateProgressWithIntent('semantic_search', 'active', intent, {
+      primaryQuery: intent.primaryQuery,
+      expandedQueries: intent.expandedQueries,
+      extractedItems: intent.extractedItems.map(item => ({
+        name: item.name,
+        brand: item.brand,
+        category: item.category,
+        quantity: item.quantity || 1,
+        searchTerms: item.searchTerms
+      }))
+    });
+
     const allMatchingItems: SearchItemResultWithShop[] = [];
     const itemMap = new Map<string, SearchItemResultWithShop>(); // Deduplicate by item ID
 
-    // Search with each expanded query
-    for (const query of intent.expandedQueries) {
-      console.log(`\n[IntelligentSearch]   🔎 Searching for: "${query}"`);
+    // OPTIMIZATION 1: Parallelize vector search queries using Promise.all
+    // Instead of searching sequentially, fire all queries simultaneously
+    console.log(`\n[IntelligentSearch]   🔎 Searching ${intent.expandedQueries.length} expanded queries in parallel...`);
+    const searchPromises = intent.expandedQueries.map(async (query) => {
+      console.log(`[IntelligentSearch]   🔎 Searching for: "${query}"`);
       const searchResult = await searchItemsAcrossShops(shopIds, query, {
         limit: options?.itemsPerShop ? options.itemsPerShop * shopIds.length : 50,
         minSimilarity: options?.minSimilarity ?? 0.5, // Lower threshold for better recall
       });
 
+      return { query, searchResult };
+    });
+
+    // Wait for all searches to complete in parallel
+    const searchResults = await Promise.all(searchPromises);
+
+    // Process all results
+    searchResults.forEach(({ query, searchResult }) => {
       if (searchResult.data) {
-        console.log(`[IntelligentSearch]   ✅ Vector search returned ${searchResult.data.length} items`);
+        console.log(`[IntelligentSearch]   ✅ Vector search for "${query}" returned ${searchResult.data.length} items`);
         searchResult.data.forEach((item) => {
           // Keep item with highest similarity if duplicate
           const existing = itemMap.get(item.merchant_item_id);
@@ -554,10 +712,39 @@ export async function intelligentSearch(
           }
         });
       } else {
-        console.log(`[IntelligentSearch]   ⚠️  Vector search returned no results`);
+        console.log(`[IntelligentSearch]   ⚠️  Vector search for "${query}" returned no results`);
       }
-    }
+    });
     console.log(`[IntelligentSearch] ✅ Semantic search complete: ${itemMap.size} unique items found`);
+
+    // Mark semantic search as completed
+    updateProgressWithIntent('semantic_search', 'completed', intent, {
+      primaryQuery: intent.primaryQuery,
+      expandedQueries: intent.expandedQueries,
+      extractedItems: intent.extractedItems.map(item => ({
+        name: item.name,
+        brand: item.brand,
+        category: item.category,
+        quantity: item.quantity || 1,
+        searchTerms: item.searchTerms
+      }))
+    });
+
+    // Now show "Expanding search..." step with unified results
+    const unifiedResults = Array.from(itemMap.values())
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 20) // Top 20 items
+      .map(item => ({
+        name: item.item_name,
+        price: item.price_cents ? `PKR ${(item.price_cents / 100).toFixed(2)}` : 'N/A',
+        shop: item.shop_name || 'Unknown Shop',
+        similarity: Math.round(item.similarity * 100)
+      }));
+
+    updateProgress('expanding_search', 'active', {
+      totalFound: itemMap.size,
+      results: unifiedResults
+    });
 
     // Step 5: Build shop name map for category search
     const shopNameMap = new Map<string, string>();
@@ -566,11 +753,13 @@ export async function intelligentSearch(
     });
 
     // Step 6: Also search by categories if specified
+    // We can skip explicit category search visualization if it's too technical, 
+    // or merge it into "Searching for items"
     if (intent.categories.length > 0 || intent.itemTypes.length > 0) {
-      console.log('\n[IntelligentSearch] 📂 STEP 5: Category-based search...');
+      console.log('\n[IntelligentSearch] 📂 STEP 3: Category-based search...');
       console.log(`[IntelligentSearch]   Categories: ${intent.categories.join(', ')}`);
       console.log(`[IntelligentSearch]   Item Types: ${intent.itemTypes.join(', ')}`);
-      
+
       const categoryItems = await searchItemsByCategories(
         shopIds,
         intent.categories,
@@ -579,7 +768,7 @@ export async function intelligentSearch(
       );
 
       console.log(`[IntelligentSearch] ✅ Category search returned ${categoryItems.length} items`);
-      
+
       categoryItems.forEach((item) => {
         const existing = itemMap.get(item.merchant_item_id);
         if (!existing || item.similarity > existing.similarity) {
@@ -588,11 +777,29 @@ export async function intelligentSearch(
       });
       console.log(`[IntelligentSearch] ✅ Total unique items after category search: ${itemMap.size}`);
     } else {
-      console.log('\n[IntelligentSearch] ⏭️  STEP 5: Skipping category search (no categories identified)');
+      console.log('\n[IntelligentSearch] ⏭️  STEP 3: Skipping category search (no categories identified)');
     }
 
+    // Update expanding search step with final unified results
+    const finalUnifiedResults = Array.from(itemMap.values())
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 20) // Top 20 items
+      .map(item => ({
+        name: item.item_name,
+        price: item.price_cents ? `PKR ${(item.price_cents / 100).toFixed(2)}` : 'N/A',
+        shop: item.shop_name || 'Unknown Shop',
+        similarity: Math.round(item.similarity * 100)
+      }));
+
+    updateProgress('expanding_search', 'completed', {
+      totalFound: itemMap.size,
+      results: finalUnifiedResults
+    });
+
     // Step 6: Update shop names for category-matched items and group by shop
-    console.log('\n[IntelligentSearch] 📊 STEP 6: Grouping items by shop and calculating relevance...');
+    console.log('\n[IntelligentSearch] 📊 STEP 4: Grouping items by shop and calculating relevance...');
+    updateProgress('ranking', 'active');
+
     const shopItemsMap = new Map<string, SearchItemResultWithShop[]>();
     const shopCategoryMap = new Map<string, Set<string>>();
 
@@ -616,21 +823,137 @@ export async function intelligentSearch(
       });
     });
 
-    // Step 7: Build results with relevance scoring
-    console.log('\n[IntelligentSearch] 🎯 STEP 7: Building results with relevance scoring...');
+    // Step 7: Calculate delivery fees for each shop
+    console.log('\n[IntelligentSearch] 🎯 STEP 7: Calculating delivery fees and building results with relevance scoring...');
+    
+    // OPTIMIZATION 2: Retrieve user preferences for personalized ranking
+    // Boost items that match user's past purchase history
+    let userPreferences: Array<{ entity_name: string; similarity: number; preference_value: string }> = [];
+    try {
+      // Retrieve preferences based on the search query and extracted items
+      const preferenceQueries = [
+        intent.primaryQuery,
+        ...intent.extractedItems.map(item => item.name),
+        ...intent.brands,
+      ].filter(Boolean);
+
+      if (preferenceQueries.length > 0) {
+        // Use the primary query to find relevant preferences
+        const preferenceResult = await retrievePreferencesBySimilarity(intent.primaryQuery, {
+          limit: 10,
+          minSimilarity: 0.7,
+        });
+
+        if (preferenceResult.data && preferenceResult.data.length > 0) {
+          userPreferences = preferenceResult.data.map(pref => ({
+            entity_name: pref.entity_name.toLowerCase(),
+            similarity: pref.similarity,
+            preference_value: pref.preference_value,
+          }));
+          console.log(`[IntelligentSearch] ✅ Retrieved ${userPreferences.length} user preferences for personalization`);
+        }
+      }
+    } catch (error) {
+      console.warn('[IntelligentSearch] Failed to retrieve user preferences (non-critical):', error);
+      // Continue without preferences - this is not a critical failure
+    }
+
+    // OPTIMIZATION 3: Batch fetch all delivery logic in a single query
+    // Instead of N individual DB calls, fetch all at once
+    const deliveryLogicMap = await fetchDeliveryLogicBatch(shopIds);
+    console.log(`[IntelligentSearch] ✅ Batch fetched delivery logic for ${deliveryLogicMap.size} shops`);
+
+    // Apply preference-based boosting to item similarity scores
+    // Items matching user preferences get a 10% boost to their similarity score
+    if (userPreferences.length > 0) {
+      console.log(`[IntelligentSearch] 🎯 Applying preference-based boosting to ${itemMap.size} items...`);
+      Array.from(itemMap.values()).forEach((item) => {
+        const itemNameLower = item.item_name.toLowerCase();
+        const itemDescriptionLower = (item.item_description || '').toLowerCase();
+
+        // Check if item matches any user preference
+        for (const pref of userPreferences) {
+          const matchesName = itemNameLower.includes(pref.entity_name) || pref.entity_name.includes(itemNameLower);
+          const matchesDescription = itemDescriptionLower.includes(pref.entity_name);
+
+          if (matchesName || matchesDescription) {
+            // Only boost if user prefers (not avoids or is allergic to)
+            if (pref.preference_value === 'prefers') {
+              const boost = 0.1 * pref.similarity; // 10% boost weighted by preference confidence
+              item.similarity = Math.min(1.0, item.similarity + boost);
+              console.log(`[IntelligentSearch]   ⬆️  Boosted "${item.item_name}" by ${(boost * 100).toFixed(1)}% (matches preference: ${pref.entity_name})`);
+            }
+            break; // Only apply one boost per item (highest preference match)
+          }
+        }
+      });
+    }
+
+    // Calculate delivery fees for all shops in parallel
+    const shopDeliveryFees = new Map<string, number>();
+    const deliveryFeePromises = topShops.map(async (shop) => {
+      if (!shop.latitude || !shop.longitude) {
+        shopDeliveryFees.set(shop.id, 0);
+        return;
+      }
+
+      try {
+        // Calculate distance from user location to shop
+        const distance = calculateDistance(
+          latitude,
+          longitude,
+          shop.latitude,
+          shop.longitude
+        );
+
+        // Get delivery logic from batch-fetched map (no additional DB call)
+        const deliveryLogic = deliveryLogicMap.get(shop.id);
+        
+        if (!deliveryLogic) {
+          shopDeliveryFees.set(shop.id, 0);
+          return;
+        }
+
+        // Calculate base delivery fee using a sample order value of 0 PKR
+        // This gives us the base delivery fee without surcharge or free delivery considerations
+        // (since we don't know the actual cart value at search time)
+        const calculation = calculateTotalDeliveryFee(0, distance, deliveryLogic);
+        
+        // Store the base delivery fee (in PKR, not cents)
+        shopDeliveryFees.set(shop.id, calculation.baseFee);
+      } catch (error) {
+        console.error(`[IntelligentSearch] Failed to calculate delivery fee for shop ${shop.id}:`, error);
+        shopDeliveryFees.set(shop.id, 0);
+      }
+    });
+
+    // Wait for all delivery fee calculations to complete
+    await Promise.all(deliveryFeePromises);
+
+    // Build results with relevance scoring
+    // Note: Item similarity scores may have been boosted by preferences above
     const results: IntelligentSearchResult[] = topShops.map((shop) => {
       const matchingItems = shopItemsMap.get(shop.id) || [];
       const matchedCategories = Array.from(shopCategoryMap.get(shop.id) || []);
 
-      // Calculate relevance score
+      // Re-sort items by boosted similarity scores
+      const sortedItems = matchingItems
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, options?.itemsPerShop ?? 10);
+
+      // Get calculated delivery fee
+      const calculatedDeliveryFee = shopDeliveryFees.get(shop.id) || 0;
+
+      // Calculate relevance score using boosted similarity scores
       const avgSimilarity =
-        matchingItems.length > 0
-          ? matchingItems.reduce((sum, item) => sum + item.similarity, 0) / matchingItems.length
+        sortedItems.length > 0
+          ? sortedItems.reduce((sum, item) => sum + item.similarity, 0) / sortedItems.length
           : 0;
 
-      const deliveryFeeScore = shop.delivery_fee
-        ? Math.max(0, 1 - shop.delivery_fee / 200) // Normalize to 0-1
-        : 0.5;
+      // Use calculated delivery fee for scoring (normalize to 0-1, lower fee = higher score)
+      const deliveryFeeScore = calculatedDeliveryFee > 0
+        ? Math.max(0, 1 - calculatedDeliveryFee / 200) // Normalize to 0-1, assuming max fee around 200 PKR
+        : 0.5; // Default score if fee is 0 (free delivery or unknown)
 
       const itemCountScore = Math.min(1, matchingItems.length / 10); // More items = better
 
@@ -639,11 +962,15 @@ export async function intelligentSearch(
           ? 0.3 * itemCountScore + 0.4 * avgSimilarity + 0.3 * deliveryFeeScore
           : 0.1 * deliveryFeeScore;
 
+      // Create a shop object with the calculated delivery fee
+      const shopWithDeliveryFee: ConsumerShop = {
+        ...shop,
+        delivery_fee: calculatedDeliveryFee,
+      };
+
       return {
-        shop,
-        matchingItems: matchingItems
-          .sort((a, b) => b.similarity - a.similarity)
-          .slice(0, options?.itemsPerShop ?? 10),
+        shop: shopWithDeliveryFee,
+        matchingItems: sortedItems, // Already sorted and sliced above
         categoryMatches: matchedCategories,
         relevanceScore,
       };
@@ -661,8 +988,9 @@ export async function intelligentSearch(
     console.log(`📊 Total shops with items: ${finalResults.length}`);
     finalResults.forEach((result, i) => {
       const relevancePercent = (result.relevanceScore * 100).toFixed(1);
+      const deliveryFee = result.shop.delivery_fee ?? 0;
       console.log(`\n${i + 1}. ${result.shop.name} - Relevance: ${relevancePercent}%`);
-      console.log(`   Delivery Fee: PKR ${result.shop.delivery_fee?.toFixed(2) || 'N/A'}`);
+      console.log(`   Delivery Fee: PKR ${deliveryFee.toFixed(2)}`);
       console.log(`   Matching Items: ${result.matchingItems.length}`);
       if (result.matchingItems.length > 0) {
         console.log(`   Top Items:`);
@@ -675,13 +1003,33 @@ export async function intelligentSearch(
     });
     console.log('=================================================================\n');
 
-    return { 
+    updateProgress('ranking', 'completed', {
+      totalResults: finalResults.length,
+      topShop: finalResults[0]?.shop.name,
+      shops: finalResults.map((result) => ({
+        id: result.shop.id,
+        name: result.shop.name,
+        shopName: result.shop.name,
+        relevance: result.relevanceScore > 1 
+          ? Math.round(result.relevanceScore * 10) / 10 
+          : Math.round(result.relevanceScore * 100 * 10) / 10,
+        relevanceScore: result.relevanceScore,
+        matchingItems: result.matchingItems.length,
+        topItems: result.matchingItems.slice(0, 3).map((item) => ({
+          name: item.item_name,
+          price_cents: item.price_cents,
+          similarity: item.similarity
+        }))
+      }))
+    });
+
+    return {
       data: {
         results: finalResults,
         reasoning: intent.reasoning,
         intent: intent,
-      }, 
-      error: null 
+      },
+      error: null
     };
   } catch (error: any) {
     console.error('[IntelligentSearch] Exception in intelligent search:', error);
@@ -705,8 +1053,8 @@ export function formatIntelligentSearchResultsForLLM(
   if (response.intent?.extractedItems) {
     response.intent.extractedItems.forEach((extractedItem) => {
       // Map by item name (normalized) and brand
-      const key = extractedItem.brand 
-        ? `${extractedItem.brand.toLowerCase()}` 
+      const key = extractedItem.brand
+        ? `${extractedItem.brand.toLowerCase()}`
         : extractedItem.name.toLowerCase();
       if (extractedItem.quantity) {
         quantityMap.set(key, extractedItem.quantity);
@@ -715,7 +1063,8 @@ export function formatIntelligentSearchResultsForLLM(
   }
 
   const formatted = results.map((result, index) => {
-    const deliveryFeePKR = (result.shop.delivery_fee || 0).toFixed(2);
+    const deliveryFee = result.shop.delivery_fee ?? 0;
+    const deliveryFeePKR = deliveryFee.toFixed(2);
     const relevancePercent = (result.relevanceScore * 100).toFixed(0);
 
     let shopInfo = `${index + 1}. ${result.shop.name}`;
@@ -731,7 +1080,7 @@ export function formatIntelligentSearchResultsForLLM(
       result.matchingItems.slice(0, 5).forEach((item) => {
         const pricePKR = (item.price_cents / 100).toFixed(2);
         const similarityPercent = (item.similarity * 100).toFixed(0);
-        
+
         // Try to find matching quantity from extracted items
         const itemNameLower = item.item_name.toLowerCase();
         let suggestedQuantity = 1;
@@ -741,7 +1090,7 @@ export function formatIntelligentSearchResultsForLLM(
             break;
           }
         }
-        
+
         const quantityHint = suggestedQuantity > 1 ? ` (suggested quantity: ${suggestedQuantity})` : '';
         shopInfo += `\n   - ${item.item_name} (PKR ${pricePKR}, ${similarityPercent}% match) [ID: ${item.merchant_item_id}]${quantityHint}`;
       });
@@ -767,4 +1116,3 @@ export function formatIntelligentSearchResultsForLLM(
 
   return `Search Results:\n${formatted.join('\n\n')}${quantityNote}`;
 }
-

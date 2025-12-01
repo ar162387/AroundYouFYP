@@ -41,6 +41,11 @@ import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPorta
 import ManageDeliveryAreasScreen from '../screens/merchant/shop/ManageDeliveryAreasScreen';
 import MerchantOrderScreen from '../screens/merchant/orders/MerchantOrderScreen';
 import ShoppingAssistantScreen from '../screens/consumer/ShoppingAssistantScreen';
+import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
+import SuggestionsComplaintsScreen from '../screens/SuggestionsComplaintsScreen';
+import AccountDeletionScreen from '../screens/AccountDeletionScreen';
+import MerchantFAQScreen from '../screens/merchant/MerchantFAQScreen';
+import ConsumerFAQScreen from '../screens/consumer/ConsumerFAQScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -296,6 +301,46 @@ export default function AppNavigator() {
             headerShown: false,
             animation: 'slide_from_bottom',
             presentation: 'modal',
+          }}
+        />
+        <Stack.Screen
+          name="PrivacyPolicy"
+          component={PrivacyPolicyScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="SuggestionsComplaints"
+          component={SuggestionsComplaintsScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="AccountDeletion"
+          component={AccountDeletionScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="MerchantFAQ"
+          component={MerchantFAQScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="ConsumerFAQ"
+          component={ConsumerFAQScreen}
+          options={{
+            headerShown: false,
+            animation: 'slide_from_right',
           }}
         />
       </Stack.Navigator>

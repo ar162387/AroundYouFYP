@@ -44,9 +44,9 @@ function HeaderWithClear() {
   return (
     <View style={{ paddingTop: insets.top }}>
       <LinearGradient
-        colors={['#2563eb', '#1d4ed8']}
+        colors={["#2563eb", "#1d4ed8"]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+        end={{ x: 1, y: 1 }}
         className="pb-4"
       >
         {/* Header Content */}
@@ -91,10 +91,32 @@ function HeaderWithClear() {
 }
 
 export default function ShoppingAssistantScreen() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <ConversationProvider>
       <View className="flex-1 bg-gray-50">
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        
+        {/* Gradient overlay behind notch/status bar */}
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            zIndex: 30,
+          }}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={["#2563eb", "#1d4ed8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ flex: 1 }}
+          />
+        </View>
 
         {/* Premium Gradient Header */}
         <HeaderWithClear />

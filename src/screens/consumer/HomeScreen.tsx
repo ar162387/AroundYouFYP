@@ -21,7 +21,7 @@ import ShopTypeImage from '../../icons/shopTypeRemote';
 import type { ShopType } from '../../services/merchant/shopService';
 import AppLogo from '../../icons/AppLogo';
 import { useTranslation } from 'react-i18next';
-import ChatIcon from '../../icons/ChatIcon';
+import AISparkleIcon from '../../icons/AISparkleIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -225,9 +225,9 @@ export default function HomeScreen() {
         pointerEvents="none"
       >
         <LinearGradient
-          colors={["#1e3a8a", "#2563eb"]}
+          colors={["#2563eb", "#1d4ed8"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{ flex: 1 }}
         />
       </View>
@@ -300,7 +300,6 @@ export default function HomeScreen() {
             }}
           >
             <Header
-              onFavPress={() => console.log('Favorites pressed')}
               onLocationPress={() => setSheetVisible(true)}
               locationLabel={
                 selectedAddress?.label ||
@@ -516,7 +515,7 @@ export default function HomeScreen() {
           elevation: 10,
         }}
       >
-        <ChatIcon size={28} color="#FFFFFF" />
+        <AISparkleIcon size={28} color="#FFFFFF" />
         {/* Pulse indicator */}
         <View
           style={{

@@ -3,6 +3,13 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply plugin: "com.google.gms.google-services"
 
+// Configure which .env file to use per build type for react-native-config
+// (debug uses local .env, release uses .env.production)
+project.ext.envConfigFiles = [
+    debug  : ".env",
+    release: ".env.production",
+]
+
 // Apply react-native-config dotenv plugin
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 
@@ -64,8 +71,9 @@ react {
 
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
+ * Enabled by default for production releases to reduce app size and obfuscate code.
  */
-def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: false).toBoolean()
+def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: true).toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -87,15 +95,46 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace 'com.aroundyou.app'
+    
+    // Load keystore properties for release signing
+    def keystorePropertiesFile = rootProject.file("keystore.properties")
+    def keystoreProperties = new Properties()
+    def keystoreExists = keystorePropertiesFile.exists()
+    
+    if (keystoreExists) {
+        keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    }
+    
     defaultConfig {
         applicationId 'com.aroundyou.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 3
+        versionName "1.0.2"
         
         // react-native-config
         resValue "string", "build_config_package", "com.aroundyou.app"
+        
+        // react-native-config dotenv plugin should already create buildConfigField
+        // But we verify and also add resValue for resource access
+        // The dotenv.gradle script uses project.env (not project.ext.env)
+        if (project.hasProperty('env')) {
+            project.env.each { k, v ->
+                // Add as resource value (for React Native Config to access)
+                def escaped = v.toString().replace("\\", "\\\\").replace("\"", "\\\"")
+                resValue "string", k, escaped
+                // buildConfigField is already created by dotenv.gradle, but ensure it exists
+            }
+            
+            // Debug: Print if env variables are loaded
+            println "=== Environment Variables Check ==="
+            println "SUPABASE_URL: ${project.env.get('SUPABASE_URL') ? 'SET' : 'NOT SET'}"
+            println "GOOGLE_WEB_CLIENT_ID: ${project.env.get('GOOGLE_WEB_CLIENT_ID') ? 'SET' : 'NOT SET'}"
+            println "SUPABASE_ANON_KEY: ${project.env.get('SUPABASE_ANON_KEY') ? 'SET' : 'NOT SET'}"
+        } else {
+            println "ERROR: project.env not found! Environment variables are NOT loaded!"
+            println "Make sure .env file exists in project root and dotenv.gradle is applied."
+        }
     }
     signingConfigs {
         debug {
@@ -104,15 +143,51 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            if (keystoreExists && 
+                keystoreProperties['MYAPP_RELEASE_STORE_FILE'] != null &&
+                keystoreProperties['MYAPP_RELEASE_STORE_PASSWORD'] != null &&
+                keystoreProperties['MYAPP_RELEASE_KEY_ALIAS'] != null &&
+                keystoreProperties['MYAPP_RELEASE_KEY_PASSWORD'] != null) {
+                
+                // Keystore file path is relative to android/app/ directory
+                def keystoreFileName = keystoreProperties['MYAPP_RELEASE_STORE_FILE']
+                def keystoreFile = file(keystoreFileName)
+                
+                if (!keystoreFile.exists()) {
+                    throw new GradleException(
+                        "Keystore file not found: ${keystoreFileName}\n" +
+                        "Expected location: android/app/${keystoreFileName}\n" +
+                        "Please ensure:\n" +
+                        "1. The keystore file exists in android/app/ directory\n" +
+                        "2. The MYAPP_RELEASE_STORE_FILE path in keystore.properties is correct (just filename if in android/app/)\n" +
+                        "3. See GOOGLE_PLAY_RELEASE_GUIDE.md for instructions"
+                    )
+                }
+                
+                storeFile keystoreFile
+                storePassword keystoreProperties['MYAPP_RELEASE_STORE_PASSWORD']
+                keyAlias keystoreProperties['MYAPP_RELEASE_KEY_ALIAS']
+                keyPassword keystoreProperties['MYAPP_RELEASE_KEY_PASSWORD']
+            } else {
+                // Fallback to debug signing with warning (for development only)
+                println "WARNING: keystore.properties not found or incomplete. Using debug signing for release build."
+                println "WARNING: This is NOT suitable for production! Create android/keystore.properties before releasing."
+                println "WARNING: See GOOGLE_PLAY_RELEASE_GUIDE.md for instructions."
+                storeFile file('debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Use release signing config if keystore.properties exists, otherwise fall back to debug
+            signingConfig signingConfigs.release
             shrinkResources (findProperty('android.enableShrinkResourcesInReleaseBuilds')?.toBoolean() ?: false)
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

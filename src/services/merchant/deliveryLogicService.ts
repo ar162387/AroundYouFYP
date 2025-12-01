@@ -125,6 +125,65 @@ export async function fetchDeliveryLogic(shopId: string): Promise<ServiceResult<
   }
 }
 
+/**
+ * Batch fetch delivery logic for multiple shops in a single query
+ * More efficient than calling fetchDeliveryLogic individually for each shop
+ */
+export async function fetchDeliveryLogicBatch(
+  shopIds: string[]
+): Promise<Map<string, DeliveryLogic | null>> {
+  log.debug('fetchDeliveryLogicBatch', { shopCount: shopIds.length });
+
+  const resultMap = new Map<string, DeliveryLogic | null>();
+
+  if (shopIds.length === 0) {
+    return resultMap;
+  }
+
+  try {
+    const result = await executeWithRetry(async (client) => {
+      const { data, error } = await client
+        .from(TABLE)
+        .select('*')
+        .in('shop_id', shopIds);
+      return { data, error };
+    });
+
+    const { data, error } = result;
+
+    if (error) {
+      log.error('Failed to batch fetch delivery logic', error);
+      // Initialize all shops with null (no delivery logic)
+      shopIds.forEach(shopId => resultMap.set(shopId, null));
+      return resultMap;
+    }
+
+    // Create a map of shop_id -> DeliveryLogic from results
+    const logicMap = new Map<string, DeliveryLogic>();
+    if (data && Array.isArray(data)) {
+      data.forEach((row: any) => {
+        try {
+          logicMap.set(row.shop_id, mapRow(row));
+        } catch (mapError) {
+          log.error('Error mapping delivery logic row', { shopId: row.shop_id, error: mapError });
+        }
+      });
+    }
+
+    // Populate result map - set to null if no logic exists for a shop
+    shopIds.forEach(shopId => {
+      resultMap.set(shopId, logicMap.get(shopId) || null);
+    });
+
+    return resultMap;
+  } catch (error: any) {
+    log.error('Exception batch fetching delivery logic:', error);
+    // Initialize all shops with null on error
+    shopIds.forEach(shopId => resultMap.set(shopId, null));
+    return resultMap;
+  }
+}
+
 export async function createDeliveryLogic(
   shopId: string,
   payload: DeliveryLogicPayload

@@ -269,9 +269,9 @@ export default function EditShopScreen() {
       {/* Gradient overlay behind notch/status bar */}
       <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: insets.top, zIndex: 10 }} pointerEvents="none">
         <LinearGradient
-          colors={["#1e3a8a", "#3b82f6"]}
+          colors={["#2563eb", "#1d4ed8"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{ flex: 1 }}
         />
       </View>
@@ -279,9 +279,9 @@ export default function EditShopScreen() {
       {/* Header */}
       <View className="px-5 pb-4" style={{ paddingTop: insets.top + 16 }}>
         <LinearGradient
-          colors={["#1e3a8a", "#3b82f6"]}
+          colors={["#2563eb", "#1d4ed8"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           className="rounded-b-3xl px-5 py-4"
         >
           <View className="flex-row items-center mb-4">

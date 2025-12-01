@@ -6,10 +6,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  StatusBar,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import LinearGradient from 'react-native-linear-gradient';
 
 import { useAuth } from '../../context/AuthContext';
 import { useAllMerchantOrders } from '../../hooks/merchant/useOrders';
@@ -28,6 +31,7 @@ export default function MerchantOrdersScreen() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
 
   const {
     data: orders,
@@ -100,6 +104,25 @@ export default function MerchantOrdersScreen() {
   if (isLoading) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50">
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            zIndex: 30,
+          }}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={["#2563eb", "#1d4ed8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ flex: 1 }}
+          />
+        </View>
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text className="text-gray-600 mt-4">{t('merchant.orders.loading')}</Text>
       </View>
@@ -109,6 +132,25 @@ export default function MerchantOrdersScreen() {
   if (activeOrders.length === 0) {
     return (
       <View className="flex-1 bg-gray-50">
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            zIndex: 30,
+          }}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={["#2563eb", "#1d4ed8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ flex: 1 }}
+          />
+        </View>
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ paddingBottom: 24 }}
@@ -139,6 +181,28 @@ export default function MerchantOrdersScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {/* Gradient overlay behind notch/status bar */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          zIndex: 30,
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={["#2563eb", "#1d4ed8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </View>
+
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ paddingBottom: 24 }}

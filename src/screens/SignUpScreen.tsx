@@ -96,9 +96,9 @@ export default function SignUpScreen({ navigation, route }: Props) {
     >
       {/* Upper Section - Gradient Header */}
       <LinearGradient
-        colors={["#1e3a8a", "#2563eb"]}
+        colors={["#2563eb", "#1d4ed8"]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={{ 
           height: upperSectionHeight,
           paddingTop: insets.top 

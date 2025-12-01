@@ -218,6 +218,96 @@ export async function uploadShopImage(
   }
 }
 
+// Upload item image to Supabase storage (1:1 aspect ratio for item cards)
+export async function uploadItemImage(
+  userId: string,
+  imageUri: string
+): Promise<{ url: string | null; error: { message: string } | null }> {
+  try {
+    // Derive mime type from uri; default to jpeg
+    const deriveMimeFromUri = (uri: string): { extension: string; mime: string } => {
+      const lower = uri.split('?')[0].split('#')[0].toLowerCase();
+      if (lower.endsWith('.png')) return { extension: 'png', mime: 'image/png' };
+      if (lower.endsWith('.webp')) return { extension: 'webp', mime: 'image/webp' };
+      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return { extension: 'jpg', mime: 'image/jpeg' };
+      // iOS photo library URIs (ph://) and most camera outputs are jpeg by default
+      return { extension: 'jpg', mime: 'image/jpeg' };
+    };
+
+    const { extension, mime } = deriveMimeFromUri(imageUri);
+
+    // Generate unique filename with correct extension
+    const timestamp = Date.now();
+    const filename = `item-${userId}-${timestamp}.${extension}`;
+    // Path within the bucket (using item-images subdirectory)
+    const filePath = `item-images/${filename}`;
+
+    // For React Native, we need to handle local file URIs differently
+    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
+      // Local file - Upload using Supabase Storage API
+      console.log('Uploading item image:', { filePath, mime, filename, uriPrefix: imageUri.substring(0, 20) });
+
+      const supabaseUrl = Config.SUPABASE_URL || '';
+      const supabaseAnonKey = Config.SUPABASE_ANON_KEY || '';
+      
+      if (!supabaseUrl || !supabaseAnonKey) {
+        return { url: null, error: { message: 'Supabase configuration missing' } };
+      }
+
+      // Get session token for authenticated upload
+      // RLS policies should allow authenticated users to upload to shop-images bucket
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        return { url: null, error: { message: 'Not authenticated. Please log in again.' } };
+      }
+
+      console.log('✅ Uploading item image with authenticated session');
+      return uploadWithStorageAPI(
+        supabaseUrl,
+        supabaseAnonKey,
+        session.access_token,
+        'shop-images',
+        filePath,
+        imageUri,
+        mime,
+        filename
+      );
+    } else if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+      // Remote URL - fetch and convert to blob
+      const response = await fetch(imageUri);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+      const blob = await response.blob();
+
+      const { error } = await supabase.storage
+        .from('shop-images')
+        .upload(filePath, blob, {
+          contentType: mime,
+          upsert: false,
+        });
+
+      if (error) {
+        console.error('Supabase upload error:', error);
+        return { url: null, error: { message: error.message } };
+      }
+    } else {
+      return { url: null, error: { message: 'Unsupported image URI format' } };
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('shop-images')
+      .getPublicUrl(filePath);
+
+    return { url: urlData.publicUrl, error: null };
+  } catch (error: any) {
+    console.error('Upload error:', error);
+    return { url: null, error: { message: error.message || 'Failed to upload image' } };
+  }
+}
+
 // Pick image from device - this will be implemented in the component using react-native-image-picker
 // For now, this is a placeholder function that can accept an image URI
 export async function validateImageUri(uri: string): Promise<{ valid: boolean; error: { message: string } | null }> {
@@ -498,6 +588,55 @@ export async function deleteShop(
 
     if (existingShop.merchant_id !== merchantAccount.id) {
       return { error: { message: 'You do not have permission to delete this shop.' } };
+    }
+
+    // Check if there are any ACTIVE orders (out_for_delivery) with runners from this shop
+    // These are truly active and should prevent deletion
+    const { data: activeOrders, error: activeOrdersError } = await supabase
+      .from('orders')
+      .select('id, order_number, status, delivery_runner_id')
+      .eq('shop_id', shopId)
+      .eq('status', 'out_for_delivery')
+      .not('delivery_runner_id', 'is', null);
+
+    if (activeOrdersError) {
+      return { error: { message: 'Failed to check active orders: ' + activeOrdersError.message } };
+    }
+
+    if (activeOrders && activeOrders.length > 0) {
+      return { 
+        error: { 
+          message: `Cannot delete shop. There are ${activeOrders.length} active order(s) currently out for delivery with assigned delivery runners. Please wait until these orders are delivered or cancel them before deleting the shop.` 
+        } 
+      };
+    }
+
+    // Get all runners for this shop to clean up their orders
+    const { data: runners, error: runnersError } = await supabase
+      .from('delivery_runners')
+      .select('id')
+      .eq('shop_id', shopId);
+
+    if (runnersError) {
+      return { error: { message: 'Failed to check delivery runners: ' + runnersError.message } };
+    }
+
+    // Set delivery_runner_id to NULL for all orders from this shop's runners
+    // Delivered orders can now have NULL runner_id due to the updated constraint
+    if (runners && runners.length > 0) {
+      const runnerIds = runners.map(r => r.id);
+      
+      // Update all orders (delivered, pending, confirmed, cancelled) to have NULL runner_id
+      // This prevents constraint violation when runners are deleted via CASCADE
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ delivery_runner_id: null })
+        .eq('shop_id', shopId)
+        .in('delivery_runner_id', runnerIds);
+
+      if (updateError) {
+        return { error: { message: 'Failed to update orders before shop deletion: ' + updateError.message } };
+      }
     }
 
     // Count orders for informational message (orders will be preserved with NULL shop_id)

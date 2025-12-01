@@ -22,6 +22,7 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import BackIcon from '../../icons/BackIcon';
 import CartIcon from '../../icons/CartIcon';
 import { useTranslation } from 'react-i18next';
+import LinearGradient from 'react-native-linear-gradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -269,6 +270,26 @@ export default function ViewCartScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      {/* Gradient overlay behind notch/status bar */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          zIndex: 30,
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={["#2563eb", "#1d4ed8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </View>
+
       {/* Header */}
       <SafeAreaView edges={['top']} className="bg-white border-b border-gray-200">
         <View className="flex-row items-center px-4 py-3">

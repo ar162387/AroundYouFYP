@@ -109,11 +109,17 @@ export default function AddedToCartSummary({
 }: AddedToCartSummaryProps) {
     const { t } = useTranslation();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { getShopCart, updateItemQuantity } = useCart();
+    const { getShopCart, updateItemQuantity, carts: contextCarts } = useCart();
     const { selectedAddress, setSelectedAddress } = useLocationSelection();
     const [landmarkValue, setLandmarkValue] = useState(selectedAddress?.landmark || '');
     const [deliveryState, setDeliveryState] = useState<Record<string, CalculatedDeliveryInfo>>({});
     const [calculatingShops, setCalculatingShops] = useState<Record<string, boolean>>({});
+    const [forceUpdate, setForceUpdate] = useState(0);
+
+    // Force re-render when cart context updates
+    useEffect(() => {
+        setForceUpdate(prev => prev + 1);
+    }, [contextCarts]);
 
     useEffect(() => {
         setLandmarkValue(selectedAddress?.landmark || '');
@@ -140,6 +146,7 @@ export default function AddedToCartSummary({
     const shopCards = useMemo<ShopCardData[]>(() => {
         const map = new Map<string, ShopCardData>();
 
+        // First, process carts from props
         carts.forEach((cart) => {
             map.set(cart.shopId, {
                 shopId: cart.shopId,
@@ -169,6 +176,20 @@ export default function AddedToCartSummary({
             addedSubtotals.set(item.shopId, current + item.price_cents * item.quantity);
         });
 
+        // Also ensure we have entries for shops that only have added items
+        addedItems.forEach((item) => {
+            if (!map.has(item.shopId)) {
+                map.set(item.shopId, {
+                    shopId: item.shopId,
+                    shopName: item.shopName,
+                    items: [],
+                    totalPrice: 0,
+                    addedSubtotal: 0,
+                });
+            }
+        });
+
+        // Now sync with live cart data
         map.forEach((value, key) => {
             const liveCart = getShopCart(key);
             if (liveCart) {
@@ -209,7 +230,7 @@ export default function AddedToCartSummary({
         });
 
         return Array.from(map.values());
-    }, [addedItems, carts, getShopCart]);
+    }, [addedItems, carts, getShopCart, forceUpdate, contextCarts]);
 
     const shopsNeedingCalculation = useMemo(
         () =>

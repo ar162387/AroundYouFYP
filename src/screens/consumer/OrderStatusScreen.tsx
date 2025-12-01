@@ -8,11 +8,13 @@ import {
   Alert,
   Animated,
   Linking,
+  StatusBar,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
+import LinearGradient from 'react-native-linear-gradient';
 import { useOrder, useCancelOrder } from '../../hooks/consumer/useOrders';
 import { getOrderStatusDisplay, formatPrice } from '../../types/orders';
 import BackIcon from '../../icons/BackIcon';
@@ -34,6 +36,7 @@ export default function OrderStatusScreen() {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { orderId } = route.params;
+  const insets = useSafeAreaInsets();
 
   const { data: order, isLoading, refetch } = useOrder(orderId);
   const cancelOrderMutation = useCancelOrder();
@@ -107,7 +110,26 @@ export default function OrderStatusScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center" edges={[]}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            zIndex: 30,
+          }}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={["#2563eb", "#1d4ed8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ flex: 1 }}
+          />
+        </View>
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text className="text-gray-600 mt-4">{t('orders.loadingOrder')}</Text>
       </SafeAreaView>
@@ -116,7 +138,26 @@ export default function OrderStatusScreen() {
 
   if (!order) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-8">
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-8" edges={[]}>
+        <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: insets.top,
+            zIndex: 30,
+          }}
+          pointerEvents="none"
+        >
+          <LinearGradient
+            colors={["#2563eb", "#1d4ed8"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{ flex: 1 }}
+          />
+        </View>
         <Text className="text-6xl mb-4">📦</Text>
         <Text className="text-gray-900 text-lg font-semibold mb-2">{t('orders.notFound')}</Text>
         <TouchableOpacity
@@ -133,8 +174,30 @@ export default function OrderStatusScreen() {
 
   return (
     <View className="flex-1 bg-gray-50">
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {/* Gradient overlay behind notch/status bar */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          zIndex: 30,
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={["#2563eb", "#1d4ed8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </View>
+
       {/* Header */}
-      <SafeAreaView edges={['top']} className="bg-white border-b border-gray-200">
+      <SafeAreaView edges={[]} className="bg-white border-b border-gray-200" style={{ paddingTop: insets.top }}>
         <View className="flex-row items-center px-4 py-3">
           <TouchableOpacity
             onPress={() => navigation.navigate('Home')}

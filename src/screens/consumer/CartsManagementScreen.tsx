@@ -9,6 +9,7 @@ import {
   Alert,
   ToastAndroid,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -263,12 +264,34 @@ export default function CartsManagementScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-gray-50" edges={[]}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+      
+      {/* Gradient overlay behind notch/status bar */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          zIndex: 30,
+        }}
+        pointerEvents="none"
+      >
+        <LinearGradient
+          colors={["#2563eb", "#1d4ed8"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ flex: 1 }}
+        />
+      </View>
+
       {/* Header */}
       <LinearGradient
-        colors={['#1e3a8a', '#3b82f6']}
+        colors={["#2563eb", "#1d4ed8"]}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
+        end={{ x: 1, y: 1 }}
         className="pb-3 px-5"
         style={{ paddingTop: insets.top + 8 }}
       >

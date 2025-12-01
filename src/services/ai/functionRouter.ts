@@ -6,7 +6,7 @@
  */
 
 import { searchItemsInShop } from './inventorySearchRAG';
-import { intelligentSearch, formatIntelligentSearchResultsForLLM } from './intelligentSearchService';
+import { intelligentSearch, formatIntelligentSearchResultsForLLM, type SearchProgress } from './intelligentSearchService';
 import { validateItemsStock, validateItemStock } from '../consumer/stockValidationService';
 import { placeOrder } from '../consumer/orderService';
 import type { ShopCart } from '../../context/CartContext';
@@ -23,7 +23,7 @@ import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
  */
 function logFunctionCall(functionName: string, args: any): void {
   console.log(`[FunctionRouter] 🔵 Calling: ${functionName}`);
-  
+
   switch (functionName) {
     case 'intelligentSearch':
     case 'searchItemsInShop':
@@ -31,7 +31,7 @@ function logFunctionCall(functionName: string, args: any): void {
         console.log(`  📝 Query: "${args.query}"`);
       }
       break;
-    
+
     case 'addItemsToCart':
       if (Array.isArray(args.items)) {
         console.log(`  🛒 Adding ${args.items.length} item(s) to cart:`);
@@ -45,22 +45,22 @@ function logFunctionCall(functionName: string, args: any): void {
         console.log(`  🛒 Adding item to cart: ${args.itemId}, Quantity: ${args.quantity || 1}`);
       }
       break;
-    
+
     case 'removeItemFromCart':
       console.log(`  🗑️  Removing item: ${args.itemId}${args.quantity ? ` (Quantity: ${args.quantity})` : ''}`);
       break;
-    
+
     case 'updateItemQuantity':
       console.log(`  🔢 Updating quantity: Item ${args.itemId} → ${args.quantity}`);
       break;
-    
+
     case 'placeOrder':
       console.log(`  📦 Placing order for shop: ${args.shopId}`);
       if (args.specialInstructions) {
         console.log(`  📝 Special instructions: ${args.specialInstructions}`);
       }
       break;
-    
+
     case 'getCart':
     case 'getAllCarts':
       console.log(`  🛒 Retrieving cart(s)`);
@@ -73,9 +73,9 @@ function logFunctionResult(functionName: string, result: FunctionCallResult, arg
     console.log(`[FunctionRouter] ❌ ${functionName} failed: ${result.error}`);
     return;
   }
-  
+
   console.log(`[FunctionRouter] ✅ ${functionName} succeeded`);
-  
+
   switch (functionName) {
     case 'intelligentSearch':
     case 'searchItemsInShop':
@@ -90,7 +90,7 @@ function logFunctionResult(functionName: string, result: FunctionCallResult, arg
         }
       }
       break;
-    
+
     case 'addItemsToCart':
     case 'addItemToCart':
       if (result.result?.added) {
@@ -107,14 +107,14 @@ function logFunctionResult(functionName: string, result: FunctionCallResult, arg
         });
       }
       break;
-    
+
     case 'removeItemFromCart':
       if (result.result?.cart) {
         const cart = result.result.cart;
         console.log(`  ✅ Removed item. Cart now has ${cart.totalItems} item(s), Total: ${cart.totalPrice / 100} PKR`);
       }
       break;
-    
+
     case 'updateItemQuantity':
       if (result.result?.quantity) {
         console.log(`  ✅ Updated quantity to ${result.result.quantity}`);
@@ -124,14 +124,14 @@ function logFunctionResult(functionName: string, result: FunctionCallResult, arg
         console.log(`  🛒 Cart total: ${cart.totalPrice / 100} PKR (${cart.totalItems} items)`);
       }
       break;
-    
+
     case 'placeOrder':
       if (result.result?.order) {
         const order = result.result.order;
         console.log(`  ✅ Order placed! Order #${order.order_number || order.id}`);
       }
       break;
-    
+
     case 'getCart':
     case 'getAllCarts':
       if (result.result?.carts) {
@@ -148,6 +148,7 @@ function logFunctionResult(functionName: string, result: FunctionCallResult, arg
 export interface FunctionExecutionContext {
   // Cart operations
   addItemToCartFn: (shopId: string, item: ShopItem, shopDetails: any) => Promise<void>;
+  addItemToCartWithQuantityFn: (shopId: string, item: ShopItem, quantity: number, shopDetails: any) => Promise<void>;
   removeItemFromCartFn: (shopId: string, itemId: string) => Promise<void>;
   updateItemQuantityFn: (shopId: string, itemId: string, quantity: number) => Promise<void>;
   getShopCartFn: (shopId: string) => ShopCart | null;
@@ -162,6 +163,9 @@ export interface FunctionExecutionContext {
   // Shop/Item lookup
   getShopDetailsFn?: (shopId: string) => Promise<any>;
   getItemDetailsFn?: (itemId: string, shopId: string) => Promise<ShopItem | null>;
+
+  // Progress callbacks
+  onProgress?: (progress: SearchProgress) => void;
 }
 export interface FunctionCallResult {
   success: boolean;
@@ -223,10 +227,10 @@ export async function executeFunctionCall(
 ): Promise<FunctionCallResult> {
   // Log function call
   logFunctionCall(functionName, args);
-  
+
   try {
     let result: FunctionCallResult;
-    
+
     switch (functionName) {
       case 'intelligentSearch':
         result = await executeIntelligentSearch(args as { query: string; maxShops?: number; itemsPerShop?: number }, context);
@@ -271,10 +275,10 @@ export async function executeFunctionCall(
         };
         break;
     }
-    
+
     // Log function result
     logFunctionResult(functionName, result, args);
-    
+
     return result;
   } catch (error: any) {
     console.error(`[FunctionRouter] ❌ Error executing ${functionName}:`, error);
@@ -311,6 +315,7 @@ async function executeIntelligentSearch(
       {
         maxShops: args.maxShops || 10,
         itemsPerShop: args.itemsPerShop || 10,
+        onProgress: context.onProgress,
       }
     );
 
@@ -413,21 +418,34 @@ async function executeSearchItemsInShop(
 }
 
 /**
- * Execute addItemsToCart function (batch add)
+ * Execute addItemsToCart function (batch add) - Parallelized Version
  */
 async function executeAddItemsToCart(
   args: { items: Array<{ shopId: string; itemId: string; quantity?: number }> },
   context: FunctionExecutionContext
 ): Promise<FunctionCallResult> {
   try {
-    const results: Array<{ success: boolean; itemId: string; error?: string }> = [];
-    const addedItems: Array<{ itemId: string; name: string; quantity: number; shopId: string; shopName: string; price_cents: number; image_url?: string }> = [];
-    const shopIds = new Set<string>();
-    const addedTotalsByShop: Record<string, number> = {};
+    // Cache to prevent fetching the same shop details multiple times
+    const shopDetailsCache = new Map<string, any>();
 
-    for (const item of args.items) {
+    // Define the unit of work (The "Worker")
+    const processItem = async (item: { shopId: string; itemId: string; quantity?: number }): Promise<{
+      success: boolean;
+      itemId: string;
+      error?: string;
+      reason?: string;
+      data?: {
+        itemId: string;
+        name: string;
+        quantity: number;
+        shopId: string;
+        shopName: string;
+        price_cents: number;
+        image_url?: string;
+      };
+    }> => {
       try {
-        // Get item details first
+        // A. Fetch Item Data
         let shopItem: ShopItem | null = null;
 
         if (context.getItemDetailsFn) {
@@ -436,145 +454,253 @@ async function executeAddItemsToCart(
 
         if (!shopItem) {
           console.log(`  ❌ Item ${item.itemId} not found - skipping`);
-          results.push({
+          return {
             success: false,
             itemId: item.itemId,
             error: `Item with ID ${item.itemId} not found`,
-          });
-          continue;
+            reason: 'not_found',
+          };
         }
-        
-        // Log which item is being added (with name)
-        console.log(`  ➕ Adding: "${shopItem.name}" (ID: ${item.itemId}) × ${item.quantity || 1}`);
 
-        // Validate stock
+        // B. Validate Stock
         const stockValidation = await validateItemStock(item.itemId);
         if (stockValidation.error || !stockValidation.data?.isValid) {
-          results.push({
+          console.log(`  ❌ Item ${item.itemId} not available - skipping`);
+          return {
             success: false,
             itemId: item.itemId,
             error: stockValidation.data?.reason || 'Item is not available',
-          });
-          continue;
+            reason: 'out_of_stock',
+          };
         }
 
-        // Get shop details
+        // C. Fetch Shop Details (With Caching)
         let shopDetails: any = {};
         if (context.getShopDetailsFn) {
-          shopDetails = await context.getShopDetailsFn(item.shopId);
+          if (shopDetailsCache.has(item.shopId)) {
+            shopDetails = shopDetailsCache.get(item.shopId);
+          } else {
+            // Fetch and cache shop details
+            shopDetails = await context.getShopDetailsFn(item.shopId);
+            shopDetailsCache.set(item.shopId, shopDetails);
+          }
         }
 
-        // Add to cart
-        await context.addItemToCartFn(item.shopId, shopItem, shopDetails);
-
-        // Update quantity if needed
+        // D. Perform the Action
         const quantity = item.quantity || 1;
-        if (quantity > 1) {
-          await context.updateItemQuantityFn(item.shopId, item.itemId, quantity);
-        }
+        console.log(`  ➕ Adding: "${shopItem.name}" × ${quantity}`);
+        await context.addItemToCartWithQuantityFn(item.shopId, shopItem, quantity, shopDetails);
 
-        addedItems.push({
-          itemId: item.itemId,
-          name: shopItem.name,
-          quantity,
-          shopId: item.shopId,
-          shopName: shopDetails.name || 'Shop',
-          price_cents: shopItem.price_cents,
-          image_url: shopItem.image_url || undefined,
-        });
-
-        shopIds.add(item.shopId);
-        addedTotalsByShop[item.shopId] = (addedTotalsByShop[item.shopId] || 0) + (shopItem.price_cents * quantity);
-
-        results.push({
+        return {
           success: true,
           itemId: item.itemId,
-        });
-      } catch (error: any) {
-        results.push({
+          data: {
+            itemId: item.itemId,
+            name: shopItem.name,
+            quantity,
+            shopId: item.shopId,
+            shopName: shopDetails.name || 'Shop',
+            price_cents: shopItem.price_cents,
+            image_url: shopItem.image_url || undefined,
+          },
+        };
+      } catch (e: any) {
+        return {
           success: false,
           itemId: item.itemId,
-          error: error?.message || 'Failed to add item',
-        });
+          error: e.message || 'Failed to add item',
+          reason: 'error',
+        };
+      }
+    };
+
+    console.log(`[FunctionRouter] 🚀 Launching parallel add for ${args.items.length} items`);
+
+    // SCATTER: Fire all requests in parallel
+    const operations = args.items.map(item => processItem(item));
+
+    // GATHER: Wait for all to finish
+    const results = await Promise.all(operations);
+
+    // Process Results (Filter successes vs failures)
+    const successfulAdds = results
+      .filter(r => r.success && r.data)
+      .map(r => r.data!);
+
+    const failures = results.filter(r => !r.success);
+
+    const successCount = successfulAdds.length;
+    const failCount = failures.length;
+
+    console.log(`[FunctionRouter] ✅ Finished: ${successCount} added, ${failCount} failed`);
+
+    // Build addedItems array and track shop IDs
+    const addedItems: Array<{ itemId: string; name: string; quantity: number; shopId: string; shopName: string; price_cents: number; image_url?: string }> = successfulAdds;
+    const shopIds = new Set<string>(successfulAdds.map(item => item.shopId));
+    const addedTotalsByShop: Record<string, number> = {};
+    successfulAdds.forEach(item => {
+      addedTotalsByShop[item.shopId] = (addedTotalsByShop[item.shopId] || 0) + (item.price_cents * item.quantity);
+    });
+
+    // Build cart summaries - ALWAYS build from added items as source of truth
+    // The UI component will sync with live cart context for real-time updates
+    const cartSummaries: CartResultPayload[] = [];
+    
+    // Group added items by shop
+    const itemsByShop = new Map<string, typeof addedItems>();
+    addedItems.forEach(item => {
+      if (!itemsByShop.has(item.shopId)) {
+        itemsByShop.set(item.shopId, []);
+      }
+      itemsByShop.get(item.shopId)!.push(item);
+    });
+
+    for (const shopId of Array.from(shopIds)) {
+      const shopAddedItems = itemsByShop.get(shopId) || [];
+      
+      // Try to get shop details from cart context first
+      const cart = context.getShopCartFn(shopId);
+      
+      if (cart) {
+        const cartPayload = mapCartToResult(cart);
+        if (cartPayload) {
+          cartSummaries.push(cartPayload);
+        }
+      } else if (shopAddedItems.length > 0) {
+        // Build from added items - this ensures UI shows something even if context hasn't updated
+        // Get shop details from cache first, then fallback to fetching
+        let shopDetails: any = {
+          name: shopAddedItems[0].shopName,
+        };
+        
+        // Try to use cached shop details first
+        if (shopDetailsCache.has(shopId)) {
+          const cachedDetails = shopDetailsCache.get(shopId);
+          shopDetails = {
+            name: cachedDetails.name || shopAddedItems[0].shopName,
+            image: cachedDetails.image_url,
+            address: cachedDetails.address,
+            latitude: cachedDetails.latitude,
+            longitude: cachedDetails.longitude,
+            deliveryLogic: cachedDetails.deliveryLogic,
+          };
+        } else if (context.getShopDetailsFn) {
+          // Fallback to fetching if not in cache
+          try {
+            const details = await context.getShopDetailsFn(shopId);
+            if (details) {
+              shopDetails = {
+                name: details.name || shopAddedItems[0].shopName,
+                image: details.image_url,
+                address: details.address,
+                latitude: details.latitude,
+                longitude: details.longitude,
+                deliveryLogic: details.deliveryLogic,
+              };
+              // Cache for potential future use
+              shopDetailsCache.set(shopId, details);
+            }
+          } catch (e) {
+            console.warn(`[FunctionRouter] Failed to fetch shop details for ${shopId}:`, e);
+          }
+        }
+        
+        const fallbackCart: CartResultPayload = {
+          shopId: shopId,
+          shopName: shopDetails.name,
+          shopImage: shopDetails.image,
+          shopAddress: shopDetails.address,
+          shopLatitude: shopDetails.latitude ?? null,
+          shopLongitude: shopDetails.longitude ?? null,
+          deliveryLogic: shopDetails.deliveryLogic,
+          totalItems: shopAddedItems.reduce((sum, item) => sum + item.quantity, 0),
+          totalPrice: shopAddedItems.reduce((sum, item) => sum + (item.price_cents * item.quantity), 0),
+          items: shopAddedItems.map(item => ({
+            id: item.itemId,
+            name: item.name,
+            quantity: item.quantity,
+            price_cents: item.price_cents,
+            image_url: item.image_url,
+          })),
+        };
+        
+        cartSummaries.push(fallbackCart);
       }
     }
 
-    const successCount = results.filter((r) => r.success).length;
-    const failCount = results.length - successCount;
-
-    // Calculate delivery info for the first shop (assuming single shop for now or primary shop)
-    // If multiple shops, we might need a more complex structure, but AddedToCartSummary handles multiple shops.
-    // We'll calculate delivery for each shop involved.
+    // Calculate delivery info for each shop
     const deliveryInfos: Record<string, any> = {};
 
     if (context.currentAddress) {
-      for (const shopId of Array.from(shopIds)) {
+      for (const cartSummary of cartSummaries) {
         try {
-          const { data: deliveryLogic } = await fetchDeliveryLogic(shopId);
-          const cart = context.getShopCartFn(shopId);
+          const { data: deliveryLogic } = await fetchDeliveryLogic(cartSummary.shopId);
 
-          if (deliveryLogic && cart) {
+          if (deliveryLogic && cartSummary.shopLatitude && cartSummary.shopLongitude) {
             // Calculate distance
-            let distanceInMeters = 0;
-            if (cart.shopLatitude && cart.shopLongitude) {
-              distanceInMeters = calculateDistance(
-                context.currentAddress.latitude,
-                context.currentAddress.longitude,
-                cart.shopLatitude,
-                cart.shopLongitude
-              );
-            }
+            const distanceInMeters = calculateDistance(
+              context.currentAddress.latitude,
+              context.currentAddress.longitude,
+              cartSummary.shopLatitude,
+              cartSummary.shopLongitude
+            );
 
-            const orderValue = cart.totalPrice / 100;
+            const orderValue = cartSummary.totalPrice / 100;
             const deliveryCalculation = calculateTotalDeliveryFee(
               orderValue,
               distanceInMeters,
               deliveryLogic
             );
 
-            deliveryInfos[shopId] = {
+            deliveryInfos[cartSummary.shopId] = {
               // Store all monetary values in cents so UI components can
               // consistently divide by 100 for display.
               deliveryFee: Math.round(deliveryCalculation.baseFee * 100),
               surcharge: Math.round(deliveryCalculation.surcharge * 100),
               freeDeliveryApplied: deliveryCalculation.freeDeliveryApplied,
-              total: cart.totalPrice + Math.round(deliveryCalculation.finalFee * 100),
-              cartSubtotal: cart.totalPrice,
-              addedSubtotal: addedTotalsByShop[shopId] || 0,
+              total: cartSummary.totalPrice + Math.round(deliveryCalculation.finalFee * 100),
+              cartSubtotal: cartSummary.totalPrice,
+              addedSubtotal: addedTotalsByShop[cartSummary.shopId] || 0,
             };
           }
         } catch (e) {
-          console.error('Error calculating delivery for shop', shopId, e);
+          console.error(`[FunctionRouter] ❌ Error calculating delivery for shop ${cartSummary.shopId}:`, e);
         }
       }
     }
 
-    // Small delay to ensure cart context is updated
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    // Fetch carts again to ensure we have the latest state
-    const cartSummaries = Array.from(shopIds)
-      .map((shopId) => {
-        const cart = context.getShopCartFn(shopId);
-        console.log(`[FunctionRouter] Getting cart for shop ${shopId}:`, cart ? `${cart.totalItems} items, ${cart.totalPrice} cents` : 'null');
-        return mapCartToResult(cart);
-      })
-      .filter((cart): cart is CartResultPayload => Boolean(cart));
+    // Build failed items array with detailed error information
+    const failedItems = failures.map(f => ({
+      itemId: f.itemId,
+      error: f.error || 'Unknown error',
+      reason: f.reason || 'error',
+    }));
 
-    console.log(`[FunctionRouter] Returning ${cartSummaries.length} cart(s) in response`);
+    // Multi-shop delivery warning
+    const multiShopWarning = shopIds.size > 1 ? {
+      shopCount: shopIds.size,
+      shopIds: Array.from(shopIds),
+      message: `These items are from ${shopIds.size} different shops, so there will be separate delivery fees for each.`,
+    } : undefined;
 
-    // Always return carts if we have added items, even if cartSummaries is empty initially
-    // The UI will show the cart banner with added items
     return {
       success: successCount > 0,
       result: {
         added: addedItems,
-        summary: `Successfully added ${successCount} item(s)${failCount > 0 ? `, ${failCount} failed` : ''}`,
-        details: results,
+        failed: failedItems,
+        summary: failCount > 0
+          ? `Successfully added ${successCount} item(s), ${failCount} failed`
+          : `Successfully added ${successCount} item(s)`,
+        details: results.map(r => ({
+          success: r.success,
+          itemId: r.itemId,
+          error: r.error,
+        })),
         deliveryInfos,
         address: context.currentAddress,
-        carts: cartSummaries.length > 0 ? cartSummaries : undefined,
+        carts: cartSummaries,
         cart: cartSummaries[0] || null,
+        multiShopWarning,
       },
     };
   } catch (error: any) {
@@ -623,7 +749,7 @@ async function executeRemoveItemFromCart(
         error: 'Item not found in cart',
       };
     }
-    
+
     // Log which item is being removed
     console.log(`  ➖ Removing: "${item.name}" (ID: ${args.itemId})${args.quantity ? ` × ${args.quantity}` : ' (all)'}`);
 
@@ -780,74 +906,96 @@ async function executePlaceOrder(
       };
     }
 
-    // Get address ID
-    let addressId = args.addressId;
-
-    // If LLM passed an obviously invalid ID (e.g. "temp"), ignore it
-    // and fall back to the user's saved default address.
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    if (addressId && !uuidRegex.test(addressId)) {
-      addressId = undefined;
-    }
-
-    if (!addressId) {
-      const defaultAddressId = await context.getDefaultAddressId();
-      addressId = defaultAddressId || undefined;
-    }
-
-    // Validate landmark - check both address and specialInstructions
-    let landmark = context.currentAddress?.landmark?.trim();
-    
-    // If landmark is in specialInstructions, extract it
-    if (!landmark && args.specialInstructions) {
-      const landmarkMatch = args.specialInstructions.match(/(?:landmark|near|nearby)[:\s]+([^,\.]+)/i);
-      if (landmarkMatch && landmarkMatch[1]) {
-        landmark = landmarkMatch[1].trim();
-      } else if (args.specialInstructions.length < 100) {
-        // If specialInstructions is short, treat it as landmark
-        landmark = args.specialInstructions.trim();
-      }
-    }
-    
-    if (!addressId && context.currentAddress && context.currentAddress.latitude && context.currentAddress.longitude) {
-      try {
-        const creation = await createAddress({
-          street_address: context.currentAddress.street_address || context.currentAddress.formatted_address || 'Current Location',
-          city: context.currentAddress.city || 'Unknown',
-          region: context.currentAddress.region || undefined,
-          latitude: context.currentAddress.latitude,
-          longitude: context.currentAddress.longitude,
-          landmark: landmark || context.currentAddress.landmark || undefined,
-          formatted_address: context.currentAddress.formatted_address || context.currentAddress.street_address,
-        });
-
-        if (creation.data) {
-          addressId = creation.data.id;
-        } else if (creation.error) {
-          console.error('[FunctionRouter] Failed to create address from current location:', creation.error.message);
-        }
-      } catch (addressError) {
-        console.error('[FunctionRouter] Exception while creating address:', addressError);
-      }
-    }
-
-    if (!addressId) {
+    // ALWAYS use the address from AddedToCartSummary (context.currentAddress)
+    // This includes coordinates, georeversed address, and landmark entered by user
+    if (!context.currentAddress) {
       return {
         success: false,
-        error: 'No delivery address found. Please add an address first.',
+        error: 'No delivery address selected. Please select an address first.',
       };
     }
-    
-    // Validate landmark is present (either in address or extracted from specialInstructions)
-    if (context.currentAddress && !landmark) {
+
+    // Validate we have coordinates
+    if (!context.currentAddress.latitude || !context.currentAddress.longitude) {
+      return {
+        success: false,
+        error: 'Address coordinates are missing. Please select a valid address.',
+      };
+    }
+
+    // Get landmark from currentAddress (entered by user in AddedToCartSummary)
+    const landmark = context.currentAddress.landmark?.trim();
+
+    // Validate landmark is present BEFORE creating address
+    if (!landmark || landmark.length < 3) {
       // Return cart data so UI can show it again with landmark input
       const cartSummary = mapCartToResult(cart);
       return {
         success: false,
-        error: 'Please provide a nearby landmark so the rider can easily find you.',
+        error: 'Please provide a nearby landmark so the rider can easily find you. You can add it in the cart summary above.',
         cart: cartSummary,
         carts: cartSummary ? [cartSummary] : [],
         address: context.currentAddress,
+      };
+    }
+
+    // Validate delivery zone BEFORE creating address
+    const deliveryValidation = await validateDeliveryAddress(
+      args.shopId,
+      context.currentAddress.latitude,
+      context.currentAddress.longitude
+    );
+    
+    if (deliveryValidation.error) {
+      console.warn('[FunctionRouter] Delivery validation error:', deliveryValidation.error);
+      return {
+        success: false,
+        error: 'Unable to validate delivery address. Please try again.',
+      };
+    }
+    
+    if (deliveryValidation.data && !deliveryValidation.data.isWithinDeliveryZone) {
+      return {
+        success: false,
+        error: 'Your selected address is outside this shop\'s delivery area. Please choose a different address or shop.',
+      };
+    }
+
+    // Create a new address from the current address (coordinates, georeversed address, and landmark)
+    // This is a temporary address for ordering, not saved to user's address book
+    let addressId: string | undefined;
+    try {
+      const creation = await createAddress({
+        street_address: context.currentAddress.street_address || 'Current Location',
+        city: context.currentAddress.city || 'Unknown',
+        region: context.currentAddress.region || undefined,
+        latitude: context.currentAddress.latitude,
+        longitude: context.currentAddress.longitude,
+        landmark: landmark, // Landmark entered by user in AddedToCartSummary
+        formatted_address: context.currentAddress.formatted_address || context.currentAddress.street_address,
+      });
+
+      if (creation.data) {
+        addressId = creation.data.id;
+      } else if (creation.error) {
+        console.error('[FunctionRouter] Failed to create address from current location:', creation.error.message);
+        return {
+          success: false,
+          error: `Failed to create delivery address: ${creation.error.message}`,
+        };
+      }
+    } catch (addressError: any) {
+      console.error('[FunctionRouter] Exception while creating address:', addressError);
+      return {
+        success: false,
+        error: `Failed to create delivery address: ${addressError?.message || 'Unknown error'}`,
+      };
+    }
+
+    if (!addressId) {
+      return {
+        success: false,
+        error: 'Failed to create delivery address. Please try again.',
       };
     }
 
@@ -871,22 +1019,7 @@ async function executePlaceOrder(
       }
     }
 
-    // Validate delivery address
-    if (context.currentAddress?.latitude && context.currentAddress?.longitude) {
-      const deliveryValidation = await validateDeliveryAddress(
-        args.shopId,
-        context.currentAddress.latitude,
-        context.currentAddress.longitude
-      );
-      if (deliveryValidation.error) {
-        console.warn('[FunctionRouter] Delivery validation error:', deliveryValidation.error);
-      } else if (deliveryValidation.data && !deliveryValidation.data.isWithinDeliveryZone) {
-        return {
-          success: false,
-          error: 'Your selected address is outside this shop\'s delivery area. Please choose a different address or shop.',
-        };
-      }
-    }
+    // Delivery zone validation already done above before creating address
 
     // Validate shop open status
     const shopDetailsResult = await fetchShopDetails(args.shopId);
@@ -939,7 +1072,7 @@ async function executePlaceOrder(
           const orderValue = cart.totalPrice / 100;
           const calculation = calculateTotalDeliveryFee(orderValue, distance, deliveryLogic);
           const expectedTotal = cart.totalPrice + Math.round(calculation.baseFee * 100) + Math.round(calculation.surcharge * 100);
-          
+
           // Note: We don't block the order if totals don't match exactly, but we log it
           console.log('[FunctionRouter] Order totals validation:', {
             cartTotal: cart.totalPrice,
@@ -960,12 +1093,13 @@ async function executePlaceOrder(
       quantity: item.quantity,
     }));
 
+    // Don't use specialInstructions - landmark is already in the address
     const orderResult = await placeOrder({
       shop_id: args.shopId,
       consumer_address_id: addressId,
       items: orderItems,
       payment_method: 'cash',
-      special_instructions: args.specialInstructions,
+      special_instructions: undefined, // Landmark is in address, no need for special instructions
     });
 
     if (!orderResult.success || !orderResult.order) {

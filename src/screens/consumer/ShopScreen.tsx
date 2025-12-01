@@ -33,9 +33,11 @@ import BackIcon from '../../icons/BackIcon';
 import AroundYouSearchIcon from '../../icons/AroundYouSearchIcon';
 import CartIcon from '../../icons/CartIcon';
 import ShopScreenSkeleton from '../../skeleton/ShopScreenSkeleton';
+import CategoryItemsSkeleton from '../../skeleton/CategoryItemsSkeleton';
 import LinearGradient from 'react-native-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
+import { getShopReviewStats } from '../../services/consumer/reviewService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -77,6 +79,21 @@ export default function ShopScreen() {
     if (result.error) throw new Error(result.error.message);
     return result.data;
   });
+
+  // Fetch shop review stats (rating) - same as ShopCard
+  const [averageRating, setAverageRating] = useState<number | null>(null);
+  useEffect(() => {
+    const fetchRating = async () => {
+      const { data } = await getShopReviewStats(shopId);
+      if (data) {
+        setAverageRating(data.average_rating);
+      }
+    };
+    fetchRating();
+  }, [shopId]);
+
+  // Use fetched rating or fall back to shopDetails.rating (which might be 0)
+  const displayRating = averageRating !== null ? averageRating : (shopDetails?.rating && shopDetails.rating > 0 ? shopDetails.rating : null);
 
   // Auto-refresh shop details every 30 seconds for real-time status updates
   useEffect(() => {
@@ -393,7 +410,7 @@ export default function ShopScreen() {
           setHeaderHeight(event.nativeEvent.layout.height);
         }}
       >
-        <LinearGradient colors={['#1e3a8a', '#2563eb']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+        <LinearGradient colors={["#2563eb", "#1d4ed8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={{ paddingTop: insets.top, paddingBottom: 0, paddingHorizontal: 20 }}>
             <View className="flex-row items-center pt-3 pb-3">
               <View className="w-10" />
@@ -483,7 +500,7 @@ export default function ShopScreen() {
             />
           ) : (
             <LinearGradient
-              colors={['#1e3a8a', '#2563eb']}
+              colors={["#2563eb", "#1d4ed8"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={{ width: SCREEN_WIDTH, height: 240 }}
@@ -509,12 +526,14 @@ export default function ShopScreen() {
               <View className="bg-white/20 backdrop-blur-md px-2 py-1 rounded-md flex-row items-center mr-2">
                 <StarIcon size={14} color="#FCD34D" filled />
                 <Text className="text-white ml-1 text-sm font-bold">
-                  {shopDetails.rating > 0 ? shopDetails.rating.toFixed(1) : 'New'}
+                  {displayRating !== null ? displayRating.toFixed(1) : 'New'}
                 </Text>
               </View>
-              <Text className="text-white/90 text-sm font-medium">
-                • {shopDetails.orders} {t('shop.ordersServed')}
-              </Text>
+              {(shopDetails.orders || 0) > 0 && (
+                <Text className="text-white/90 text-sm font-medium">
+                  • {shopDetails.orders} {t('shop.ordersServed')}
+                </Text>
+              )}
             </View>
           </View>
         </View>
@@ -634,9 +653,8 @@ export default function ShopScreen() {
         {/* Product Display by Category */}
         <View className="bg-gray-50 pt-2">
           {itemsLoading || categoriesLoading ? (
-            <View className="py-12 items-center">
-              <ActivityIndicator size="large" color="#2563eb" />
-              <Text className="text-gray-600 mt-4">{t('shop.loadingItems')}</Text>
+            <View className="py-4">
+              <CategoryItemsSkeleton />
             </View>
           ) : categoriesWithItems && categoriesWithItems.length > 0 ? (
             categoriesWithItems.map((category: { id: string; name: string }) => (

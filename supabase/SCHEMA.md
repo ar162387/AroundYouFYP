@@ -1,190 +1,212 @@
 Public schema — tables and fields
-Below are the tables found in the public schema with their columns and any notable constraints/defaults/comments. If you want DDL for any specific table or to export this as SQL, tell me which table(s).
-
+Tables
 user_profiles
-id (uuid) — PK
-email (text) — nullable
-name (text) — nullable
-role (text) — default 'consumer'; check role ∈ {consumer, merchant, admin}
-created_at (timestamptz) — default now()
-updated_at (timestamptz) — default now()
-FK: public.user_profiles.id → auth.users.id
-consumer_addresses
-id (uuid) — PK, default extensions.uuid_generate_v4()
-user_id (uuid) — FK → auth.users.id
-title (text) — nullable; check title ∈ {home, office}; comment: optional address title (unique per user)
-street_address (text) — comment: street address without city/region
-city (text)
-region (text) — nullable
-latitude (numeric)
-longitude (numeric)
-landmark (text) — nullable; comment: optional landmark or flat/house number
-formatted_address (text) — nullable
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-merchant_accounts
-id (uuid) — PK, default extensions.uuid_generate_v4()
-user_id (uuid) — unique, FK → auth.users.id
-shop_type (text) — check shop_type ∈ {grocery, meat, vegetable, mart, other}
-number_of_shops (text) — check ∈ {1, 2, 3+}
-status (text) — default 'none'; check ∈ {none, pending, verified}
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-Comment: stores merchant account info; FK referenced by public.shops.merchant_id
-shops
-id (uuid) — PK, default extensions.uuid_generate_v4()
-merchant_id (uuid) — FK → public.merchant_accounts.id; comment: owner merchant account
-name (text)
-description (text)
-shop_type (text) — check ∈ {Grocery, Meat, Vegetable, Stationery, Dairy}
-address (text)
-latitude (double precision) — comment: shop location latitude
-longitude (double precision) — comment: shop location longitude
-image_url (text) — nullable
-tags (text[]) — nullable; default '{}'
-is_open (boolean) — nullable; default true
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-Comment: stores shop information
-category_templates
-id (uuid) — PK, default extensions.uuid_generate_v4()
-name (text)
-description (text) — nullable
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-item_templates
-id (uuid) — PK, default extensions.uuid_generate_v4()
-name (text)
-barcode (text) — nullable
-description (text) — nullable
-image_url (text) — nullable
-default_unit (text) — nullable
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-name_normalized (text) — generated, unique, default lower(trim(both from name))
-merchant_categories
-id (uuid) — PK, default extensions.uuid_generate_v4()
-shop_id (uuid) — FK → public.shops.id
-template_id (uuid) — nullable; FK → public.category_templates.id
-name (text)
-description (text) — nullable
-is_custom (boolean) — default true
-is_active (boolean) — default true
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-merchant_items
-id (uuid) — PK, default extensions.uuid_generate_v4()
-shop_id (uuid) — FK → public.shops.id
-template_id (uuid) — nullable; FK → public.item_templates.id
-name (text) — nullable
-description (text) — nullable
-barcode (text) — nullable
-image_url (text) — nullable
-sku (text) — nullable
-price_cents (integer) — default 0; check price_cents >= 0
-currency (text) — default 'PKR'
-is_active (boolean) — default true
-is_custom (boolean) — default true
-times_sold (integer) — default 0; check >= 0; incremented when order is delivered
-total_revenue_cents (bigint) — default 0; check >= 0; total revenue from this item
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-created_by (uuid) — nullable; default auth.uid()
-last_updated_by (jsonb) — nullable
-merchant_item_categories
-merchant_item_id (uuid) — PK part; FK → public.merchant_items.id
-merchant_category_id (uuid) — PK part; FK → public.merchant_categories.id
-sort_order (integer) — default 0
-audit_logs
-id (uuid) — PK, default extensions.uuid_generate_v4()
-shop_id (uuid) — FK → public.shops.id
-merchant_item_id (uuid) — nullable; FK → public.merchant_items.id
-actor (jsonb)
-action_type (text)
-changed_fields (jsonb) — default '{}'::jsonb
-source (text) — default 'manual'
-created_at (timestamptz) — default timezone('utc', now())
-spatial_ref_sys
-srid (integer) — PK; check srid > 0 AND srid <= 998999
-auth_name (varchar) — nullable
-auth_srid (integer) — nullable
-srtext (varchar) — nullable
-proj4text (varchar) — nullable
-Note: rls_enabled = false (standard spatial_ref_sys table)
-shop_delivery_areas
-id (uuid) — PK, default extensions.uuid_generate_v4()
-shop_id (uuid) — FK → public.shops.id
-label (text) — nullable
-geom (geometry) — user-defined type
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-delivery_runners
-id (uuid) — PK, default extensions.uuid_generate_v4()
-shop_id (uuid) — FK → public.shops.id
-name (text)
-phone_number (text)
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-shop_delivery_logic
-id (uuid) — PK, default extensions.uuid_generate_v4()
-shop_id (uuid) — unique, FK → public.shops.id
-minimum_order_value (numeric) — default 200.00; check > 0; comment about surcharge below threshold
-small_order_surcharge (numeric) — default 40.00; check >= 0
-least_order_value (numeric) — default 100.00; check > 0; hard floor for order acceptance
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-distance_mode (text) — default 'auto'; check ∈ {auto, custom}
-max_delivery_fee (numeric) — default 130.00; check > 0
-distance_tiers (jsonb) — default JSONB array of {fee, max_distance} tiers
-beyond_tier_fee_per_unit (numeric) — default 10.00; check >= 0
-beyond_tier_distance_unit (numeric) — default 250.00; check > 0
-free_delivery_threshold (numeric) — default 800.00; check >= 0
-free_delivery_radius (numeric) — default 1000.00; check >= 0
-Comment: delivery logic settings including order value and distance tiers
-orders
-id (uuid) — PK, default extensions.uuid_generate_v4()
-order_number (text) — unique, auto-generated format: ORD-YYYYMMDD-NNNN
-shop_id (uuid) — FK → public.shops.id
-user_id (uuid) — FK → auth.users.id
-consumer_address_id (uuid) — FK → public.consumer_addresses.id
-delivery_runner_id (uuid) — nullable; FK → public.delivery_runners.id
-status (order_status) — enum: pending, confirmed, out_for_delivery, delivered, cancelled; default 'pending'
-subtotal_cents (integer) — check >= 0
-delivery_fee_cents (integer) — default 0; check >= 0
-surcharge_cents (integer) — default 0; check >= 0
-total_cents (integer) — check >= 0
-payment_method (payment_method) — enum: cash, card, wallet; default 'cash'
-special_instructions (text) — nullable
-placed_at (timestamptz) — default timezone('utc', now())
-confirmed_at (timestamptz) — nullable
-out_for_delivery_at (timestamptz) — nullable
-delivered_at (timestamptz) — nullable
-cancelled_at (timestamptz) — nullable
-confirmation_time_seconds (integer) — nullable; check >= 0; duration from placed to confirmed
-preparation_time_seconds (integer) — nullable; check >= 0; duration from confirmed to out_for_delivery
-delivery_time_seconds (integer) — nullable; check >= 0; duration from out_for_delivery to delivered
-cancellation_reason (text) — nullable
-cancelled_by (uuid) — nullable; FK → auth.users.id
-delivery_address (jsonb) — JSONB snapshot of consumer address at order time
-customer_name (text) — nullable
-customer_email (text) — nullable
-customer_phone (text) — nullable
-created_at (timestamptz) — default timezone('utc', now())
-updated_at (timestamptz) — default timezone('utc', now())
-Comment: Real-time order tracking with automatic timing calculations and address snapshots
-order_items
-id (uuid) — PK, default extensions.uuid_generate_v4()
-order_id (uuid) — FK → public.orders.id
-merchant_item_id (uuid) — FK → public.merchant_items.id
-item_name (text) — snapshot at order time
-item_description (text) — nullable; snapshot at order time
-item_image_url (text) — nullable; snapshot at order time
-item_price_cents (integer) — check >= 0; snapshot at order time
-quantity (integer) — check > 0
-subtotal_cents (integer) — check >= 0; must equal item_price_cents * quantity
-created_at (timestamptz) — default timezone('utc', now())
-Comment: Order line items with price snapshots preserved at order time
 
+PK: id (uuid)
+notable: email, name, role, created_at, updated_at
+FKs:
+user_profiles.id → auth.users.id
+consumer_addresses
+
+PK: id (uuid)
+notable: user_id, title (home/office), street_address, city, region, latitude, longitude, formatted_address, created_at, updated_at
+FKs:
+consumer_addresses.user_id → auth.users.id
+referenced by: orders.consumer_address_id → public.consumer_addresses.id
+merchant_accounts
+
+PK: id (uuid)
+notable: user_id (unique), shop_type, number_of_shops, status, verification fields, created_at, updated_at
+FKs:
+merchant_accounts.user_id → auth.users.id
+referenced by: shops.merchant_id → public.merchant_accounts.id
+shops
+
+PK: id (uuid)
+notable: merchant_id, name, description, shop_type, address, latitude, longitude, tags (text[]), is_open, opening_hours (jsonb), holidays (jsonb), open_status_mode, created_at, updated_at
+FKs:
+shops.merchant_id → public.merchant_accounts.id
+referenced by:
+merchant_items.shop_id → public.shops.id
+shop_delivery_logic.shop_id → public.shops.id
+reviews.shop_id → public.shops.id
+orders.shop_id → public.shops.id
+merchant_item_embeddings.shop_id → public.shops.id
+delivery_runners.shop_id → public.shops.id
+shop_delivery_areas.shop_id → public.shops.id
+audit_logs.shop_id → public.shops.id
+merchant_categories.shop_id → public.shops.id
+category_templates
+
+PK: id (uuid)
+notable: name, description, created_at, updated_at
+FKs:
+referenced by: merchant_categories.template_id → public.category_templates.id
+item_templates
+
+PK: id (uuid)
+notable: name, barcode, description, image_url, default_unit, name_normalized (generated lower-case), created_at, updated_at
+FKs:
+referenced by: merchant_items.template_id → public.item_templates.id
+merchant_categories
+
+PK: id (uuid)
+notable: shop_id, template_id (nullable), name, is_custom, is_active, created_at, updated_at
+FKs:
+merchant_categories.shop_id → public.shops.id
+merchant_categories.template_id → public.category_templates.id
+referenced by: merchant_item_categories.merchant_category_id → public.merchant_categories.id
+merchant_items
+
+PK: id (uuid)
+notable: shop_id, template_id (nullable), name, description, barcode, sku, price_cents, currency, is_active, is_custom, created_by (auth.uid()), times_sold, total_revenue_cents, created_at, updated_at
+FKs:
+merchant_items.shop_id → public.shops.id
+merchant_items.template_id → public.item_templates.id
+referenced by:
+merchant_item_categories.merchant_item_id → public.merchant_items.id
+audit_logs.merchant_item_id → public.merchant_items.id
+order_items.merchant_item_id → public.merchant_items.id
+merchant_item_embeddings.merchant_item_id → public.merchant_items.id
+merchant_item_categories (join table)
+
+PK: (merchant_item_id, merchant_category_id)
+notable: sort_order
+FKs:
+merchant_item_categories.merchant_item_id → public.merchant_items.id
+merchant_item_categories.merchant_category_id → public.merchant_categories.id
+audit_logs
+
+PK: id (uuid)
+notable: shop_id, merchant_item_id (nullable), actor (jsonb), action_type, changed_fields (jsonb), source, created_at
+FKs:
+audit_logs.shop_id → public.shops.id
+audit_logs.merchant_item_id → public.merchant_items.id
+spatial_ref_sys
+
+PK: srid (integer)
+notable: SRID reference table (PostGIS)
+rls_enabled: false
+shop_delivery_areas
+
+PK: id (uuid)
+notable: shop_id, label, geom (geometry), created_at, updated_at
+FKs:
+shop_delivery_areas.shop_id → public.shops.id
+delivery_runners
+
+PK: id (uuid)
+notable: shop_id, name, phone_number, created_at, updated_at
+FKs:
+delivery_runners.shop_id → public.shops.id
+referenced by: orders.delivery_runner_id → public.delivery_runners.id
+shop_delivery_logic
+
+PK: id (uuid)
+notable: shop_id (unique), minimum_order_value, small_order_surcharge, least_order_value, distance_mode, max_delivery_fee, distance_tiers (jsonb), beyond_tier_fee_per_unit, beyond_tier_distance_unit, free_delivery_threshold, free_delivery_radius, created_at, updated_at
+FKs:
+shop_delivery_logic.shop_id → public.shops.id
+orders
+
+PK: id (uuid)
+notable: order_number (unique), shop_id (nullable), user_id, consumer_address_id, delivery_runner_id (nullable), status (order_status enum), subtotal_cents, delivery_fee_cents, surcharge_cents, total_cents, payment_method (enum), delivery_address (jsonb snapshot), timestamps for status transitions, timing analytics columns, customer_name/email/phone, created_at, updated_at
+FKs:
+orders.shop_id → public.shops.id
+orders.user_id → auth.users.id
+orders.consumer_address_id → public.consumer_addresses.id
+orders.delivery_runner_id → public.delivery_runners.id
+orders.cancelled_by → auth.users.id
+referenced by:
+order_items.order_id → public.orders.id
+reviews.order_id → public.orders.id
+webhook_events.order_id → public.orders.id
+webhook_dead_letters.order_id → public.orders.id
+notification_audit_log.order_id → public.orders.id
+order_items
+
+PK: id (uuid)
+notable: order_id, merchant_item_id (nullable), item_name, item_description, item_image_url, item_price_cents, quantity, subtotal_cents, created_at
+FKs:
+order_items.order_id → public.orders.id
+order_items.merchant_item_id → public.merchant_items.id
+reviews
+
+PK: id (uuid)
+notable: user_id, shop_id, order_id (nullable), rating (1-5), review_text, created_at, updated_at
+FKs:
+reviews.user_id → auth.users.id
+reviews.shop_id → public.shops.id
+reviews.order_id → public.orders.id
+notification_preferences
+
+PK: id (uuid)
+notable: user_id, role (consumer/merchant), allow_push_notifications (boolean), created_at, updated_at
+FKs:
+notification_preferences.user_id → auth.users.id
+device_tokens
+
+PK: id (uuid)
+notable: user_id, token (unique), platform (ios/android), created_at, updated_at
+FKs:
+device_tokens.user_id → auth.users.id
+webhook_events
+
+PK: id (uuid)
+notable: event_id (unique), order_id, event_type (INSERT/UPDATE/DELETE), status (pending/processing/completed/failed), payload (jsonb), processed_at, error_message, created_at
+FKs:
+webhook_events.order_id → public.orders.id
+webhook_dead_letters
+
+PK: id (uuid)
+notable: order_id (nullable), event_type, payload (jsonb), error_message, error_stack, retry_count, last_retry_at, created_at
+FKs:
+webhook_dead_letters.order_id → public.orders.id
+notification_audit_log
+
+PK: id (uuid)
+notable: order_id, user_id, role (consumer/merchant), notification_type, title, body, fcm_token, platform, status (sent/failed/pending), error_message, sent_at, created_at
+FKs:
+notification_audit_log.order_id → public.orders.id
+notification_audit_log.user_id → auth.users.id
+user_preferences
+
+PK: id (uuid)
+notable: user_id, preference_type (brand/item/category/shop/dietary), entity_type (item/shop/category), entity_id (uuid nullable), entity_name (denormalized), preference_value (prefers/avoids/allergic_to), confidence_score (0.0-1.0), source (explicit/inferred_from_order/conversation), context (jsonb), created_at, updated_at
+FKs:
+user_preferences.user_id → auth.users.id
+referenced by: user_preference_embeddings.preference_id → public.user_preferences.id
+user_preference_embeddings
+
+PK: id (uuid)
+notable: user_id, preference_id, embedding (vector), metadata (jsonb), created_at
+FKs:
+user_preference_embeddings.user_id → auth.users.id
+user_preference_embeddings.preference_id → public.user_preferences.id
+merchant_item_embeddings
+
+PK: id (uuid)
+notable: merchant_item_id (unique), shop_id, embedding (vector), search_text, created_at, updated_at
+FKs:
+merchant_item_embeddings.merchant_item_id → public.merchant_items.id
+merchant_item_embeddings.shop_id → public.shops.id
+Key relationship graph (textual)
+auth.users
+
+referenced by: user_profiles, consumer_addresses, merchant_accounts, orders.user_id, orders.cancelled_by, order-related tables (order_items via created_by references only), reviews.user_id, notification_preferences, device_tokens, notification_audit_log, user_preferences, user_preference_embeddings, user_preference_embeddings.user_id, merchant_accounts.user_id
+merchant_accounts (1) → shops (many)
+shops (1) → merchant_items (many)
+shops (1) → merchant_categories (many)
+shops (1) → shop_delivery_logic (1, unique)
+shops (1) → delivery_runners (many)
+shops (1) → shop_delivery_areas (many)
+shops (1) → reviews (many)
+shops (1) → orders (many)
+merchant_items (1) ↔ merchant_categories via merchant_item_categories (many-to-many join)
+merchant_items (1) → merchant_item_embeddings (1)
+merchant_items (1) → order_items (many)
+orders (1) → order_items (many)
+orders (1) → webhook_events, webhook_dead_letters, notification_audit_log (many)
+user_preferences (1) → user_preference_embeddings (many)
 
 
 Triggers in public (developer-friendly)

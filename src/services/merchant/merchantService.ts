@@ -142,3 +142,49 @@ export async function submitVerification(
   }
 }
 
+// Delete merchant account
+export async function deleteMerchantAccount(
+  userId: string
+): Promise<{ error: { message: string } | null }> {
+  try {
+    // First check if merchant account exists
+    const { merchant, error: fetchError } = await getMerchantAccount(userId);
+    
+    if (fetchError) {
+      return { error: fetchError };
+    }
+
+    if (!merchant) {
+      return { error: { message: 'Merchant account not found' } };
+    }
+
+    // Check if there are any shops
+    const { data: shops, error: shopsError } = await supabase
+      .from('shops')
+      .select('id')
+      .eq('merchant_id', merchant.id);
+
+    if (shopsError) {
+      return { error: { message: shopsError.message } };
+    }
+
+    if (shops && shops.length > 0) {
+      return { error: { message: `Cannot delete merchant account. Please delete all ${shops.length} shop(s) first.` } };
+    }
+
+    // Delete the merchant account
+    const { error: deleteError } = await supabase
+      .from('merchant_accounts')
+      .delete()
+      .eq('id', merchant.id);
+
+    if (deleteError) {
+      return { error: { message: deleteError.message } };
+    }
+
+    return { error: null };
+  } catch (error: any) {
+    return { error: { message: error.message || 'An error occurred' } };
+  }
+}
+

@@ -29,6 +29,7 @@ interface CartContextType {
   carts: CartsState;
   loading: boolean;
   addItemToCart: (shopId: string, item: ShopItem, shopDetails: { name: string; image_url?: string; address?: string; latitude?: number; longitude?: number; deliveryLogic?: any }) => Promise<void>;
+  addItemToCartWithQuantity: (shopId: string, item: ShopItem, quantity: number, shopDetails: { name: string; image_url?: string; address?: string; latitude?: number; longitude?: number; deliveryLogic?: any }) => Promise<void>;
   removeItemFromCart: (shopId: string, itemId: string) => Promise<void>;
   updateItemQuantity: (shopId: string, itemId: string, quantity: number) => Promise<void>;
   deleteShopCart: (shopId: string) => Promise<void>;
@@ -81,6 +82,73 @@ export function CartProvider({ children }: { children: ReactNode }) {
     item: ShopItem,
     shopDetails: { name: string; image_url?: string; address?: string; latitude?: number; longitude?: number; deliveryLogic?: any }
   ) => {
+    console.log('[CartContext] 🛒 addItemToCart called:', { 
+      shopId, 
+      itemId: item.id, 
+      itemName: item.name,
+      shopName: shopDetails.name 
+    });
+    
+    const newCarts = { ...carts };
+    
+    if (!newCarts[shopId]) {
+      // Create new cart for this shop
+      console.log('[CartContext] ➕ Creating new cart for shop:', shopDetails.name);
+      newCarts[shopId] = {
+        shopId,
+        shopName: shopDetails.name,
+        shopImage: shopDetails.image_url,
+        shopAddress: shopDetails.address,
+        shopLatitude: shopDetails.latitude,
+        shopLongitude: shopDetails.longitude,
+        deliveryLogic: shopDetails.deliveryLogic,
+        items: [],
+        totalPrice: 0,
+        totalItems: 0,
+      };
+    }
+
+    const existingItemIndex = newCarts[shopId].items.findIndex(i => i.id === item.id);
+    
+    if (existingItemIndex >= 0) {
+      // Increment quantity of existing item
+      newCarts[shopId].items[existingItemIndex].quantity += 1;
+      console.log('[CartContext] 📈 Incremented quantity for:', item.name, 'new qty:', newCarts[shopId].items[existingItemIndex].quantity);
+    } else {
+      // Add new item to cart
+      newCarts[shopId].items.push({ ...item, quantity: 1 });
+      console.log('[CartContext] ✅ Added new item to cart:', item.name);
+    }
+
+    // Recalculate totals
+    const { totalItems, totalPrice } = calculateCartTotals(newCarts[shopId].items);
+    newCarts[shopId].totalItems = totalItems;
+    newCarts[shopId].totalPrice = totalPrice;
+    
+    console.log('[CartContext] 💰 Cart totals:', { totalItems, totalPrice: totalPrice / 100 });
+
+    await saveCarts(newCarts);
+    console.log('[CartContext] ✅ Cart saved to storage. Current state:', {
+      shopId,
+      itemCount: newCarts[shopId].items.length,
+      items: newCarts[shopId].items.map(i => ({ name: i.name, qty: i.quantity }))
+    });
+  };
+
+  const addItemToCartWithQuantity = async (
+    shopId: string,
+    item: ShopItem,
+    quantity: number,
+    shopDetails: { name: string; image_url?: string; address?: string; latitude?: number; longitude?: number; deliveryLogic?: any }
+  ) => {
+    console.log('[CartContext] 🛒 addItemToCartWithQuantity called:', { 
+      shopId, 
+      itemId: item.id, 
+      itemName: item.name,
+      quantity,
+      shopName: shopDetails.name 
+    });
+    
     const newCarts = { ...carts };
     
     if (!newCarts[shopId]) {
@@ -102,11 +170,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const existingItemIndex = newCarts[shopId].items.findIndex(i => i.id === item.id);
     
     if (existingItemIndex >= 0) {
-      // Increment quantity of existing item
-      newCarts[shopId].items[existingItemIndex].quantity += 1;
+      // Update existing item quantity
+      newCarts[shopId].items[existingItemIndex].quantity = quantity;
     } else {
-      // Add new item to cart
-      newCarts[shopId].items.push({ ...item, quantity: 1 });
+      // Add new item with specified quantity
+      newCarts[shopId].items.push({ ...item, quantity });
     }
 
     // Recalculate totals
@@ -115,6 +183,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
     newCarts[shopId].totalPrice = totalPrice;
 
     await saveCarts(newCarts);
+    console.log('[CartContext] ✅ Cart saved to storage:', {
+      shopId,
+      itemCount: newCarts[shopId].items.length,
+      totalItems,
+      totalPrice: totalPrice / 100,
+      items: newCarts[shopId].items.map(i => `${i.name} (${i.quantity})`)
+    });
   };
 
   const removeItemFromCart = async (shopId: string, itemId: string) => {
@@ -148,18 +223,27 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const updateItemQuantity = async (shopId: string, itemId: string, quantity: number) => {
+    console.log('[CartContext] 🔢 updateItemQuantity called:', { shopId, itemId, quantity });
+    
     const newCarts = { ...carts };
     
-    if (!newCarts[shopId]) return;
+    if (!newCarts[shopId]) {
+      console.log('[CartContext] ⚠️ Shop cart not found:', shopId);
+      return;
+    }
 
     const itemIndex = newCarts[shopId].items.findIndex(i => i.id === itemId);
     
     if (itemIndex >= 0) {
+      const itemName = newCarts[shopId].items[itemIndex].name;
+      
       if (quantity <= 0) {
         // Remove item
+        console.log('[CartContext] 🗑️ Removing item:', itemName);
         newCarts[shopId].items.splice(itemIndex, 1);
         
         if (newCarts[shopId].items.length === 0) {
+          console.log('[CartContext] 🧹 Deleting empty cart for shop:', shopId);
           delete newCarts[shopId];
         } else {
           const { totalItems, totalPrice } = calculateCartTotals(newCarts[shopId].items);
@@ -168,13 +252,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
         }
       } else {
         // Update quantity
+        console.log('[CartContext] ✏️ Updating quantity for:', itemName, 'to:', quantity);
         newCarts[shopId].items[itemIndex].quantity = quantity;
         const { totalItems, totalPrice } = calculateCartTotals(newCarts[shopId].items);
         newCarts[shopId].totalItems = totalItems;
         newCarts[shopId].totalPrice = totalPrice;
+        console.log('[CartContext] 💰 New totals:', { totalItems, totalPrice: totalPrice / 100 });
       }
 
       await saveCarts(newCarts);
+      console.log('[CartContext] ✅ Cart updated and saved');
+    } else {
+      console.log('[CartContext] ⚠️ Item not found in cart:', itemId);
     }
   };
 
@@ -200,6 +289,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     carts,
     loading,
     addItemToCart,
+    addItemToCartWithQuantity,
     removeItemFromCart,
     updateItemQuantity,
     deleteShopCart,

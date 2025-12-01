@@ -171,6 +171,17 @@ export async function fetchShopDetails(shopId: string): Promise<ServiceResult<Sh
       console.error('Error fetching delivery logic:', deliveryError);
     }
 
+    // Fetch delivered orders count
+    const { count: deliveredOrdersCount, error: ordersError } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('shop_id', shopId)
+      .eq('status', 'delivered');
+
+    if (ordersError) {
+      console.error('Error fetching orders count:', ordersError);
+    }
+
     // Map delivery logic if it exists
     let deliveryLogic: DeliveryLogic | null = null;
     if (deliveryData) {
@@ -210,7 +221,7 @@ export async function fetchShopDetails(shopId: string): Promise<ServiceResult<Sh
       tags: shopData.tags || [],
       is_open: openingStatus.isOpen, // Use computed real-time status
       rating: 0, // TODO: Implement ratings
-      orders: 0, // TODO: Implement order count
+      orders: deliveredOrdersCount !== null ? deliveredOrdersCount : 0,
       deliveryLogic,
       opening_hours: shopData.opening_hours,
       holidays: shopData.holidays,
@@ -297,30 +308,11 @@ export async function fetchShopItems(
 
     query = query.order('name', { ascending: true });
 
-    console.log('Fetching shop items:', { shopId, categoryId, searchQuery });
     const { data, error } = await query;
-    console.log('Shop items result:', { itemCount: data?.length, error });
 
     if (error) {
       console.error('Error fetching shop items:', error);
       return { data: null, error };
-    }
-
-    // Log raw data sample for debugging
-    if (data && data.length > 0) {
-      const firstRow: any = data[0];
-      const templateData = firstRow.item_templates;
-      const templateImageUrl = Array.isArray(templateData) 
-        ? (templateData[0] as any)?.image_url 
-        : (templateData as any)?.image_url;
-      console.log('Raw data sample (first row):', {
-        id: firstRow.id,
-        name: firstRow.name,
-        image_url: firstRow.image_url,
-        template_image_url: templateImageUrl,
-        hasTemplate: !!templateData,
-        rawRow: JSON.stringify(firstRow).substring(0, 300),
-      });
     }
 
     // Group items and extract categories
@@ -370,25 +362,6 @@ export async function fetchShopItems(
     });
 
     const items = Array.from(itemsMap.values());
-    console.log('Processed items:', items.length);
-    if (items.length > 0) {
-      console.log('First item sample:', {
-        id: items[0].id,
-        name: items[0].name,
-        image_url: items[0].image_url,
-        hasImage: !!items[0].image_url,
-        price_cents: items[0].price_cents,
-      });
-      // Log items with images for debugging
-      const itemsWithImages = items.filter(item => item.image_url);
-      console.log(`Items with images: ${itemsWithImages.length}/${items.length}`);
-      if (itemsWithImages.length > 0) {
-        console.log('Sample item with image:', {
-          name: itemsWithImages[0].name,
-          image_url: itemsWithImages[0].image_url,
-        });
-      }
-    }
     return { data: items, error: null };
   } catch (error: any) {
     console.error('Exception fetching shop items:', error);

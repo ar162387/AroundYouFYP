@@ -1,17 +1,19 @@
 {
   "name": "ay",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "main": "index.js",
   "scripts": {
     "start": "react-native start",
     "android": "react-native run-android",
+    "android:bundle:release": "cd android && ENVFILE=.env.production ./gradlew bundleRelease && cd ..",
+    "android:bundle:debug": "cd android && ENVFILE=.env ./gradlew bundleDebug && cd ..",
     "ios": "react-native run-ios",
     "postinstall": "node scripts/create-worklets-stub.js",
     "generate-android-icons": "node scripts/generate-android-icons.js",
     "test:ai-service": "ts-node --project testsprite_tests/backend/tsconfig.json --transpile-only --require ./testsprite_tests/backend/setup.ts testsprite_tests/backend/ai-service.test.ts",
     "test:delivery-logic-api": "ts-node testsprite_tests/backend/delivery-logic-api.test.ts",
     "test:delivery-tiering": "ts-node testsprite_tests/backend/delivery-tiering-calculation.test.ts",
-    "test:all": "npm run test:ai-service && npm run test:delivery-logic-api && npm run test:delivery-tiering"
+    "test:all": "yarn test:ai-service && yarn test:delivery-logic-api && yarn test:delivery-tiering"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.5.0",

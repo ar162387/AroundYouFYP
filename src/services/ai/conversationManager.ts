@@ -5,7 +5,7 @@
  * Maintains message history and orchestrates LLM interactions.
  */
 
-import { createChatCompletion } from './openAIService';
+import { createChatCompletion, createChatCompletionStream } from './openAIService';
 import type { OpenAI } from 'openai';
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'function';
@@ -277,11 +277,12 @@ export class ConversationManager {
   }
 
   /**
-   * Send a message and get LLM response
+   * Send a message and get LLM response with streaming support
    */
   async sendMessage(
     userMessage: string,
-    additionalContext?: string
+    additionalContext?: string,
+    onStreamChunk?: (chunk: string) => void
   ): Promise<{
     response: string | null;
     functionCall?: { name: string; arguments: string };
@@ -302,7 +303,52 @@ export class ConversationManager {
         });
       }
 
-      // Call OpenAI
+      // Use streaming if onStreamChunk is provided
+      // Note: OpenAI streaming doesn't support function calling, so if functions are available,
+      // we'll use non-streaming to allow function calls. However, for better UX, we can still
+      // use streaming for regular text responses and handle function calls in subsequent iterations.
+      // For now, we use streaming only when no functions are configured to avoid complexity.
+      // In practice, most responses will be text, so this provides a good balance.
+      if (onStreamChunk && (!this.functions || this.functions.length === 0)) {
+        // Create a placeholder assistant message that we'll update as chunks arrive
+        const streamingMessageIndex = this.messages.length;
+        this.addAssistantMessage('');
+
+        let fullResponse = '';
+
+        const streamResult = await createChatCompletionStream(
+          openAIMessages,
+          (chunk: string) => {
+            fullResponse += chunk;
+            // Update the message in real-time
+            if (this.messages[streamingMessageIndex]) {
+              this.messages[streamingMessageIndex].content = fullResponse;
+            }
+            onStreamChunk(chunk);
+          },
+          {
+            temperature: this.temperature,
+            max_tokens: this.maxTokens,
+          }
+        );
+
+        if (streamResult.error) {
+          // Remove the placeholder message on error
+          this.messages.pop();
+          return { response: null, error: streamResult.error };
+        }
+
+        // Final message is already updated
+        return {
+          response: fullResponse,
+          error: null,
+        };
+      }
+      
+      // For function calling scenarios, we need to use non-streaming
+      // but we can still provide a smooth UX by showing the function call immediately
+
+      // Regular non-streaming completion (required for function calling)
       const result = await createChatCompletion(openAIMessages, {
         temperature: this.temperature,
         max_tokens: this.maxTokens,

@@ -276,7 +276,7 @@ export default function InventorySection({ shop }: InventorySectionProps) {
           name: values.name,
           description: values.description,
           barcode: values.barcode,
-          imageUrl: undefined,
+          imageUrl: values.imageUrl,
           sku: values.sku,
           priceCents: values.priceCents,
           isActive: values.isActive,
@@ -303,6 +303,7 @@ export default function InventorySection({ shop }: InventorySectionProps) {
             priceCents: values.priceCents,
             isActive: values.isActive,
             categoryIds: values.categoryIds,
+            imageUrl: values.imageUrl,
           },
         });
         setFormOpen(false);

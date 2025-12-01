@@ -248,7 +248,7 @@ export async function createInventoryItem(payload: {
 
 export async function updateInventoryItem(
   itemId: string,
-  updates: Partial<Pick<InventoryItem, 'description' | 'sku' | 'priceCents' | 'isActive'>> & {
+  updates: Partial<Pick<InventoryItem, 'description' | 'sku' | 'priceCents' | 'isActive' | 'imageUrl'>> & {
     categoryIds?: string[];
   }
 ): Promise<ServiceResult<InventoryItem>> {
@@ -263,6 +263,7 @@ export async function updateInventoryItem(
       sku: itemUpdates.sku,
       price_cents: itemUpdates.priceCents,
       is_active: itemUpdates.isActive,
+      image_url: itemUpdates.imageUrl !== undefined ? itemUpdates.imageUrl : undefined,
     })
     .eq('id', itemId)
     .select('*, categories:merchant_item_categories(merchant_categories(*))')

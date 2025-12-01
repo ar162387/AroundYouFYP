@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo } from 'react';
-import { ActivityIndicator, Modal, View, Text, TouchableOpacity, TextInput, ScrollView, Switch } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, View, Text, TouchableOpacity, TextInput, ScrollView, Switch, Image, Alert } from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { InventoryItem, InventoryTemplateItem } from '../../../types/inventory';
 import { useTranslation } from 'react-i18next';
+import { uploadItemImage } from '../../../services/merchant/shopService';
+import { useAuth } from '../../../context/AuthContext';
 
 const centsRegex = /^\d+(\.\d{0,2})?$/;
 
@@ -19,7 +21,7 @@ type InventoryItemFormState = {
   categoryIds: string[];
 };
 
-export type InventoryItemFormValues = InventoryItemFormState & { priceCents: number };
+export type InventoryItemFormValues = InventoryItemFormState & { priceCents: number; imageUrl?: string | null };
 
 type CategoryOption = {
   id: string;
@@ -52,6 +54,9 @@ export function InventoryItemFormSheet({
   onDelete,
 }: InventoryItemFormSheetProps) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const [imageUri, setImageUri] = useState<string | null>(defaultItem?.imageUrl || null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const schema = useMemo(() => z.object({
     templateId: z.string().uuid().optional().nullable(),
@@ -119,10 +124,79 @@ export function InventoryItemFormSheet({
   useEffect(() => {
     if (visible) {
       reset(defaultValues);
+      setImageUri(defaultItem?.imageUrl || null);
     }
-  }, [visible, reset, defaultValues]);
+  }, [visible, reset, defaultValues, defaultItem]);
 
   const templateLocked = Boolean(template) || Boolean(defaultItem?.templateId);
+  const isCustomItem = !templateLocked; // Only allow image upload for custom items
+
+  // Image picker handler with 1:1 aspect ratio crop
+  const handlePickImage = async () => {
+    try {
+      const ImageCropPicker = require('react-native-image-crop-picker');
+      
+      const image = await ImageCropPicker.openPicker({
+        mediaType: 'photo',
+        width: 800,
+        height: 800, // 1:1 aspect ratio for item images
+        cropping: true,
+        cropperToolbarTitle: 'Adjust Image',
+        cropperChooseText: 'Choose',
+        cropperCancelText: 'Cancel',
+        cropperRotateButtonsHidden: false,
+        freeStyleCropEnabled: false,
+        aspectRatio: [1, 1], // 1:1 aspect ratio
+        compressImageQuality: 0.8,
+        includeBase64: false,
+      });
+
+      setImageUri(image.path);
+    } catch (error: any) {
+      if (error.message !== 'User cancelled image selection') {
+        Alert.alert('Error', error.message || 'Failed to pick image');
+      }
+    }
+  };
+
+  // Edit existing image
+  const handleEditImage = async () => {
+    if (!imageUri || imageUri.startsWith('http')) {
+      // Can't edit remote images, just pick a new one
+      handlePickImage();
+      return;
+    }
+
+    try {
+      const ImageCropPicker = require('react-native-image-crop-picker');
+      
+      const image = await ImageCropPicker.openCropper({
+        path: imageUri,
+        width: 800,
+        height: 800, // 1:1 aspect ratio
+        cropping: true,
+        cropperToolbarTitle: 'Adjust Image',
+        cropperChooseText: 'Save',
+        cropperCancelText: 'Cancel',
+        cropperRotateButtonsHidden: false,
+        freeStyleCropEnabled: false,
+        aspectRatio: [1, 1],
+        compressImageQuality: 0.8,
+        includeBase64: false,
+      });
+
+      setImageUri(image.path);
+    } catch (error: any) {
+      if (error.message !== 'User cancelled image selection') {
+        Alert.alert('Error', error.message || 'Failed to edit image');
+      }
+    }
+  };
+
+  // Remove image
+  const handleRemoveImage = () => {
+    setImageUri(null);
+  };
 
   return (
     <Modal visible={visible} onRequestClose={onClose} animationType="slide" presentationStyle="pageSheet">
@@ -142,6 +216,57 @@ export function InventoryItemFormSheet({
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Image Upload Section - Only for custom items */}
+          {isCustomItem ? (
+            <View className="mt-6">
+              <Text className="text-sm font-semibold text-gray-700 mb-2">{t('merchant.inventory.form.image') || 'Item Image'}</Text>
+              <View className="flex-row items-center">
+                {imageUri ? (
+                  <View className="relative mr-4">
+                    <Image
+                      source={{ uri: imageUri }}
+                      className="w-24 h-24 rounded-2xl"
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity
+                      onPress={handleRemoveImage}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full items-center justify-center"
+                    >
+                      <Text className="text-white text-xs font-bold">×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View className="w-24 h-24 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 items-center justify-center mr-4">
+                    <Text className="text-gray-400 text-2xl">📷</Text>
+                  </View>
+                )}
+                <View className="flex-1">
+                  <TouchableOpacity
+                    onPress={imageUri ? handleEditImage : handlePickImage}
+                    className="h-10 rounded-xl border border-gray-200 items-center justify-center bg-white mb-2"
+                  >
+                    <Text className="text-sm font-semibold text-gray-700">
+                      {imageUri ? (t('merchant.inventory.form.changeImage') || 'Change Image') : (t('merchant.inventory.form.addImage') || 'Add Image')}
+                    </Text>
+                  </TouchableOpacity>
+                  {imageUri ? (
+                    <TouchableOpacity
+                      onPress={handleRemoveImage}
+                      className="h-10 rounded-xl border border-red-200 items-center justify-center bg-white"
+                    >
+                      <Text className="text-sm font-semibold text-red-600">
+                        {t('merchant.inventory.form.removeImage') || 'Remove'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </View>
+              <Text className="text-xs text-gray-500 mt-2">
+                {t('merchant.inventory.form.imageHint') || 'Upload a square image (1:1 ratio) for best results'}
+              </Text>
+            </View>
+          ) : null}
+
           <Controller
             control={control}
             name="name"
@@ -312,15 +437,57 @@ export function InventoryItemFormSheet({
             </TouchableOpacity>
             <TouchableOpacity
               className="flex-1 h-12 rounded-xl bg-blue-600 items-center justify-center"
-              onPress={handleSubmit((values) => {
-                if (loading || deleteLoading) {
+              onPress={handleSubmit(async (values) => {
+                if (loading || deleteLoading || isUploadingImage) {
                   return;
                 }
-                onSubmit({ ...values, priceCents: Math.round(parseFloat(values.priceDisplay) * 100) });
+
+                let finalImageUrl: string | null | undefined = undefined;
+
+                // Handle image upload for custom items
+                if (isCustomItem) {
+                  if (imageUri) {
+                    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
+                      // New image selected - upload it
+                      if (!user) {
+                        Alert.alert('Error', 'Not authenticated. Please log in again.');
+                        return;
+                      }
+                      setIsUploadingImage(true);
+                      try {
+                        const { url, error: uploadError } = await uploadItemImage(user.id, imageUri);
+                        if (uploadError) {
+                          Alert.alert('Upload Error', uploadError.message);
+                          setIsUploadingImage(false);
+                          return;
+                        }
+                        finalImageUrl = url || null;
+                      } catch (error: any) {
+                        Alert.alert('Upload Error', error.message || 'Failed to upload image');
+                        setIsUploadingImage(false);
+                        return;
+                      } finally {
+                        setIsUploadingImage(false);
+                      }
+                    } else if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+                      // Keep existing image URL (no change)
+                      finalImageUrl = imageUri;
+                    }
+                  } else {
+                    // Image was removed - set to null to clear it
+                    finalImageUrl = null;
+                  }
+                }
+
+                onSubmit({ 
+                  ...values, 
+                  priceCents: Math.round(parseFloat(values.priceDisplay) * 100),
+                  imageUrl: finalImageUrl,
+                });
               })}
-              disabled={loading}
+              disabled={loading || isUploadingImage}
             >
-              {loading ? (
+              {loading || isUploadingImage ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <Text className="text-sm font-semibold text-white">

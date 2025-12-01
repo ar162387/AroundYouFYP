@@ -24,9 +24,9 @@ export default function Header({
   const insets = useSafeAreaInsets();
   return (
     <LinearGradient
-      colors={['#1e3a8a', '#3b82f6']}
+      colors={["#2563eb", "#1d4ed8"]}
       start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 0 }}
+      end={{ x: 1, y: 1 }}
       className="pb-3 px-5"
       style={{ paddingTop: insets.top + 8 }}
     >

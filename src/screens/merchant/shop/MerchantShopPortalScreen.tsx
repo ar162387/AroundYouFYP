@@ -177,7 +177,7 @@ export default function MerchantShopPortalScreen() {
         <LinearGradient
           colors={["#2563eb", "#1d4ed8"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           style={{ flex: 1 }}
         />
       </View>
@@ -186,7 +186,7 @@ export default function MerchantShopPortalScreen() {
         <LinearGradient
           colors={["#2563eb", "#1d4ed8"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           className="px-5 pb-5"
           style={{ paddingTop: insets.top + 12 }}
         >

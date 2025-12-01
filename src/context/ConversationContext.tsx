@@ -18,7 +18,7 @@ interface ConversationContextType {
   messages: Message[];
   isLoading: boolean;
   error: string | null;
-  sendMessage: (message: string, additionalContext?: string) => Promise<{ response: string | null; functionCall?: { name: string; arguments: string }; error: string | null } | undefined>;
+  sendMessage: (message: string, additionalContext?: string, onStreamChunk?: (chunk: string) => void) => Promise<{ response: string | null; functionCall?: { name: string; arguments: string }; error: string | null } | undefined>;
   continueConversation: () => Promise<{ response: string | null; functionCall?: { name: string; arguments: string }; error: string | null } | undefined>;
   clearConversation: () => Promise<void>;
   addSystemContext: (context: string) => void;
@@ -131,14 +131,14 @@ Key behaviors:
     }
   };
 
-  const sendMessage = useCallback(async (message: string, additionalContext?: string) => {
+  const sendMessage = useCallback(async (message: string, additionalContext?: string, onStreamChunk?: (chunk: string) => void) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const result = await conversationManager.sendMessage(message, additionalContext);
+      const result = await conversationManager.sendMessage(message, additionalContext, onStreamChunk);
 
-      // Update messages from manager
+      // Update messages from manager (streaming updates happen in real-time)
       setMessages(conversationManager.getMessages());
 
       if (result.error) {

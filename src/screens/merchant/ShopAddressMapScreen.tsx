@@ -431,9 +431,9 @@ export default function ShopAddressMapScreen() {
       {/* Header with Back Button and Search */}
       <View className="absolute top-0 left-0 right-0 z-30" style={{ paddingTop: insets.top }}>
         <LinearGradient
-          colors={["#1e3a8a", "#3b82f6"]}
+          colors={["#2563eb", "#1d4ed8"]}
           start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+          end={{ x: 1, y: 1 }}
           className="px-4 pb-3"
         >
           <View className="flex-row items-center mb-2">
