@@ -8,13 +8,13 @@
 export const FUNCTION_SCHEMAS = [
   {
     name: 'intelligentSearch',
-    description: 'Intelligently search for items across all shops in the user\'s area. Uses LLM to understand intent, handles brand variations (e.g., "lays" matches "Lay\'s"), matches categories (e.g., "chips" matches "Munchies"), and returns items ready to add to cart. This is the primary search function for conversational shopping.',
+    description: 'Intelligently search for items across all shops in the user\'s area. Uses LLM to understand intent, handles brand variations (e.g., "lays" matches "Lay\'s"), matches categories (e.g., "chips" matches "Munchies"), and returns items ready to add to cart. This is the primary search function for conversational shopping. CRITICAL: When user mentions multiple items (e.g., "order 2 oreo mini, 3 rio biscuit, one mustard oil and a capstan"), call this function ONCE with the FULL query. The function automatically extracts all items, quantities, and searches for them efficiently in a single operation. Do NOT call this function multiple times for each item - pass the entire multi-item query in one call.',
     parameters: {
       type: 'object',
       properties: {
         query: {
           type: 'string',
-          description: 'Natural language search query (e.g., "lays", "cold drink", "chips", "snacks")',
+          description: 'Natural language search query. Can be a single item (e.g., "lays", "cold drink") OR multiple items (e.g., "2 oreo mini, 3 rio biscuit, mustard oil, capstan"). For multi-item queries, pass the entire query as-is - the function will extract all items automatically.',
         },
         maxShops: {
           type: 'number',
