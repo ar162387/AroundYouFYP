@@ -317,6 +317,9 @@ export default function MessageBubble({
    * Persist the latest non-null search progress per-message so that
    * "View details" remains available even after the global
    * search progress is cleared at the end of execution.
+   * 
+   * CRITICAL: Clear persisted progress when message content or function result changes
+   * to prevent showing stale reasoning from previous queries.
    */
   const [persistedProgress, setPersistedProgress] = useState<SearchProgress | null>(null);
 
@@ -325,6 +328,16 @@ export default function MessageBubble({
       setPersistedProgress(progress);
     }
   }, [progress]);
+
+  // Clear persisted progress when message changes (new query or result)
+  // This ensures we don't show stale reasoning from previous queries
+  useEffect(() => {
+    // If this is a function call or result message, reset persisted progress
+    // when the message content/result changes
+    if (message.function_call || message.function_result) {
+      setPersistedProgress(null);
+    }
+  }, [message.content, message.function_result, message.function_call]);
 
   const effectiveProgress = progress || persistedProgress;
 
@@ -348,17 +361,10 @@ export default function MessageBubble({
 
     const hasAddedItems = Array.isArray(result.added) && result.added.length > 0;
 
-    console.log('[MessageBubble] renderCartModule:', {
-      hasAddedItems,
-      cartsLength: carts.length,
-      addedCount: result.added?.length || 0
-    });
-
     // Show cart module if we have added items OR if we have carts
     // Always show when items are added, even if carts array is empty initially
     // Also show when getCart/getAllCarts is called
     if (!hasAddedItems && carts.length === 0) {
-      console.log('[MessageBubble] Not showing cart module - no items added and no carts');
       return null;
     }
 
@@ -395,34 +401,130 @@ export default function MessageBubble({
     // If we have a result and it's one of our known functions, render the rich component
     if (functionResult && message.name) {
       if (message.name === 'intelligentSearch' || message.name === 'searchItemsInShop') {
-        // Format shops with relevance scores and top items
-        const shops = functionResult.shops || [];
+        // Get extracted items from LLM intent
+        const extractedItems = functionResult.intent?.extractedItems || [];
+        
+        // Format shops with relevance scores and matched extracted items
+        const shops = functionResult.results || functionResult.shops || [];
         const shopsInfo = shops.map((shopResult: any) => {
           const shop = shopResult.shop || {};
-          const items = shopResult.items || [];
+          const matchingItems = shopResult.matchingItems || shopResult.items || [];
           const relevanceScore = shopResult.relevanceScore || 0;
           // Handle both decimal (0-1) and percentage (0-100) formats
           const relevance = relevanceScore > 1
             ? Math.round(relevanceScore * 10) / 10  // Already a percentage
             : Math.round(relevanceScore * 100 * 10) / 10; // Convert decimal to percentage
 
-          // Get top items sorted by similarity
-          const topItems = items
-            .sort((a: any, b: any) => (b.similarity || 0) - (a.similarity || 0))
-            .slice(0, 5) // Show top 5 in details
-            .map((item: any) => ({
-              name: item.name || item.item_name,
-              // similarity is 0-1, convert to percentage
-              confidence: Math.round((item.similarity || 0) * 100),
-              price: item.price_cents ? `PKR ${(item.price_cents / 100).toFixed(2)}` : 'N/A',
-            }));
+          // Match extracted items with actual search results for this shop
+          // Sort matching items by similarity (highest first) to prioritize best matches
+          const sortedMatchingItems = [...matchingItems].sort((a: any, b: any) => 
+            (b.similarity || 0) - (a.similarity || 0)
+          );
+          
+          const matchedExtractedItems = extractedItems.map((extractedItem: any) => {
+            // Find the best matching item from search results
+            const extractedNameLower = extractedItem.name.toLowerCase().trim();
+            const extractedBrandLower = (extractedItem.brand?.toLowerCase() || '').trim();
+            const extractedSearchTerms = (extractedItem.searchTerms || []).map((t: string) => t.toLowerCase().trim());
+            
+            // Extract key words from extracted item name (e.g., "rio biscuit" -> ["rio", "biscuit"])
+            const extractedNameWords = extractedNameLower.split(/\s+/).filter((w: string) => w.length > 2);
+            
+            // Try to find a match by checking item names against extracted item name, brand, and search terms
+            let bestMatch: any = null;
+            let bestSimilarity = 0;
+            let bestMatchScore = 0; // Track how well the match is
+            
+            for (const item of sortedMatchingItems) {
+              const itemNameLower = (item.name || item.item_name || '').toLowerCase().trim();
+              const itemNameWords = itemNameLower.split(/\s+/);
+              
+              let matchScore = 0;
+              let matches = false;
+              
+              // 1. Exact name match (highest priority)
+              if (itemNameLower === extractedNameLower) {
+                matchScore = 100;
+                matches = true;
+              }
+              // 2. Item name contains extracted name (e.g., "Oreo mini" in "Oreo Mini Original...")
+              else if (itemNameLower.includes(extractedNameLower)) {
+                matchScore = 90;
+                matches = true;
+              }
+              // 3. Extracted name contains first word of item (e.g., "oreo" in "Oreo Mini...")
+              else if (extractedNameLower.includes(itemNameWords[0]) && itemNameWords[0].length > 2) {
+                matchScore = 80;
+                matches = true;
+              }
+              // 4. Brand matching - check if brand appears in item name
+              else if (extractedBrandLower && extractedBrandLower.length > 2) {
+                if (itemNameLower.includes(extractedBrandLower)) {
+                  matchScore = 85;
+                  matches = true;
+                }
+                // Also check if brand is a word in the item name
+                else if (itemNameWords.includes(extractedBrandLower)) {
+                  matchScore = 80;
+                  matches = true;
+                }
+              }
+              // 5. Word-by-word matching - check if key words from extracted name appear in item
+              else if (extractedNameWords.length > 0) {
+                const matchingWords = extractedNameWords.filter((word: string) => 
+                  itemNameWords.some((itemWord: string) => itemWord.includes(word) || word.includes(itemWord))
+                );
+                if (matchingWords.length >= Math.min(2, extractedNameWords.length)) {
+                  matchScore = 70 + (matchingWords.length * 5);
+                  matches = true;
+                }
+              }
+              // 6. Search terms matching
+              else if (extractedSearchTerms.length > 0) {
+                const matchingTerms = extractedSearchTerms.filter((term: string) => 
+                  itemNameLower.includes(term) && term.length > 2
+                );
+                if (matchingTerms.length > 0) {
+                  matchScore = 60 + (matchingTerms.length * 5);
+                  matches = true;
+                }
+              }
+              
+              if (matches) {
+                // Use the item's actual similarity score from vector search (most accurate)
+                const similarity = item.similarity || (matchScore >= 90 ? 0.8 : matchScore >= 80 ? 0.7 : 0.6);
+                // Combine match score with similarity for better ranking
+                const combinedScore = (matchScore * 0.3) + (similarity * 100 * 0.7);
+                
+                if (combinedScore > bestMatchScore) {
+                  bestMatchScore = combinedScore;
+                  bestSimilarity = similarity;
+                  bestMatch = item;
+                  // If we found a very high-confidence match, use it immediately
+                  if (matchScore >= 90 && similarity >= 0.7) {
+                    break;
+                  }
+                }
+              }
+            }
+            
+            // Return match info (even if no match found, we'll filter later)
+            return {
+              extractedItem,
+              matchedItem: bestMatch,
+              similarity: bestMatch ? bestSimilarity : null,
+              price: bestMatch?.price_cents ? `PKR ${(bestMatch.price_cents / 100).toFixed(2)}` : 'N/A',
+              confidence: bestMatch ? Math.round(bestSimilarity * 100) : null,
+              matchScore: bestMatch ? bestMatchScore : 0,
+            };
+          }).filter((match: any) => match.matchedItem !== null); // Only show items that were found
 
           return {
             shopId: shop.id,
             shopName: shop.name,
             relevance,
-            topItems,
-            totalItems: items.length,
+            extractedItems: matchedExtractedItems,
+            totalItems: matchingItems.length,
           };
         });
 
@@ -430,8 +532,8 @@ export default function MessageBubble({
         return (
           <View style={styles.functionResultContainer}>
             {shopsInfo.map((shop: any, idx: number) => {
-              const label = `${shop.shopName} - ${shop.relevance}% relevance (${shop.totalItems} items)`;
-              const hasDetails = shop.topItems && shop.topItems.length > 0;
+              const label = `${shop.shopName} - ${shop.relevance}% relevance`;
+              const hasDetails = shop.extractedItems && shop.extractedItems.length > 0;
 
               return (
                 <FunctionCallBubble
@@ -449,21 +551,37 @@ export default function MessageBubble({
                       >
                         <Text style={styles.shopLinkText}>Visit shop →</Text>
                       </TouchableOpacity>
-                      <Text style={[styles.detailSectionLabel, { marginTop: 12 }]}>Top Items:</Text>
-                      {shop.topItems.map((item: any, itemIdx: number) => (
-                        <View key={itemIdx} style={styles.shopItemRow}>
-                          <Text style={styles.shopItemName} numberOfLines={2}>{item.name}</Text>
-                          <View style={styles.shopItemMeta}>
-                            <Text style={styles.shopItemConfidence}>{item.confidence}%</Text>
-                            <Text style={styles.shopItemPrice}>{item.price}</Text>
+                      <Text style={[styles.detailSectionLabel, { marginTop: 12 }]}>Final Extracted Items:</Text>
+                      {shop.extractedItems.map((match: any, itemIdx: number) => {
+                        const extractedItem = match.extractedItem;
+                        const displayName = extractedItem.brand 
+                          ? `${extractedItem.brand} ${extractedItem.name}`
+                          : extractedItem.name;
+                        const quantity = extractedItem.quantity && extractedItem.quantity > 1 
+                          ? ` × ${extractedItem.quantity}` 
+                          : '';
+                        
+                        return (
+                          <View key={itemIdx} style={styles.shopItemRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.shopItemName} numberOfLines={2}>
+                                {displayName}{quantity}
+                              </Text>
+                              {extractedItem.category && (
+                                <Text style={styles.detailSubText}>
+                                  Category: {extractedItem.category}
+                                </Text>
+                              )}
+                            </View>
+                            <View style={styles.shopItemMeta}>
+                              {match.confidence !== null && (
+                                <Text style={styles.shopItemConfidence}>{match.confidence}%</Text>
+                              )}
+                              <Text style={styles.shopItemPrice}>{match.price}</Text>
+                            </View>
                           </View>
-                        </View>
-                      ))}
-                      {shop.totalItems > shop.topItems.length && (
-                        <Text style={styles.detailText}>
-                          ... and {shop.totalItems - shop.topItems.length} more items
-                        </Text>
-                      )}
+                        );
+                      })}
                     </View>
                   )}
                 </FunctionCallBubble>
@@ -578,7 +696,10 @@ export default function MessageBubble({
       if (effectiveProgress) {
         // Use live progress if available
         stepsToShow = effectiveProgress.steps;
-      } else {
+      } else if (message.function_result) {
+        // ONLY create completed state if we have a function result for THIS message
+        // This prevents showing stale reasoning from previous queries
+        
         // If progress is cleared but we have a function result, create a completed state
         // This ensures UI consistency - steps remain visible after completion
         const defaultSteps: Array<{
@@ -595,91 +716,91 @@ export default function MessageBubble({
         ];
         
         // Preserve details from function result - ensure all steps that should have details get them
-        if (message.function_result) {
-          const result = message.function_result;
-          const items = result.intent?.extractedItems || [];
-          const shops = result.results || result.shops || [];
-          
-          // Always set details for understand_intent if we have intent data
-          const thinkingStep = defaultSteps.find(s => s.id === 'understand_intent');
-          if (thinkingStep) {
-            thinkingStep.details = {
-              reasoning: result.intent?.reasoning || result.reasoning || 'Intent analysis completed',
-              extracted: items.length > 0 
-                ? items.map((i: any) => `${i.name} (Qty: ${i.quantity || 1})`).join(', ')
-                : 'Items extracted from query',
-            };
+        const result = message.function_result;
+        const items = result.intent?.extractedItems || [];
+        const shops = result.results || result.shops || [];
+        
+        // Always set details for understand_intent if we have intent data
+        const thinkingStep = defaultSteps.find(s => s.id === 'understand_intent');
+        if (thinkingStep && (result.intent?.reasoning || result.reasoning)) {
+          thinkingStep.details = {
+            reasoning: result.intent?.reasoning || result.reasoning || 'Intent analysis completed',
+            extracted: items.length > 0 
+              ? items.map((i: any) => `${i.name} (Qty: ${i.quantity || 1})`).join(', ')
+              : 'Items extracted from query',
+          };
+        }
+        
+        // Always set details for find_shops
+        const findShopsStep = defaultSteps.find(s => s.id === 'find_shops');
+        if (findShopsStep && shops.length > 0) {
+          findShopsStep.details = {
+            found: `${shops.length} shop${shops.length !== 1 ? 's' : ''} in area`,
+            shops: shops.map((shop: any) => ({
+              id: shop.shop?.id || shop.id,
+              name: shop.shop?.name || shop.name,
+            })),
+          };
+        }
+        
+        // Always set details for semantic_search
+        const semanticStep = defaultSteps.find(s => s.id === 'semantic_search');
+        if (semanticStep && result.intent) {
+          if (items.length > 0) {
+            semanticStep.label = `Searching for ${items.map((i: any) => `"${i.name}"`).join(', ')}...`;
           }
-          
-          // Always set details for find_shops
-          const findShopsStep = defaultSteps.find(s => s.id === 'find_shops');
-          if (findShopsStep) {
-            findShopsStep.details = {
-              found: shops.length > 0 
-                ? `${shops.length} shop${shops.length !== 1 ? 's' : ''} in area`
-                : 'Shops found in delivery area',
-              shops: shops.length > 0 ? shops.map((shop: any) => ({
-                id: shop.shop?.id || shop.id,
-                name: shop.shop?.name || shop.name,
-              })) : [],
-            };
-          }
-          
-          // Always set details for semantic_search
-          const semanticStep = defaultSteps.find(s => s.id === 'semantic_search');
-          if (semanticStep) {
-            if (items.length > 0) {
-              semanticStep.label = `Searching for ${items.map((i: any) => `"${i.name}"`).join(', ')}...`;
-            }
-            semanticStep.details = {
-              primaryQuery: result.intent?.primaryQuery || 'Search query processed',
-              expandedQueries: result.intent?.expandedQueries || [],
-              extractedItems: items,
-            };
-          }
-          
-          // Always set details for expanding_search
-          const expandingStep = defaultSteps.find(s => s.id === 'expanding_search');
-          if (expandingStep) {
-            const allItems: any[] = [];
-            shops.forEach((shopResult: any) => {
-              const shopItems = shopResult.items || shopResult.matchingItems || [];
-              shopItems.forEach((item: any) => {
-                allItems.push({
-                  name: item.name || item.item_name,
-                  price: item.price_cents ? `PKR ${(item.price_cents / 100).toFixed(2)}` : 'N/A',
-                  shop: shopResult.shop?.name || shopResult.name || 'Unknown Shop',
-                  similarity: item.similarity ? Math.round(item.similarity * 100) : null,
-                });
+          semanticStep.details = {
+            primaryQuery: result.intent.primaryQuery || 'Search query processed',
+            expandedQueries: result.intent.expandedQueries || [],
+            extractedItems: items,
+          };
+        }
+        
+        // Always set details for expanding_search
+        const expandingStep = defaultSteps.find(s => s.id === 'expanding_search');
+        if (expandingStep && shops.length > 0) {
+          const allItems: any[] = [];
+          shops.forEach((shopResult: any) => {
+            const shopItems = shopResult.items || shopResult.matchingItems || [];
+            shopItems.forEach((item: any) => {
+              allItems.push({
+                name: item.name || item.item_name,
+                price: item.price_cents ? `PKR ${(item.price_cents / 100).toFixed(2)}` : 'N/A',
+                shop: shopResult.shop?.name || shopResult.name || 'Unknown Shop',
+                similarity: item.similarity ? Math.round(item.similarity * 100) : null,
               });
             });
-            
-            expandingStep.details = {
-              totalFound: allItems.length,
-              results: allItems.sort((a, b) => (b.similarity || 0) - (a.similarity || 0)).slice(0, 20),
-    };
-          }
+          });
           
-          // Always set details for ranking
-          const rankingStep = defaultSteps.find(s => s.id === 'ranking');
-          if (rankingStep) {
-            rankingStep.details = {
-              shops: shops.map((shopResult: any) => ({
-                name: shopResult.shop?.name || shopResult.name,
-                shopName: shopResult.shop?.name || shopResult.name,
-                id: shopResult.shop?.id || shopResult.id,
-                relevance: shopResult.relevanceScore 
-                  ? (shopResult.relevanceScore > 1 
-                      ? Math.round(shopResult.relevanceScore * 10) / 10 
-                      : Math.round(shopResult.relevanceScore * 100 * 10) / 10)
-                  : null,
-                relevanceScore: shopResult.relevanceScore,
-              })),
-            };
-          }
+          expandingStep.details = {
+            totalFound: allItems.length,
+            results: allItems.sort((a, b) => (b.similarity || 0) - (a.similarity || 0)).slice(0, 20),
+          };
+        }
+        
+        // Always set details for ranking
+        const rankingStep = defaultSteps.find(s => s.id === 'ranking');
+        if (rankingStep && shops.length > 0) {
+          rankingStep.details = {
+            shops: shops.map((shopResult: any) => ({
+              name: shopResult.shop?.name || shopResult.name,
+              shopName: shopResult.shop?.name || shopResult.name,
+              id: shopResult.shop?.id || shopResult.id,
+              relevance: shopResult.relevanceScore 
+                ? (shopResult.relevanceScore > 1 
+                    ? Math.round(shopResult.relevanceScore * 10) / 10 
+                    : Math.round(shopResult.relevanceScore * 100 * 10) / 10)
+                : null,
+              relevanceScore: shopResult.relevanceScore,
+            })),
+          };
         }
         
         stepsToShow = defaultSteps;
+      } else {
+        // No progress and no function result - don't show any steps
+        // This prevents showing stale steps from previous queries
+        stepsToShow = [];
       }
 
       return (

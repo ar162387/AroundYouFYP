@@ -370,17 +370,19 @@ async function searchItemsByCategories(
       const { data: categories } = await fetchShopCategories(shopId);
       if (!categories) continue;
 
-      // Find matching categories
+      // Find matching categories using simple name matching
+      // No hard-coded synonyms - rely on LLM's intelligent category extraction and vector search
       const matchingCategoryIds: string[] = [];
-
+      
       for (const category of categories) {
         const categoryNameLower = category.name.toLowerCase();
 
-        // Check if category name matches any of the requested categories
-        const matchesCategory = categoryNames.some((reqCat) =>
-          categoryNameLower.includes(reqCat.toLowerCase()) ||
-          reqCat.toLowerCase().includes(categoryNameLower)
-        );
+        // Check if category name matches any of the requested categories (direct/fuzzy match only)
+        let matchesCategory = categoryNames.some((reqCat) => {
+          const reqCatLower = reqCat.toLowerCase();
+          // Simple name matching - if LLM extracted the category, it should match directly
+          return categoryNameLower.includes(reqCatLower) || reqCatLower.includes(categoryNameLower);
+        });
 
         // Check if category name matches item types (e.g., "Munchies" contains "chips")
         const matchesItemType = itemTypes.some((itemType) =>
@@ -390,7 +392,14 @@ async function searchItemsByCategories(
 
         if (matchesCategory || matchesItemType) {
           matchingCategoryIds.push(category.id);
+          console.log(`[IntelligentSearch]   ✅ Matched category: "${category.name}" (ID: ${category.id.substring(0, 8)}...)`);
         }
+      }
+      
+      if (matchingCategoryIds.length === 0) {
+        console.log(`[IntelligentSearch]   ⚠️  No categories matched for shop ${shopId.substring(0, 8)}...`);
+        console.log(`[IntelligentSearch]     Requested: ${categoryNames.join(', ')}, Item Types: ${itemTypes.join(', ')}`);
+        console.log(`[IntelligentSearch]     Available categories: ${categories.map(c => c.name).join(', ')}`);
       }
 
       // If we found matching categories, fetch items from those categories
@@ -691,7 +700,7 @@ export async function intelligentSearch(
       console.log(`[IntelligentSearch]   🔎 Searching for: "${query}"`);
       const searchResult = await searchItemsAcrossShops(shopIds, query, {
         limit: options?.itemsPerShop ? options.itemsPerShop * shopIds.length : 50,
-        minSimilarity: options?.minSimilarity ?? 0.5, // Lower threshold for better recall
+        minSimilarity: options?.minSimilarity ?? 0.35, // Lowered from 0.5 to 0.35 for better recall - similarity scores can be lower for short queries
       });
 
       return { query, searchResult };
@@ -825,7 +834,7 @@ export async function intelligentSearch(
 
     // Step 7: Calculate delivery fees for each shop
     console.log('\n[IntelligentSearch] 🎯 STEP 7: Calculating delivery fees and building results with relevance scoring...');
-    
+
     // OPTIMIZATION 2: Retrieve user preferences for personalized ranking
     // Boost items that match user's past purchase history
     let userPreferences: Array<{ entity_name: string; similarity: number; preference_value: string }> = [];
@@ -908,7 +917,7 @@ export async function intelligentSearch(
 
         // Get delivery logic from batch-fetched map (no additional DB call)
         const deliveryLogic = deliveryLogicMap.get(shop.id);
-        
+
         if (!deliveryLogic) {
           shopDeliveryFees.set(shop.id, 0);
           return;
@@ -918,7 +927,7 @@ export async function intelligentSearch(
         // This gives us the base delivery fee without surcharge or free delivery considerations
         // (since we don't know the actual cart value at search time)
         const calculation = calculateTotalDeliveryFee(0, distance, deliveryLogic);
-        
+
         // Store the base delivery fee (in PKR, not cents)
         shopDeliveryFees.set(shop.id, calculation.baseFee);
       } catch (error) {
@@ -1010,8 +1019,8 @@ export async function intelligentSearch(
         id: result.shop.id,
         name: result.shop.name,
         shopName: result.shop.name,
-        relevance: result.relevanceScore > 1 
-          ? Math.round(result.relevanceScore * 10) / 10 
+        relevance: result.relevanceScore > 1
+          ? Math.round(result.relevanceScore * 10) / 10
           : Math.round(result.relevanceScore * 100 * 10) / 10,
         relevanceScore: result.relevanceScore,
         matchingItems: result.matchingItems.length,

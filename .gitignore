@@ -45,3 +45,4 @@ yarn-error.*
 # generated native folders
 /ios
 # /android  # Keep android folder - it's needed for bare React Native builds
+.env.production

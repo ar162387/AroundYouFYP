@@ -205,18 +205,6 @@ export default function ShopScreen() {
       ? distanceInMeters <= shopDetails.deliveryLogic.freeDeliveryRadius
       : false;
 
-  console.log('ShopScreen delivery info:', {
-    passedShop: !!passedShop,
-    passedDistance,
-    passedDeliveryFee: passedShop?.delivery_fee,
-    effectiveCoords: effectiveCoords ? { lat: effectiveCoords.latitude, lng: effectiveCoords.longitude } : null,
-    shopCoords: shopDetails ? { lat: shopDetails.latitude, lng: shopDetails.longitude } : null,
-    distanceInMeters,
-    deliveryFee,
-    freeDeliveryRadius: shopDetails?.deliveryLogic?.freeDeliveryRadius,
-    showFreeDeliveryInfo,
-  });
-
   // Filter out inactive items and group by category
   const itemsByCategory = React.useMemo(() => {
     if (!categories || !allItems) return {};

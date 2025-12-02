@@ -161,13 +161,25 @@ async function generateAndStoreEmbedding(item: MerchantItem, batchIndex: number,
       return false;
     }
 
+    // Validate embedding format
+    if (!Array.isArray(embedding)) {
+      console.error(`Invalid embedding format for ${item.name}: expected array, got ${typeof embedding}`);
+      return false;
+    }
+
+    if (embedding.length !== 1536) {
+      console.error(`Invalid embedding dimension for ${item.name}: expected 1536, got ${embedding.length}`);
+      return false;
+    }
+
     // Store embedding
+    // Supabase JS client automatically converts JavaScript arrays to PostgreSQL vector type
     const { error: insertError } = await supabase
       .from('merchant_item_embeddings')
       .insert({
         merchant_item_id: item.id,
         shop_id: item.shop_id,
-        embedding: embedding,
+        embedding: embedding, // Array of 1536 numbers - Supabase handles conversion
         search_text: searchText,
       });
 
@@ -184,10 +196,27 @@ async function generateAndStoreEmbedding(item: MerchantItem, batchIndex: number,
   }
 }
 
+async function checkExistingEmbeddingsCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('merchant_item_embeddings')
+    .select('*', { count: 'exact', head: true });
+
+  if (error) {
+    console.warn('Warning: Could not check existing embeddings count:', error);
+    return 0;
+  }
+
+  return count || 0;
+}
+
 async function main() {
   console.log('=== Generating Inventory Embeddings ===\n');
 
   try {
+    // Check existing embeddings count
+    const existingCount = await checkExistingEmbeddingsCount();
+    console.log(`Existing embeddings in database: ${existingCount}\n`);
+
     // Fetch all items
     const items = await fetchAllActiveItems();
 
@@ -235,11 +264,27 @@ async function main() {
       }
     }
 
+    // Check final count
+    const finalCount = await checkExistingEmbeddingsCount();
+
     console.log('\n=== Summary ===');
     console.log(`Total items: ${items.length}`);
     console.log(`Successfully processed: ${successCount}`);
     console.log(`Failed: ${failureCount}`);
-    console.log(`\n✓ Embedding generation complete!`);
+    console.log(`Total embeddings in database: ${finalCount}`);
+    
+    if (finalCount === 0 && successCount === 0) {
+      console.log('\n⚠️  WARNING: No embeddings were generated!');
+      console.log('   This could mean:');
+      console.log('   1. All items already had embeddings (check skipped items)');
+      console.log('   2. Embedding generation failed for all items');
+      console.log('   3. Database insertion failed');
+    } else if (finalCount < items.length) {
+      console.log(`\n⚠️  WARNING: Only ${finalCount} embeddings exist for ${items.length} items`);
+      console.log('   Some items may not have embeddings. Re-run the script to generate missing embeddings.');
+    } else {
+      console.log(`\n✓ Embedding generation complete! All ${items.length} items have embeddings.`);
+    }
   } catch (error: any) {
     console.error('\n✗ Fatal error:', error);
     process.exit(1);
