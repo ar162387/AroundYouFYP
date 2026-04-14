@@ -37,7 +37,10 @@ jobs:
         run: dotnet restore "${{ env.PROJECT_FILE }}"
 
       - name: Publish
-        run: dotnet publish "${{ env.PROJECT_FILE }}" -c Release -o "${{ env.PUBLISH_DIR }}"
+        run: |
+          dotnet publish "${{ env.PROJECT_FILE }}" -c Release -o "${{ env.PUBLISH_DIR }}" \
+            -p:BuildNumber=${{ github.run_number }} \
+            -p:SourceRevisionId=${{ github.sha }}
 
       - name: Configure SSH key
         run: |

@@ -39,6 +39,8 @@ builder.Services.AddInfrastructureServices(builder.Configuration);
 builder.Services.AddScoped<IOrderHubContext, SignalROrderHubContext>();
 builder.Services.AddHostedService<DatabaseMigrationHostedService>();
 builder.Services.AddHostedService<TemplateSeedHostedService>();
+builder.Services.AddSingleton<DeploymentVersionState>();
+builder.Services.AddHostedService<DeploymentVersionInitializer>();
 
 builder.Services.AddCors(options =>
 {
@@ -88,6 +90,12 @@ app.MapControllers();
 app.MapHub<OrderHub>("/hubs/orders");
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live", timestamp = DateTimeOffset.UtcNow }));
+app.MapGet("/health/version", (DeploymentVersionState versionState) =>
+    Results.Json(versionState.Snapshot, new System.Text.Json.JsonSerializerOptions
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+    }));
 app.MapGet("/health/ready", async (AppDbContext db, CancellationToken ct) =>
 {
     var dbReady = await db.Database.CanConnectAsync(ct);

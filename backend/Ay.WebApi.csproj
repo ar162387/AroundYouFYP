@@ -7,7 +7,21 @@
     <RootNamespace>Ay.WebApi</RootNamespace>
     <AssemblyName>Ay.WebApi</AssemblyName>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <!-- CI: pass -p:BuildNumber=$(github.run_number) -p:SourceRevisionId=$(github.sha) -->
+    <BuildNumber Condition="'$(BuildNumber)' == ''">0</BuildNumber>
+    <SourceRevisionId Condition="'$(SourceRevisionId)' == ''">local</SourceRevisionId>
+    <Version>1.0.$(BuildNumber)</Version>
+    <AssemblyVersion>1.0.0.$(BuildNumber)</AssemblyVersion>
+    <FileVersion>1.0.0.$(BuildNumber)</FileVersion>
+    <InformationalVersion>1.0.$(BuildNumber)+$(SourceRevisionId)</InformationalVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildUtc</_Parameter1>
+      <_Parameter2>$([System.DateTime]::UtcNow.ToString(`yyyy-MM-dd HH:mm:ss UTC`))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <Compile Include="src/Ay.WebApi/**/*.cs" Exclude="src/Ay.WebApi/obj/**/*.cs;src/Ay.WebApi/bin/**/*.cs" />

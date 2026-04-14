@@ -59,6 +59,8 @@ backend/logs/
 backend/publish/
 backend/src/Ay.WebApi/logs/
 backend/wwwroot/uploads/
+# Runtime deploy marker (written by Ay.WebApi on startup; do not commit)
+backend/**/deployment-meta.json
 
 # backend local-only config
 backend/appsettings.Development.json
