@@ -324,14 +324,16 @@ export function InventoryItemFormSheet({
           ) : imageUri ? (
             <View className="mt-6">
               <Text className="text-sm font-semibold text-gray-700 mb-2">
-                {t('merchant.inventory.form.catalogImage') || 'Catalog image'}
+                {t('merchant.inventory.form.catalogImage', { defaultValue: 'Catalog image' })}
               </Text>
               <View className="w-24 h-24 rounded-2xl bg-gray-100 overflow-hidden border border-gray-200">
                 <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
               </View>
               <Text className="text-xs text-gray-500 mt-2">
-                {t('merchant.inventory.form.catalogImageHint') ||
-                  'This image is saved with your inventory when you add the item.'}
+                {t('merchant.inventory.form.catalogImageHint', {
+                  defaultValue:
+                    'This photo comes from the shared catalog and is shown to customers for this item.',
+                })}
               </Text>
             </View>
           ) : null}

@@ -41,12 +41,12 @@ export default function CheckoutScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { shopId } = route.params;
+  const shopId = route.params?.shopId;
   const insets = useSafeAreaInsets();
   const { getShopCart, deleteShopCart } = useCart();
   const { selectedAddress, setSelectedAddress } = useLocationSelection();
 
-  const currentCart = getShopCart(shopId);
+  const currentCart = shopId ? getShopCart(shopId) : null;
 
   const [showAddressSheet, setShowAddressSheet] = useState(false);
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
@@ -147,7 +147,7 @@ export default function CheckoutScreen() {
   // - Free delivery threshold changes (if user moves outside free delivery radius)
   // - Small order surcharge changes based on order value
   const calculateTotals = useCallback(async () => {
-    if (!currentCart || !selectedAddress) {
+    if (!shopId || !currentCart || !selectedAddress) {
       setTotals({
         subtotal: currentCart?.totalPrice || 0,
         deliveryFee: 0,
@@ -280,6 +280,10 @@ export default function CheckoutScreen() {
     addressId?: string;
     landmark?: string | null;
   }) => {
+    if (!shopId) {
+      return;
+    }
+
     setIsValidatingAddress(true);
 
     try {
@@ -327,6 +331,10 @@ export default function CheckoutScreen() {
 
   const handlePlaceOrder = async () => {
     if (isPlacingOrder || placeOrderMutation.isLoading) {
+      return;
+    }
+
+    if (!shopId) {
       return;
     }
 
@@ -470,6 +478,26 @@ export default function CheckoutScreen() {
       setIsPlacingOrder(false);
     }
   };
+
+  if (!shopId) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <View className="flex-1 items-center justify-center px-8">
+          <Text className="text-gray-900 text-lg font-semibold mb-2 text-center">
+            {t('checkout.missingShop', { defaultValue: 'Something went wrong opening checkout.' })}
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.replace('CartsManagement')}
+            className="mt-4 bg-blue-600 px-6 py-3 rounded-full"
+          >
+            <Text className="text-white font-semibold">
+              {t('cart.viewAllCarts', { defaultValue: 'View all carts' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!currentCart || currentCart.items.length === 0) {
     return (

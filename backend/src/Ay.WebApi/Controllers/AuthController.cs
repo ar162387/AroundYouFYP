@@ -33,6 +33,15 @@ public class AuthController(IAuthService authService, IDeviceTokenService device
             : Unauthorized(ToProblem(result.Error!, StatusCodes.Status401Unauthorized));
     }
 
+    [HttpPost("google")]
+    public async Task<IActionResult> Google(GoogleSignInRequest request)
+    {
+        var result = await authService.GoogleSignInAsync(request);
+        return result.IsSuccess
+            ? Ok(result.Value)
+            : Unauthorized(ToProblem(result.Error!, StatusCodes.Status401Unauthorized));
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> GetMe()

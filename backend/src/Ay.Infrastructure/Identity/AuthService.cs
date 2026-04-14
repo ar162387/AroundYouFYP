@@ -5,7 +5,9 @@ using Ay.Domain.Common;
 using Ay.Domain.Entities;
 using Ay.Domain.Enums;
 using Ay.Domain.Interfaces;
+using Google.Apis.Auth;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Ay.Infrastructure.Identity;
@@ -15,6 +17,7 @@ public class AuthService(
     IUserProfileRepository profileRepo,
     IDeviceTokenRepository deviceTokenRepo,
     IJwtTokenGenerator jwtGenerator,
+    IConfiguration config,
     ILogger<AuthService> logger) : IAuthService
 {
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
@@ -85,6 +88,113 @@ public class AuthService(
             profile.PhoneNumber,
             profile.Role.ToString().ToLower(),
             user.CreatedAt);
+        return Result.Success(new AuthResponse(token, expiresAt, dto));
+    }
+
+    public async Task<Result<AuthResponse>> GoogleSignInAsync(GoogleSignInRequest request)
+    {
+        var clientIds = GetGoogleClientIds();
+        if (clientIds.Length == 0)
+            return Result.Failure<AuthResponse>("Google sign-in is not configured on the backend.");
+
+        GoogleJsonWebSignature.Payload payload;
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(
+                request.IdToken,
+                new GoogleJsonWebSignature.ValidationSettings
+                {
+                    Audience = clientIds
+                });
+        }
+        catch (InvalidJwtException ex)
+        {
+            logger.LogWarning(ex, "Rejected invalid Google ID token");
+            return Result.Failure<AuthResponse>("Invalid Google token.");
+        }
+
+        if (string.IsNullOrWhiteSpace(payload.Email))
+            return Result.Failure<AuthResponse>("Google account did not provide an email address.");
+
+        var email = payload.Email.Trim();
+        var name = string.IsNullOrWhiteSpace(payload.Name) ? null : payload.Name.Trim();
+        var providerKey = payload.Subject;
+
+        var user = await userManager.FindByLoginAsync("Google", providerKey)
+            ?? await userManager.FindByEmailAsync(email);
+
+        if (user is null)
+        {
+            user = new AppUser
+            {
+                UserName = email,
+                Email = email,
+                EmailConfirmed = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            var createResult = await userManager.CreateAsync(user);
+            if (!createResult.Succeeded)
+                return Result.Failure<AuthResponse>(FormatIdentityErrors(createResult));
+        }
+        else if (!user.EmailConfirmed)
+        {
+            user.EmailConfirmed = true;
+            await userManager.UpdateAsync(user);
+        }
+
+        var existingGoogleUser = await userManager.FindByLoginAsync("Google", providerKey);
+        if (existingGoogleUser is null)
+        {
+            var loginResult = await userManager.AddLoginAsync(
+                user,
+                new UserLoginInfo("Google", providerKey, "Google"));
+
+            if (!loginResult.Succeeded)
+                return Result.Failure<AuthResponse>(FormatIdentityErrors(loginResult));
+        }
+        else if (existingGoogleUser.Id != user.Id)
+        {
+            return Result.Failure<AuthResponse>("This Google account is already linked to another user.");
+        }
+
+        var profile = await profileRepo.GetByUserIdAsync(user.Id);
+        if (profile is null)
+        {
+            profile = new UserProfile
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                Email = email,
+                Name = name,
+                Role = UserRole.Consumer
+            };
+            await profileRepo.CreateAsync(profile);
+        }
+        else
+        {
+            var updated = false;
+            if (string.IsNullOrWhiteSpace(profile.Email))
+            {
+                profile.Email = email;
+                updated = true;
+            }
+            if (string.IsNullOrWhiteSpace(profile.Name) && name is not null)
+            {
+                profile.Name = name;
+                updated = true;
+            }
+            if (updated)
+            {
+                profile.UpdatedAt = DateTimeOffset.UtcNow;
+                await profileRepo.UpdateAsync(profile);
+            }
+        }
+
+        var role = profile.Role.ToString().ToLowerInvariant();
+        var (token, expiresAt) = jwtGenerator.GenerateToken(user.Id, user.Email!, profile.Name, role);
+        var dto = new UserDto(user.Id, user.Email!, profile.Name, profile.PhoneNumber, role, user.CreatedAt);
+
         return Result.Success(new AuthResponse(token, expiresAt, dto));
     }
 
@@ -159,4 +269,25 @@ public class AuthService(
             return Result.Failure("An error occurred while deleting the account.");
         }
     }
+
+    private string[] GetGoogleClientIds()
+    {
+        var configured = config.GetSection("Google:ClientIds").Get<string[]>() ?? [];
+        var singleValues = new[]
+        {
+            config["Google:ClientId"],
+            config["Google:WebClientId"],
+            config["GOOGLE_WEB_CLIENT_ID"]
+        };
+
+        return configured
+            .Concat(singleValues)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .SelectMany(value => value!.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static string FormatIdentityErrors(IdentityResult result) =>
+        string.Join("; ", result.Errors.Select(e => e.Description));
 }

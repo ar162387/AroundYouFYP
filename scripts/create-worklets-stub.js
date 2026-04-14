@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-// Create a stub for react-native-worklets/plugin to satisfy Babel auto-detection
-// This is needed because react-native-worklets 0.5.2 is incompatible with RN 0.76.9
-// but something in the build chain tries to auto-load it
+// Create a stub for react-native-worklets/plugin to satisfy Babel auto-detection.
+// The app uses react-native-worklets-core; some build tooling still probes
+// react-native-worklets/plugin, so keep this stub available after installs.
 
 const fs = require('fs');
 const path = require('path');
@@ -12,18 +12,17 @@ const pluginDir = path.join(workletsDir, 'plugin');
 const pluginFile = path.join(pluginDir, 'index.js');
 const packageFile = path.join(workletsDir, 'package.json');
 
-// Only create stub if the real package doesn't exist
+// Only create a stub if the real native package doesn't exist.
 if (!fs.existsSync(workletsDir) || !fs.existsSync(path.join(workletsDir, 'android'))) {
   // Create directory structure
   if (!fs.existsSync(pluginDir)) {
     fs.mkdirSync(pluginDir, { recursive: true });
   }
 
-  // Create stub plugin
+  // Create stub plugin.
   if (!fs.existsSync(pluginFile)) {
     fs.writeFileSync(pluginFile, `// Stub plugin for react-native-worklets
-// This satisfies Babel's auto-detection without requiring the full worklets package
-// which is incompatible with RN 0.76.9
+// This satisfies Babel's auto-detection without requiring the full native package.
 module.exports = function() {
   return {
     visitor: {}

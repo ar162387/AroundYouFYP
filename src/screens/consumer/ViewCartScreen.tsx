@@ -44,14 +44,14 @@ export default function ViewCartScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { shopId } = route.params;
+  const shopId = route.params?.shopId;
   const insets = useSafeAreaInsets();
   const { coords } = useUserLocation();
   const { selectedAddress } = useLocationSelection();
   const { getShopCart, updateItemQuantity } = useCart();
   const { user } = useAuth();
 
-  const currentCart = getShopCart(shopId);
+  const currentCart = shopId ? getShopCart(shopId) : null;
   const effectiveCoords = selectedAddress?.coords || coords;
 
   // State for totals calculation
@@ -71,7 +71,7 @@ export default function ViewCartScreen() {
 
   // Calculate totals with debouncing and backend validation
   const calculateTotals = useCallback(async () => {
-    if (!currentCart) {
+    if (!shopId || !currentCart) {
       setTotals({
         subtotal: 0,
         deliveryFee: 0,
@@ -204,7 +204,7 @@ export default function ViewCartScreen() {
 
   // Handle quantity change
   const handleQuantityChange = async (itemId: string, newQuantity: number) => {
-    if (newQuantity < 0) return;
+    if (newQuantity < 0 || !shopId) return;
     await updateItemQuantity(shopId, itemId, newQuantity);
     // Totals will be recalculated via useEffect
   };
@@ -250,6 +250,26 @@ export default function ViewCartScreen() {
       },
     });
   };
+
+  if (!shopId) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50">
+        <View className="flex-1 items-center justify-center px-8">
+          <Text className="text-gray-900 text-lg font-semibold mb-2 text-center">
+            {t('cart.missingShop', { defaultValue: 'Something went wrong opening this cart.' })}
+          </Text>
+          <TouchableOpacity
+            onPress={() => navigation.replace('CartsManagement')}
+            className="mt-4 bg-blue-600 px-6 py-3 rounded-full"
+          >
+            <Text className="text-white font-semibold">
+              {t('cart.viewAllCarts', { defaultValue: 'View all carts' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!currentCart || currentCart.items.length === 0) {
     return (
@@ -478,7 +498,7 @@ export default function ViewCartScreen() {
             // Check if user is authenticated
             if (!user) {
               // Navigate to SignUp screen, and return to ViewCart after signup
-              navigation.navigate('SignUp', { returnTo: 'ViewCart' });
+              navigation.navigate('SignUp', { returnTo: 'ViewCart', shopId });
               return;
             }
             // User is authenticated, proceed to checkout

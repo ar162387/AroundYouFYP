@@ -499,7 +499,11 @@
                 "addNewItem": "Add New Item",
                 "alreadyAdded": "Already Added",
                 "alreadyAddedDesc": "This item is already available in your shop.",
-                "close": "Close"
+                "close": "Close",
+                "categoryHelp": "Choose a template to pre-fill a new category, or type your own name and description. When editing, change the fields below—template cards are read-only.",
+                "startFromTemplate": "Start from a template",
+                "linkedToTemplate": "Linked to template: {{name}}",
+                "sharedTemplate": "Shared catalog"
             },
             "items": {
                 "emptyTitle": "Your inventory is empty",
@@ -548,6 +552,8 @@
                 "changeImage": "Change Image",
                 "removeImage": "Remove",
                 "imageHint": "Upload a square image (1:1 ratio) for best results",
+                "catalogImage": "Catalog image",
+                "catalogImageHint": "This photo comes from the shared catalog and is shown to customers for this item.",
                 "itemDetails": "Item Details",
                 "categoryDetails": "Category Details"
             },

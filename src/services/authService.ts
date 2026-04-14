@@ -146,10 +146,14 @@ export async function signInWithGoogle(): Promise<{ user: User | null; error: Au
       return { user: null, error: { message: 'Failed to get Google ID token' } };
     }
 
-    return {
-      user: null,
-      error: { message: 'Google sign-in is currently unavailable on the backend. Use email login.' },
-    };
+    const response = await apiClient.post<AuthResponse>(
+      '/api/v1/auth/google',
+      { idToken: userInfo.data.idToken },
+      { requiresAuth: false }
+    );
+    await detachDeviceTokenFromPreviousSession();
+    const user = await persistAuth(response);
+    return { user, error: null };
   } catch (error: any) {
     // Handle specific Google Sign-In errors
     if (error.code === statusCodes.SIGN_IN_CANCELLED) {
@@ -166,7 +170,8 @@ export async function signInWithGoogle(): Promise<{ user: User | null; error: Au
         } 
       };
     }
-    return { user: null, error: { message: error.message || 'An error occurred during Google sign-in' } };
+    const apiError = toApiError(error);
+    return { user: null, error: { message: apiError.message || 'An error occurred during Google sign-in' } };
   }
 }
 
@@ -286,4 +291,3 @@ export async function deleteUserProfile(
     return { error: { message: apiError.message } };
   }
 }
-

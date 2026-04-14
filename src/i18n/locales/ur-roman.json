@@ -499,7 +499,11 @@
                 "addNewItem": "Naya Item shamil karein",
                 "alreadyAdded": "Pehle se shamil hai",
                 "alreadyAddedDesc": "Yeh item aap ki dukan mein pehle se mojood hai.",
-                "close": "Band karein"
+                "close": "Band karein",
+                "categoryHelp": "Nayi category ke liye template muntakhib karein taake naam aur tafseel bhar jaye, ya apna matn likhein. Tarmeem ke doran neeche wale khanay badlein—template cards sirf parhne ke liye hain.",
+                "startFromTemplate": "Template se shuru karein",
+                "linkedToTemplate": "Sanche se munsalik: {{name}}",
+                "sharedTemplate": "Mushtarka catalog"
             },
             "items": {
                 "emptyTitle": "Aap ki inventory khali hai",
@@ -548,6 +552,8 @@
                 "changeImage": "Tasveer tabdeel karein",
                 "removeImage": "Hata dein",
                 "imageHint": "Behtareen nataij ke liye murabba tasveer (1:1 ratio) upload karein",
+                "catalogImage": "Catalog tasveer",
+                "catalogImageHint": "Yeh tasveer mushtarka catalog se hai aur gahakon ko is product ke liye dikhai jati hai.",
                 "itemDetails": "Item ki tafseelat",
                 "categoryDetails": "Category ki tafseelat"
             },

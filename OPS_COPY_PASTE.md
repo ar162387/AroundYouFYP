@@ -6,8 +6,8 @@ Use this file as your quick command playbook.
 
 ```bash
 cd /Users/syedshahabdurrehman/Code/ay
-chmod 600 ./aroundyou-ssh-oracle-priv.key
-ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165
+chmod 600 ./ssh-key.key
+ssh -i ./ssh-key.key ubuntu@193.123.68.165
 ```
 
 ## 2) Check backend health
@@ -42,7 +42,7 @@ Copy `accessToken` value and paste in merchant verification page.
 ## 5) Promote a user to admin role (if needed)
 
 ```bash
-ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo -u postgres psql -d ay_db <<'SQL'
+ssh -i ./ssh-key.key ubuntu@193.123.68.165 "sudo -u postgres psql -d ay_db <<'SQL'
 UPDATE user_profiles
 SET \"Role\"='admin', \"UpdatedAt\"=NOW() AT TIME ZONE 'utc'
 WHERE \"Email\"='admin@aroundyou.com';
@@ -133,7 +133,7 @@ Run this whenever certificate changes on VPS:
 
 ```bash
 cd /Users/syedshahabdurrehman/Code/ay
-./scripts/sync-vps-cert.sh ubuntu@193.123.68.165 ./aroundyou-ssh-oracle-priv.key
+./scripts/sync-vps-cert.sh ubuntu@193.123.68.165 ./ssh-key.key
 ```
 
 Then rebuild app:
@@ -150,14 +150,17 @@ Then rebuild app:
 
 ```text
 BACKEND_API_URL=https://193.123.68.165
+GOOGLE_WEB_CLIENT_ID=<same Web client ID as in Google Cloud Console — OAuth 2.0 Web application client>
 ```
+
+The **Web client ID** string must match what the backend accepts as `Google:ClientId` (or `Google__ClientId` on the server). If they differ, sign-in fails after account picker with “Invalid Google token” or similar.
 
 ## 12) Useful quick checks on VPS
 
 ```bash
-ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo systemctl is-active ay-backend nginx postgresql"
-ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo ss -ltn | awk 'NR==1 || /:80|:443|:5017|:5432/'"
-ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo journalctl -u ay-backend -n 80 --no-pager"
+ssh -i ./ssh-key.key ubuntu@193.123.68.165 "sudo systemctl is-active ay-backend nginx postgresql"
+ssh -i ./ssh-key.key ubuntu@193.123.68.165 "sudo ss -ltn | awk 'NR==1 || /:80|:443|:5017|:5432/'"
+ssh -i ./ssh-key.key ubuntu@193.123.68.165 "sudo journalctl -u ay-backend -n 80 --no-pager"
 ```
 
 ## 13) Cloudinary (required for merchant shop + item images)
@@ -195,4 +198,59 @@ Legacy DB rows may still reference `/uploads/...`; static files under `wwwroot` 
 
 ```bash
 curl -sS http://193.123.68.165/health/version
+```
+
+## 15) Google Sign-In — backend `Google__ClientId` (VPS)
+
+The API validates the mobile ID token’s `aud` claim against configured client IDs. Set the **Web application** OAuth client ID (the same value as `GOOGLE_WEB_CLIENT_ID` in the app).
+
+**Option A — baked into published `appsettings.json` (after deploy)**  
+If `backend/appsettings.json` in the repo already contains `Google:ClientId`, a successful deploy ships it; no VPS step is strictly required.
+
+**Option B — systemd override (recommended for clarity / easy rotation)**
+
+```bash
+ssh -i ./ssh-key.key ubuntu@193.123.68.165
+sudo mkdir -p /etc/systemd/system/ay-backend.service.d
+sudo nano /etc/systemd/system/ay-backend.service.d/70-google-oauth.conf
+```
+
+Use (replace with your real Web client ID from Google Cloud Console; the value is not a private secret, but do not paste unrelated keys here):
+
+```ini
+[Service]
+Environment="Google__ClientId=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
+```
+
+Multiple audiences are supported in config as `Google:ClientIds` (array) or comma-separated `Google:ClientId` in appsettings; on the shell you can add another line:
+
+```ini
+Environment="Google__WebClientId=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com"
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ay-backend
+sudo systemctl is-active ay-backend
+```
+
+**Option C — one `ssh` command from your laptop (avoids hangs)**  
+Do **not** pipe a multi-line script into `ssh … bash -s` if that script uses nested `<<EOF` heredocs: stdin is shared and the session can appear **stuck** (or `sudo` waits on a TTY). From the repo root, after `chmod 600 ./ssh-key.key`:
+
+```bash
+ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 \
+  -i ./ssh-key.key ubuntu@193.123.68.165 \
+  "sudo mkdir -p /etc/systemd/system/ay-backend.service.d && printf '%s\n' '[Service]' 'Environment=\"Google__ClientId=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com\"' | sudo tee /etc/systemd/system/ay-backend.service.d/70-google-oauth.conf >/dev/null && sudo systemctl daemon-reload && sudo systemctl restart ay-backend && sudo systemctl is-active ay-backend"
+```
+
+Replace `YOUR_WEB_CLIENT_ID.apps.googleusercontent.com` with the same Web client ID string as `GOOGLE_WEB_CLIENT_ID` in the app.
+
+**Smoke test** (expect `401` and a problem `detail`, not `404` — `404` means the new build is not live yet):
+
+```bash
+curl -sS -i -X POST "https://193.123.68.165/api/v1/auth/google" \
+  -H "Content-Type: application/json" \
+  -d '{"idToken":"invalid"}' | head -n 20
 ```

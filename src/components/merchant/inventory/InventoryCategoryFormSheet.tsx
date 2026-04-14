@@ -127,13 +127,18 @@ export function InventoryCategoryFormSheet({
             {mode === 'create' ? t('merchant.inventory.form.createCategory') : t('merchant.inventory.form.editCategory')}
           </Text>
           <Text className="text-xs text-gray-500 mt-2">
-            {t('merchant.inventory.common.categoryHelp')}
+            {t('merchant.inventory.common.categoryHelp', {
+              defaultValue:
+                'Choose a template to pre-fill a new category, or type your own name and description. When editing, change the fields below—template cards are read-only.',
+            })}
           </Text>
         </View>
         <View className="flex-1 px-6 pt-6">
           {groupedTemplateCategories.length > 0 ? (
             <View className="mb-6">
-              <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.common.startFromTemplate')}</Text>
+              <Text className="text-sm font-semibold text-gray-700">
+                {t('merchant.inventory.common.startFromTemplate', { defaultValue: 'Start from a template' })}
+              </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -174,7 +179,13 @@ export function InventoryCategoryFormSheet({
               </ScrollView>
               {isEditMode && defaultCategory?.templateId ? (
                 <Text className="text-xs text-gray-500 mt-2">
-                  Linked to template: {templateCategories?.find((tpl) => tpl.id === defaultCategory.templateId)?.name || 'Shared template'}
+                  {t('merchant.inventory.common.linkedToTemplate', {
+                    name:
+                      templateCategories?.find((tpl) => tpl.id === defaultCategory.templateId)?.name ??
+                      t('merchant.inventory.common.sharedTemplate', { defaultValue: 'Shared catalog' }),
+                    defaultValue:
+                      'Linked to template: {{name}}',
+                  })}
                 </Text>
               ) : null}
             </View>
@@ -261,7 +272,9 @@ export function InventoryCategoryFormSheet({
               {deleteLoading ? (
                 <ActivityIndicator size="small" color="#DC2626" />
               ) : (
-                <Text className="text-sm font-semibold text-red-600">{t('merchant.inventory.items.deleteTitle')}</Text>
+                <Text className="text-sm font-semibold text-red-600">
+                  {t('merchant.inventory.categories.deleteTitle')}
+                </Text>
               )}
             </TouchableOpacity>
           ) : null}

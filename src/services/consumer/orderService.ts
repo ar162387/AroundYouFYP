@@ -1,6 +1,7 @@
 import {
   Order,
   OrderCalculation,
+  OrderItem,
   OrderWithAll,
   OrderWithItems,
   PlaceOrderRequest,
@@ -8,6 +9,27 @@ import {
 } from '../../types/orders';
 import { apiClient, toApiError } from '../apiClient';
 import { subscribeToOrderGroup } from '../orderRealtime';
+
+/** API returns line items as `items`; apiClient snake_case pass-through leaves that key as `items`, not `order_items`. */
+type ConsumerOrderPayload = OrderWithAll & { items?: OrderItem[] };
+
+function mergedOrderLineItems(order: ConsumerOrderPayload): OrderItem[] {
+  if (Array.isArray(order.order_items) && order.order_items.length > 0) {
+    return order.order_items;
+  }
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    return order.items;
+  }
+  return order.order_items ?? [];
+}
+
+function normalizeConsumerOrder(order: ConsumerOrderPayload): OrderWithAll {
+  const { items: _items, ...rest } = order;
+  return {
+    ...(rest as OrderWithAll),
+    order_items: mergedOrderLineItems(order),
+  };
+}
 
 export async function calculateOrderTotals(
   shopId: string,
@@ -36,7 +58,8 @@ export async function placeOrder(request: PlaceOrderRequest): Promise<PlaceOrder
 
 export async function getUserOrders(): Promise<OrderWithAll[]> {
   try {
-    return await apiClient.get<OrderWithAll[]>('/api/v1/consumer/orders');
+    const list = await apiClient.get<ConsumerOrderPayload[]>('/api/v1/consumer/orders');
+    return list.map(normalizeConsumerOrder);
   } catch {
     return [];
   }
@@ -44,7 +67,8 @@ export async function getUserOrders(): Promise<OrderWithAll[]> {
 
 export async function getOrderById(orderId: string): Promise<OrderWithAll | null> {
   try {
-    return await apiClient.get<OrderWithAll>(`/api/v1/consumer/orders/${orderId}`);
+    const order = await apiClient.get<ConsumerOrderPayload>(`/api/v1/consumer/orders/${orderId}`);
+    return normalizeConsumerOrder(order);
   } catch {
     return null;
   }
@@ -52,7 +76,8 @@ export async function getOrderById(orderId: string): Promise<OrderWithAll | null
 
 export async function getActiveOrder(): Promise<OrderWithAll | null> {
   try {
-    return await apiClient.get<OrderWithAll>('/api/v1/consumer/orders/active');
+    const order = await apiClient.get<ConsumerOrderPayload>('/api/v1/consumer/orders/active');
+    return normalizeConsumerOrder(order);
   } catch {
     return null;
   }

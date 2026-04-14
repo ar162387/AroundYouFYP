@@ -8,7 +8,9 @@ buildscript {
         targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '35')
         kotlinVersion = findProperty('android.kotlinVersion') ?: '2.0.21'
 
-        ndkVersion = "26.1.10909125"
+        // NDK r27 supports 16 KB ELF alignment with ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES.
+        // This version is already installed in the local SDK, avoiding Gradle's r28 license prompt.
+        ndkVersion = "27.1.12297006"
     }
     repositories {
         google()
@@ -45,6 +47,19 @@ allprojects {
 // @react-native-voice/voice pins com.android.support:appcompat-v7:28.0.0. Jetifier can OOM on
 // react-android AARs, so keep Jetifier off and redirect this legacy coordinate to AndroidX.
 subprojects { subproject ->
+    subproject.plugins.withId("com.android.library") {
+        def nativeProjectsRequiringFlexiblePageSizes = [
+            "react-native-reanimated",
+            "react-native-screens",
+        ]
+
+        if (nativeProjectsRequiringFlexiblePageSizes.contains(subproject.name)) {
+            subproject.android.defaultConfig.externalNativeBuild.cmake.arguments(
+                "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+            )
+        }
+    }
+
     subproject.configurations.configureEach { configuration ->
         configuration.resolutionStrategy.eachDependency { details ->
             if (details.requested.group == "com.android.support" && details.requested.name == "appcompat-v7") {

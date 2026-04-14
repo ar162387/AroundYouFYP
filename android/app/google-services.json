@@ -12,7 +12,20 @@
           "package_name": "com.aroundyou.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1676740848-2eprtte4ciqo3i6km0vn07ahgcn787v2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aroundyou.app",
+            "certificate_hash": "5943677ecb5e9e507fccbf597f13c2c62eade934"
+          }
+        },
+        {
+          "client_id": "1676740848-mic1iv84nmsulpupmnb1mcv27m9oqkh1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDMvBHzy9YfZfqEG80lLN0P6XP7XnJtOXI"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1676740848-mic1iv84nmsulpupmnb1mcv27m9oqkh1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

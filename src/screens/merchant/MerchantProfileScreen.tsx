@@ -574,7 +574,7 @@ export default function MerchantProfileScreen() {
 
           </>
         )}
-        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 1.0.4</Text>
+        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 1.0.8</Text>
       </ScrollView>
 
       <LanguageActionSheet
@@ -615,4 +615,3 @@ function ListItem({ icon, title, right, onPress }: { icon?: React.ReactNode; tit
 function Separator() {
   return <View className="h-px bg-gray-200 mx-4" />;
 }
-

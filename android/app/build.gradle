@@ -75,6 +75,11 @@ react {
  * Enabled by default for production releases to reduce app size and obfuscate code.
  */
 def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInReleaseBuilds') ?: true).toBoolean()
+def uploadCrashlyticsMappingInRelease = (
+    findProperty('firebaseCrashlytics.mappingFileUploadEnabled') ?:
+    System.getenv('FIREBASE_CRASHLYTICS_MAPPING_UPLOAD') ?:
+    false
+).toString().toBoolean()
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -110,8 +115,8 @@ android {
         applicationId 'com.aroundyou.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 5
-        versionName "1.0.5"
+        versionCode 8
+        versionName "1.0.8"
         
         // react-native-config
         resValue "string", "build_config_package", "com.aroundyou.app"
@@ -201,6 +206,9 @@ android {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             crunchPngs (findProperty('android.enablePngCrunchInReleaseBuilds')?.toBoolean() ?: true)
+            firebaseCrashlytics {
+                mappingFileUploadEnabled uploadCrashlyticsMappingInRelease
+            }
         }
     }
     packagingOptions {

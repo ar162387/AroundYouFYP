@@ -6,6 +6,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import type { RootStackParamList } from '../navigation/types';
+import { navigateAfterConsumerAuth } from '../navigation/consumerAuthReturn';
 import { useAuth } from '../context/AuthContext';
 import GoogleIcon from '../icons/GoogleIcon';
 
@@ -39,26 +40,18 @@ export default function LoginScreen({ navigation, route }: Props) {
   const screenHeight = Dimensions.get('window').height;
   const upperSectionHeight = screenHeight * 0.35; // Reduced from 0.5 to 0.35 to fit all content
   const returnTo = route.params?.returnTo;
+  const shopId = route.params?.shopId;
 
   // Navigate back when user successfully logs in
   useEffect(() => {
     if (isFocused && user && !loading) {
-      // If returnTo is specified, navigate to it
-      // Otherwise, just go back to the previous screen
       if (returnTo) {
-        // Check if returnTo is a tab screen - if so, navigate to Home which contains tabs
-        const tabScreens = ['HomeTab', 'SearchTab', 'ProfileTab'];
-        if (tabScreens.includes(returnTo)) {
-          navigation.navigate('Home' as any);
-        } else {
-          // Type assertion needed because returnTo could be any screen key
-          navigation.navigate(returnTo as any);
-        }
+        navigateAfterConsumerAuth(navigation, { returnTo, shopId });
       } else {
         navigation.goBack();
       }
     }
-  }, [isFocused, user, loading, returnTo, navigation]);
+  }, [isFocused, user, loading, returnTo, shopId, navigation]);
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -231,7 +224,10 @@ export default function LoginScreen({ navigation, route }: Props) {
             {/* Sign Up Link */}
             <View className="flex-row justify-center items-center">
               <Text className="text-gray-600 text-base">Don't have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('SignUp', { returnTo })} disabled={loading}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('SignUp', { returnTo, shopId })}
+                disabled={loading}
+              >
                 <Text className="text-blue-600 font-semibold text-base">Sign Up</Text>
               </TouchableOpacity>
             </View>

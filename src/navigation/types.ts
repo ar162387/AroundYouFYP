@@ -16,8 +16,8 @@ export type RootStackParamList = {
   OrderStatus: { orderId: string };
   Orders: undefined;
   MapTest: undefined;
-  Login: { returnTo?: keyof RootStackParamList };
-  SignUp: { returnTo?: keyof RootStackParamList };
+  Login: { returnTo?: keyof RootStackParamList; shopId?: string };
+  SignUp: { returnTo?: keyof RootStackParamList; shopId?: string };
   LocationPermission: undefined;
   FirstLaunchMap: { useCurrentLocation?: boolean };
   MerchantRegistrationSurvey: undefined;

@@ -413,7 +413,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         )}
-        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 1.0.4</Text>
+        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 1.0.8</Text>
       </ScrollView>
 
       <LanguageActionSheet

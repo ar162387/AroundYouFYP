@@ -89,6 +89,7 @@ export function useOrder(orderId: string | undefined) {
           order_items:
             (patch.order_items as OrderWithAll['order_items'] | undefined) ??
             (patch.orderItems as OrderWithAll['order_items'] | undefined) ??
+            (patch.items as OrderWithAll['order_items'] | undefined) ??
             old.order_items ??
             [],
           shop: (patch.shop as OrderWithAll['shop'] | undefined) ?? old.shop,

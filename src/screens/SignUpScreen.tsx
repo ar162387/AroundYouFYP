@@ -5,6 +5,7 @@ import { RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import type { RootStackParamList } from '../navigation/types';
+import { navigateAfterConsumerAuth } from '../navigation/consumerAuthReturn';
 import { useAuth } from '../context/AuthContext';
 import GoogleIcon from '../icons/GoogleIcon';
 
@@ -40,6 +41,7 @@ export default function SignUpScreen({ navigation, route }: Props) {
   const screenHeight = Dimensions.get('window').height;
   const upperSectionHeight = screenHeight * 0.40; // Reduced from 0.5 to 0.35 to fit all content
   const returnTo = route.params?.returnTo;
+  const shopId = route.params?.shopId;
 
   const handleEmailSignUp = async () => {
     if (!email.trim()) {
@@ -107,10 +109,14 @@ export default function SignUpScreen({ navigation, route }: Props) {
       return;
     }
 
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Home' as never }],
-    });
+    if (returnTo) {
+      navigateAfterConsumerAuth(navigation, { returnTo, shopId });
+    } else {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Home' as never }],
+      });
+    }
   };
 
   const handleGoogleSignUp = async () => {
@@ -271,7 +277,10 @@ export default function SignUpScreen({ navigation, route }: Props) {
                 {/* Sign In Link */}
                 <View className="flex-row justify-center items-center">
                   <Text className="text-gray-600 text-base">Already have an account? </Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('Login', { returnTo })} disabled={loading}>
+                  <TouchableOpacity
+                    onPress={() => navigation.navigate('Login', { returnTo, shopId })}
+                    disabled={loading}
+                  >
                     <Text className="text-blue-600 font-semibold text-base">Sign In</Text>
                   </TouchableOpacity>
                 </View>
