@@ -22,6 +22,7 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 
 import ShopTypeImage from '../../icons/shopTypeRemote';
 import { useTranslation } from 'react-i18next';
+import BackIcon from '../../icons/BackIcon';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CreateShop'>;
 type CreateShopRouteProp = RNRouteProp<RootStackParamList, 'CreateShop'>;
@@ -270,10 +271,10 @@ export default function CreateShopScreen() {
           <View className="flex-row items-center mb-4">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
-              className="mr-3"
+              className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
               activeOpacity={0.7}
             >
-              <Text className="text-white text-2xl">{isRTL ? '→' : '←'}</Text>
+              <BackIcon size={20} color="#374151" />
             </TouchableOpacity>
             <Text className="text-white text-2xl font-bold flex-1">{t('merchant.createShop.title')}</Text>
           </View>

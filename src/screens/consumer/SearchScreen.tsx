@@ -6,6 +6,7 @@ import { useUserLocation } from '../../hooks/consumer/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
 import { searchShopsAndItems, fetchSampleItemsForShop, type ShopSearchResult, type SearchItem } from '../../services/consumer/searchService';
 import ShopCard from '../../components/consumer/ShopCard';
+import BackIcon from '../../icons/BackIcon';
 
 export default function 
 SearchScreen() {
@@ -86,9 +87,9 @@ SearchScreen() {
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
-            className="w-10 h-12 items-center justify-center mr-2"
+            className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-2"
           >
-            <Text className="text-2xl">←</Text>
+            <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
         )}
         <View className="flex-1 flex-row items-center bg-gray-100 rounded-2xl px-4 py-3">

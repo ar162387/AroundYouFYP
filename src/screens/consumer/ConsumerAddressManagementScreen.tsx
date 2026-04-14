@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import * as addressService from '../../services/consumer/addressService';
 import EditIcon from '../../icons/EditIcon';
 import DeleteIcon from '../../icons/DeleteIcon';
+import BackIcon from '../../icons/BackIcon';
 import AddressListSkeleton from '../../skeleton/AddressListSkeleton';
 import { useTranslation } from 'react-i18next';
 
@@ -87,9 +88,9 @@ export default function ConsumerAddressManagementScreen() {
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
-            className="w-10 h-10 items-center justify-center mr-3"
+            className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
           >
-            <Text className="text-2xl text-gray-900">←</Text>
+            <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
           <Text className="text-2xl font-bold text-gray-900 flex-1">{t('address.manageAddresses')}</Text>
         </View>
@@ -116,9 +117,9 @@ export default function ConsumerAddressManagementScreen() {
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
-          className="w-10 h-10 items-center justify-center mr-3"
+          className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
         >
-          <Text className="text-2xl text-gray-900">←</Text>
+          <BackIcon size={20} color="#374151" />
         </TouchableOpacity>
         <Text className="text-2xl font-bold text-gray-900 flex-1">{t('address.manageAddresses')}</Text>
       </View>

@@ -7,7 +7,7 @@ import { refreshPersistentNotification } from './persistentOrderNotificationServ
 type ServiceResult<T> = { data: T | null; error: Error | null };
 
 let isInitialized = false;
-let initializedUserId: string | null = null;
+let initializedIdentity: string | null = null;
 let tokenRefreshUnsubscribe: (() => void) | null = null;
 let messageUnsubscribe: (() => void) | null = null;
 
@@ -181,8 +181,9 @@ export async function unregisterAllDeviceTokensForUser(
 export async function handleForegroundNotification(remoteMessage: any): Promise<void> {
   try {
     const { notification, data } = remoteMessage;
-
-    if (!notification) return;
+    const title = notification?.title || data?.title || data?.notification_title || 'New Notification';
+    const body = notification?.body || data?.body || data?.message || '';
+    if (!title && !body) return;
 
     // Check if we have notification permissions (Android 13+)
     if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -207,8 +208,8 @@ export async function handleForegroundNotification(remoteMessage: any): Promise<
     
     await notifee.displayNotification({
       id: notificationId,
-      title: notification.title || 'New Notification',
-      body: notification.body || '',
+      title,
+      body,
       data,
       android: {
         channelId: 'order_notifications',
@@ -290,8 +291,11 @@ export function setupNotificationTapHandler(
 /**
  * Initialize notification system
  */
-export async function initializeNotifications(userId: string | null): Promise<void> {
-  if (isInitialized && initializedUserId === userId) {
+export async function initializeNotifications(
+  userId: string | null
+): Promise<void> {
+  const identity = userId;
+  if (isInitialized && initializedIdentity === identity) {
     console.log('Notifications already initialized for current user');
     return;
   }
@@ -347,7 +351,7 @@ export async function initializeNotifications(userId: string | null): Promise<vo
     // It will display notifications automatically when app is in background/quit state
 
     isInitialized = true;
-    initializedUserId = userId;
+    initializedIdentity = identity;
     console.log('Notifications initialized successfully');
   } catch (error) {
     console.error('Error initializing notifications:', error);
@@ -372,7 +376,7 @@ export async function cleanupNotifications(token?: string, userId?: string): Pro
     await unregisterDeviceToken(token);
   }
   isInitialized = false;
-  initializedUserId = null;
+  initializedIdentity = null;
   console.log('Notifications cleaned up');
 }
 

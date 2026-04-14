@@ -35,13 +35,13 @@ import {
   formatPrice,
 } from '../../../types/orders';
 import { useTranslation } from 'react-i18next';
+import BackIcon from '../../../icons/BackIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'MerchantOrder'>;
 
 export default function MerchantOrderScreen() {
   const { t, i18n } = useTranslation();
-  const isRTL = i18n.language === 'ur';
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { shopId, orderId } = route.params;
@@ -321,9 +321,9 @@ export default function MerchantOrderScreen() {
         <View className="flex-row items-center justify-between">
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
+            className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
           >
-            <Text className="text-gray-700 text-lg">{isRTL ? '→' : '←'}</Text>
+            <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
           <View className="flex-1 ml-3">
             <Text className="text-gray-900 text-lg font-bold">

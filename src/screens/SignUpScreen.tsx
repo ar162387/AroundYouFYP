@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -35,35 +35,11 @@ export default function SignUpScreen({ navigation, route }: Props) {
     });
     setGeneralError(null);
   };
-  const { signUp, completeConsumerProfile, signInWithGoogle, user } = useAuth();
+  const { signUp, completeConsumerProfile, signInWithGoogle } = useAuth();
   const insets = useSafeAreaInsets();
   const screenHeight = Dimensions.get('window').height;
   const upperSectionHeight = screenHeight * 0.40; // Reduced from 0.5 to 0.35 to fit all content
   const returnTo = route.params?.returnTo;
-
-  // For normal sign-in and Google flow, keep previous behavior.
-  // For email sign-up, do not navigate until profile step is completed.
-  useEffect(() => {
-    if (user && !loading && signupStep === 'credentials') {
-      // If returnTo is specified, navigate to it
-      // Otherwise, just go back to the previous screen
-      if (returnTo) {
-        // Check if returnTo is a tab screen - if so, navigate to Home which contains tabs
-        const tabScreens = ['HomeTab', 'SearchTab', 'ProfileTab'];
-        if (tabScreens.includes(returnTo)) {
-          navigation.navigate('Home' as any);
-        } else if (returnTo === 'ViewCart') {
-          // For ViewCart, use goBack() to preserve route params (shopId)
-          navigation.goBack();
-        } else {
-          // Type assertion needed because returnTo could be any screen key
-          navigation.navigate(returnTo as any);
-        }
-      } else {
-        navigation.goBack();
-      }
-    }
-  }, [user, loading, returnTo, navigation, signupStep]);
 
   const handleEmailSignUp = async () => {
     if (!email.trim()) {
@@ -131,7 +107,10 @@ export default function SignUpScreen({ navigation, route }: Props) {
       return;
     }
 
-    navigation.navigate('Home');
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Home' as never }],
+    });
   };
 
   const handleGoogleSignUp = async () => {
@@ -141,8 +120,11 @@ export default function SignUpScreen({ navigation, route }: Props) {
 
     if (error) {
       Alert.alert('Google Sign-Up Failed', error);
+      return;
     }
-    // Navigation will happen automatically via useEffect when user is set
+    setSignupStep('profile');
+    setFieldErrors({});
+    setGeneralError(null);
   };
 
   const handleClose = () => {

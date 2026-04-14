@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LinearGradient from 'react-native-linear-gradient';
 import type { RootStackParamList } from '../navigation/types';
@@ -33,6 +34,7 @@ export default function LoginScreen({ navigation, route }: Props) {
     setGeneralError(null);
   };
   const { signIn, signInWithGoogle, user } = useAuth();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const screenHeight = Dimensions.get('window').height;
   const upperSectionHeight = screenHeight * 0.35; // Reduced from 0.5 to 0.35 to fit all content
@@ -40,7 +42,7 @@ export default function LoginScreen({ navigation, route }: Props) {
 
   // Navigate back when user successfully logs in
   useEffect(() => {
-    if (user && !loading) {
+    if (isFocused && user && !loading) {
       // If returnTo is specified, navigate to it
       // Otherwise, just go back to the previous screen
       if (returnTo) {
@@ -56,7 +58,7 @@ export default function LoginScreen({ navigation, route }: Props) {
         navigation.goBack();
       }
     }
-  }, [user, loading, returnTo, navigation]);
+  }, [isFocused, user, loading, returnTo, navigation]);
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {

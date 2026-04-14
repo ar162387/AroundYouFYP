@@ -175,7 +175,7 @@ public class ConsumerOrderService(
         if (merchantUserId != Guid.Empty)
         {
             _ = notifications.SendAsync(
-                merchantUserId, "merchant",
+                merchantUserId,
                 "New Order!",
                 $"Order #{orderNumber} received at {shop.Name}.",
                 new Dictionary<string, string> { ["orderId"] = order.Id.ToString(), ["shopId"] = shop.Id.ToString() });
@@ -251,7 +251,7 @@ public class ConsumerOrderService(
             if (merchantUserId != Guid.Empty)
             {
                 _ = notifications.SendAsync(
-                    merchantUserId, "merchant",
+                    merchantUserId,
                     "Order Cancelled",
                     $"Order #{order.OrderNumber} was cancelled by the customer.",
                     new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "cancelled" });

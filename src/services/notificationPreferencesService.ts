@@ -18,12 +18,10 @@ const TABLE = 'notification_preferences';
  */
 export async function getNotificationPreferences(
   _userId: string,
-  role: 'consumer' | 'merchant'
+  _role: 'consumer' | 'merchant'
 ): Promise<ServiceResult<NotificationPreference>> {
   try {
-    if (role !== 'consumer') {
-      return { data: null, error: new ApiError('Only consumer preferences are supported.', 422) };
-    }
+    // Backend currently exposes a shared authenticated endpoint for app users.
     const data = await apiClient.get<NotificationPreference>('/api/v1/consumer/notification-preferences');
     return { data, error: null };
   } catch (error) {
@@ -40,13 +38,10 @@ export async function getNotificationPreferences(
  */
 export async function updateNotificationPreferences(
   _userId: string,
-  role: 'consumer' | 'merchant',
+  _role: 'consumer' | 'merchant',
   allowPushNotifications: boolean
 ): Promise<ServiceResult<NotificationPreference>> {
   try {
-    if (role !== 'consumer') {
-      return { data: null, error: new ApiError('Only consumer preferences are supported.', 422) };
-    }
     const data = await apiClient.put<NotificationPreference>(
       '/api/v1/consumer/notification-preferences',
       { allow_push_notifications: allowPushNotifications }

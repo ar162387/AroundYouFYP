@@ -23,7 +23,6 @@ public class FirebaseNotificationService(
 
     public async Task SendAsync(
         Guid userId,
-        string role,
         string title,
         string body,
         Dictionary<string, string>? data = null)
@@ -33,7 +32,10 @@ public class FirebaseNotificationService(
         var prefRepo = scope.ServiceProvider.GetRequiredService<INotificationPreferenceRepository>();
 
         // 1. Check notification preferences
-        var pref = await prefRepo.GetAsync(userId, role);
+        // Notification preference is treated as user-level (role-agnostic).
+        // Fallback to legacy merchant-row in case older data exists there.
+        var pref = await prefRepo.GetAsync(userId, "consumer")
+            ?? await prefRepo.GetAsync(userId, "merchant");
         if (pref is not null && !pref.AllowPushNotifications)
         {
             logger.LogDebug("Push suppressed for user {UserId} (preference off)", userId);

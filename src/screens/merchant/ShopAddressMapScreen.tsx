@@ -21,6 +21,7 @@ import { useGeoapifyAutocomplete, SearchResult } from '../../hooks/useLocationQu
 import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
+import BackIcon from '../../icons/BackIcon';
 import { useTranslation } from 'react-i18next';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ShopAddressMap'>;
@@ -439,10 +440,10 @@ export default function ShopAddressMapScreen() {
           <View className="flex-row items-center mb-2">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
-              className="mr-3"
+              className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
               activeOpacity={0.7}
             >
-              <Text className="text-white text-2xl">{isRTL ? '→' : '←'}</Text>
+              <BackIcon size={20} color="#374151" />
             </TouchableOpacity>
             <Text className="text-white text-xl font-bold flex-1">{t('merchant.addressMap.title')}</Text>
           </View>

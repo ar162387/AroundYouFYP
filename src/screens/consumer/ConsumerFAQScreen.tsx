@@ -8,6 +8,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import LinearGradient from 'react-native-linear-gradient';
 import ChevronDownIcon from '../../icons/ChevronDownIcon';
 import ChevronUpIcon from '../../icons/ChevronUpIcon';
+import BackIcon from '../../icons/BackIcon';
 
 type FAQScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -295,12 +296,10 @@ export default function ConsumerFAQScreen() {
         <View className={`flex-row items-center ${isRTL ? 'flex-row-reverse' : ''}`}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            className={isRTL ? 'ml-4' : 'mr-4'}
+            className={`w-10 h-10 rounded-full bg-gray-100 items-center justify-center ${isRTL ? 'ml-4' : 'mr-4'}`}
             accessibilityRole="button"
           >
-            <Text className="text-blue-600 text-base font-semibold">
-              {t('consumer.faq.back')}
-            </Text>
+            <BackIcon size={20} color="#374151" />
           </TouchableOpacity>
           <Text className={`text-2xl font-bold text-gray-900 flex-1 ${isRTL ? 'text-right' : 'text-left'}`}>
             {t('consumer.faq.title')}

@@ -19,6 +19,7 @@ import type { MerchantShop } from '../../../services/merchant/shopService';
 import { getMerchantShops } from '../../../services/merchant/shopService';
 import { useAuth } from '../../../context/AuthContext';
 import ReviewsSection from './sections/ReviewsSection';
+import BackIcon from '../../../icons/BackIcon';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'MerchantShopPortal'>;
@@ -48,6 +49,9 @@ export default function MerchantShopPortalScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
   const activeIndexRef = useRef(0);
   const scrollRef = useRef<ScrollView | null>(null);
+  const tabScrollRef = useRef<ScrollView | null>(null);
+  const tabLayoutsRef = useRef<Partial<Record<TabKey, { x: number; width: number }>>>({});
+  const tabViewportWidthRef = useRef(0);
   const isProgrammaticScrollRef = useRef(false);
 
   const activeIndex = useMemo(() => TABS.findIndex((tab) => tab.key === activeTab), [activeTab]);
@@ -102,6 +106,28 @@ export default function MerchantShopPortalScreen() {
     });
   }, [activeIndex, screenWidth]);
 
+  const scrollActiveTabIntoView = useCallback((index: number, animated = true) => {
+    const tabKey = TABS[index]?.key;
+    if (!tabKey) {
+      return;
+    }
+
+    const tabLayout = tabLayoutsRef.current[tabKey];
+    const viewportWidth = tabViewportWidthRef.current;
+
+    if (!tabLayout || viewportWidth <= 0) {
+      return;
+    }
+
+    // Center active chip when possible; ScrollView clamps bounds automatically.
+    const centeredX = Math.max(0, tabLayout.x - (viewportWidth - tabLayout.width) / 2);
+    tabScrollRef.current?.scrollTo({ x: centeredX, animated });
+  }, []);
+
+  useEffect(() => {
+    scrollActiveTabIntoView(activeIndex, true);
+  }, [activeIndex, screenWidth, scrollActiveTabIntoView]);
+
   const handleMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = event.nativeEvent.contentOffset.x;
@@ -126,12 +152,13 @@ export default function MerchantShopPortalScreen() {
       activeIndexRef.current = index;
       isProgrammaticScrollRef.current = true;
       setActiveTab(tabKey);
+      scrollActiveTabIntoView(index, true);
       scrollRef.current?.scrollTo({
         x: index * screenWidth,
         animated: true,
       });
     },
-    [screenWidth]
+    [screenWidth, scrollActiveTabIntoView]
   );
 
   const renderSection = useCallback(
@@ -193,11 +220,11 @@ export default function MerchantShopPortalScreen() {
           <View className="flex-row items-center justify-between">
             <TouchableOpacity
               onPress={() => navigation.goBack()}
-              className="w-10 h-10 rounded-full bg-white/20 items-center justify-center"
+              className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
-              <Text className="text-white text-lg">{'<'}</Text>
+              <BackIcon size={20} color="#374151" />
             </TouchableOpacity>
             <View className="ml-4 flex-1">
               <Text className="text-white/80 text-xs uppercase tracking-widest">Shop workspace</Text>
@@ -228,9 +255,14 @@ export default function MerchantShopPortalScreen() {
         <View className="bg-white rounded-t-3xl flex-1">
           <View className="px-5 pt-5">
             <ScrollView
+              ref={tabScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingRight: 20 }}
+              onLayout={(event) => {
+                tabViewportWidthRef.current = event.nativeEvent.layout.width;
+                scrollActiveTabIntoView(activeIndex, false);
+              }}
             >
               {TABS.map((tab, index) => {
                 const isActive = activeTab === tab.key;
@@ -242,6 +274,13 @@ export default function MerchantShopPortalScreen() {
                     onPress={() => handleTabPress(tab.key, index)}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: isActive }}
+                    onLayout={(event) => {
+                      const { x, width } = event.nativeEvent.layout;
+                      tabLayoutsRef.current[tab.key] = { x, width };
+                      if (isActive) {
+                        scrollActiveTabIntoView(index, false);
+                      }
+                    }}
                   >
                     <Text className={`text-sm font-semibold ${isActive ? 'text-white' : 'text-gray-600'}`}>
                       {tab.label}

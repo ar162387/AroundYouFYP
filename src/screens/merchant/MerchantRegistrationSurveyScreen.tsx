@@ -6,6 +6,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import * as merchantService from '../../services/merchant/merchantService';
 import { setAuthSession } from '../../services/authTokenStorage';
+import BackIcon from '../../icons/BackIcon';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -66,7 +67,16 @@ export default function MerchantRegistrationSurveyScreen() {
     <View className="flex-1 bg-gray-50">
       {/* Header */}
       <View className="pt-12 pb-4 px-4 bg-white border-b border-gray-200">
-        <Text className="text-2xl font-bold text-gray-900">Merchant Registration</Text>
+        <View className="flex-row items-center">
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3"
+            activeOpacity={0.7}
+          >
+            <BackIcon size={20} color="#374151" />
+          </TouchableOpacity>
+          <Text className="text-2xl font-bold text-gray-900">Merchant Registration</Text>
+        </View>
         <Text className="text-gray-500 text-sm mt-1">Tell us about your business</Text>
       </View>
 

@@ -71,7 +71,7 @@ public class MerchantOrderService(
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "confirmed");
         _ = notifications.SendAsync(
-            order.UserId, "consumer",
+            order.UserId,
             "Order Confirmed",
             $"Your order #{order.OrderNumber} has been confirmed.",
             new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "confirmed" });
@@ -107,7 +107,7 @@ public class MerchantOrderService(
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "out_for_delivery");
         _ = notifications.SendAsync(
-            order.UserId, "consumer",
+            order.UserId,
             "On the Way!",
             $"Your order #{order.OrderNumber} is out for delivery.",
             new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "out_for_delivery" });
@@ -152,7 +152,7 @@ public class MerchantOrderService(
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "delivered");
         _ = notifications.SendAsync(
-            order.UserId, "consumer",
+            order.UserId,
             "Delivered!",
             $"Your order #{order.OrderNumber} has been delivered. Enjoy!",
             new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "delivered" });
@@ -183,7 +183,7 @@ public class MerchantOrderService(
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "cancelled");
         _ = notifications.SendAsync(
-            order.UserId, "consumer",
+            order.UserId,
             "Order Cancelled",
             $"Your order #{order.OrderNumber} was cancelled by the merchant.",
             new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "cancelled" });

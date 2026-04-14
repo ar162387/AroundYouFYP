@@ -13,13 +13,11 @@ public interface INotificationService
     /// iterates all device tokens, logging each send attempt.
     /// </summary>
     /// <param name="userId">Target user.</param>
-    /// <param name="role">Preference role context ("consumer" | "merchant").</param>
     /// <param name="title">Notification title.</param>
     /// <param name="body">Notification body.</param>
     /// <param name="data">Optional key-value payload forwarded to the client app.</param>
     Task SendAsync(
         Guid userId,
-        string role,
         string title,
         string body,
         Dictionary<string, string>? data = null);
