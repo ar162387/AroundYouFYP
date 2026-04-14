@@ -57,6 +57,34 @@ jobs:
             "${{ env.PUBLISH_DIR }}/" \
             "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_HOST }}:${{ env.REMOTE_TMP_DIR }}/"
 
+      - name: Configure Firebase credentials
+        env:
+          FIREBASE_ADMIN_JSON: ${{ secrets.FIREBASE_ADMIN_JSON }}
+        run: |
+          if [ -z "${FIREBASE_ADMIN_JSON}" ]; then
+            echo "FIREBASE_ADMIN_JSON secret is not set; keeping existing server Firebase configuration."
+            exit 0
+          fi
+
+          local_credential="$(mktemp)"
+          printf '%s' "${FIREBASE_ADMIN_JSON}" > "${local_credential}"
+
+          scp -i ~/.ssh/id_rsa "${local_credential}" \
+            "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_HOST }}:/tmp/ay-firebase-admin.json"
+          rm -f "${local_credential}"
+
+          ssh -i ~/.ssh/id_rsa "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_HOST }}" "
+            set -e
+            sudo mkdir -p /etc/ay/firebase
+            sudo install -o www-data -g www-data -m 0400 /tmp/ay-firebase-admin.json /etc/ay/firebase/firebase-admin.json
+            sudo rm -f /tmp/ay-firebase-admin.json
+            printf '%s\n' '[Service]' \
+              'Environment=\"Firebase__CredentialsPath=/etc/ay/firebase/firebase-admin.json\"' \
+              'Environment=\"GOOGLE_APPLICATION_CREDENTIALS=/etc/ay/firebase/firebase-admin.json\"' \
+              | sudo tee /etc/systemd/system/ay-backend.service.d/60-firebase.conf >/dev/null
+            sudo systemctl daemon-reload
+          "
+
       - name: Activate release and restart backend
         run: |
           ssh -i ~/.ssh/id_rsa "${{ secrets.ORACLE_SSH_USER }}@${{ secrets.ORACLE_HOST }}" "

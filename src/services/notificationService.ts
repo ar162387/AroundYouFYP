@@ -11,6 +11,20 @@ let initializedIdentity: string | null = null;
 let tokenRefreshUnsubscribe: (() => void) | null = null;
 let messageUnsubscribe: (() => void) | null = null;
 
+function sanitizeNotificationKey(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 60);
+}
+
+function buildNotificationId(data: any, prefix: string): string {
+  const role = sanitizeNotificationKey(data?.notificationRole || data?.role || 'general');
+  const type = sanitizeNotificationKey(data?.type || 'message');
+  const orderId = sanitizeNotificationKey(data?.orderId || Date.now());
+  return `${prefix}_${role}_${type}_${orderId}`;
+}
+
 /**
  * Request notification permissions
  * On Android 13+, we need to request POST_NOTIFICATIONS permission explicitly
@@ -145,7 +159,7 @@ export async function unregisterDeviceToken(token: string): Promise<ServiceResul
     return { data: null, error: null };
   } catch (error) {
     const apiError = toApiError(error);
-    // 401: session already replaced (e.g. account switch) — avoid noisy LogBox
+    // 401: session already replaced (e.g. account switch); avoid noisy LogBox
     if (apiError.status !== 401) {
       console.error('Exception unregistering device token:', error);
     }
@@ -204,7 +218,7 @@ export async function handleForegroundNotification(remoteMessage: any): Promise<
 
     // Display notification using Notifee - ensure it appears in notification panel
     // Use a unique ID so each notification appears separately
-    const notificationId = `order_${data.orderId || Date.now()}`;
+    const notificationId = buildNotificationId(data, 'order');
     
     await notifee.displayNotification({
       id: notificationId,
@@ -236,7 +250,7 @@ export async function handleForegroundNotification(remoteMessage: any): Promise<
       },
     });
 
-    console.log('Foreground notification displayed:', notification.title);
+    console.log('Foreground notification displayed:', title);
     
     // If this is an order status notification, refresh persistent notification
     if (data && (data.type === 'order_status' || data.type === 'active_order')) {
@@ -379,4 +393,3 @@ export async function cleanupNotifications(token?: string, userId?: string): Pro
   initializedIdentity = null;
   console.log('Notifications cleaned up');
 }
-

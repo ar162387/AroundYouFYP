@@ -70,11 +70,23 @@ public class MerchantOrderService(
         logger.LogInformation("Order {OrderId} confirmed", orderId);
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "confirmed");
+        var confirmTitle = "Order Confirmed";
+        var confirmBody = $"Your order #{order.OrderNumber} has been confirmed.";
         _ = notifications.SendAsync(
             order.UserId,
-            "Order Confirmed",
-            $"Your order #{order.OrderNumber} has been confirmed.",
-            new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "confirmed" });
+            confirmTitle,
+            confirmBody,
+            new Dictionary<string, string>
+            {
+                ["type"] = "order_status",
+                ["orderId"] = orderId.ToString(),
+                ["status"] = "confirmed",
+                ["role"] = "consumer",
+                ["notificationRole"] = "consumer",
+                ["title"] = confirmTitle,
+                ["body"] = confirmBody,
+            },
+            role: "consumer");
 
         return Result.Success();
     }
@@ -106,11 +118,23 @@ public class MerchantOrderService(
         logger.LogInformation("Order {OrderId} dispatched with runner {RunnerId}", orderId, runnerId);
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "out_for_delivery");
+        var dispatchTitle = "On the Way!";
+        var dispatchBody = $"Your order #{order.OrderNumber} is out for delivery.";
         _ = notifications.SendAsync(
             order.UserId,
-            "On the Way!",
-            $"Your order #{order.OrderNumber} is out for delivery.",
-            new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "out_for_delivery" });
+            dispatchTitle,
+            dispatchBody,
+            new Dictionary<string, string>
+            {
+                ["type"] = "order_status",
+                ["orderId"] = orderId.ToString(),
+                ["status"] = "out_for_delivery",
+                ["role"] = "consumer",
+                ["notificationRole"] = "consumer",
+                ["title"] = dispatchTitle,
+                ["body"] = dispatchBody,
+            },
+            role: "consumer");
 
         return Result.Success();
     }
@@ -151,11 +175,23 @@ public class MerchantOrderService(
         logger.LogInformation("Order {OrderId} delivered", orderId);
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "delivered");
+        var deliveredTitle = "Delivered!";
+        var deliveredBody = $"Your order #{order.OrderNumber} has been delivered. Enjoy!";
         _ = notifications.SendAsync(
             order.UserId,
-            "Delivered!",
-            $"Your order #{order.OrderNumber} has been delivered. Enjoy!",
-            new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "delivered" });
+            deliveredTitle,
+            deliveredBody,
+            new Dictionary<string, string>
+            {
+                ["type"] = "order_status",
+                ["orderId"] = orderId.ToString(),
+                ["status"] = "delivered",
+                ["role"] = "consumer",
+                ["notificationRole"] = "consumer",
+                ["title"] = deliveredTitle,
+                ["body"] = deliveredBody,
+            },
+            role: "consumer");
 
         return Result.Success();
     }
@@ -182,11 +218,23 @@ public class MerchantOrderService(
         logger.LogInformation("Order {OrderId} cancelled by merchant", orderId);
 
         await orderHub.NotifyOrderUpdatedAsync(orderId, "cancelled");
+        var cancelTitle = "Order Cancelled";
+        var cancelBody = $"Your order #{order.OrderNumber} was cancelled by the merchant.";
         _ = notifications.SendAsync(
             order.UserId,
-            "Order Cancelled",
-            $"Your order #{order.OrderNumber} was cancelled by the merchant.",
-            new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "cancelled" });
+            cancelTitle,
+            cancelBody,
+            new Dictionary<string, string>
+            {
+                ["type"] = "order_status",
+                ["orderId"] = orderId.ToString(),
+                ["status"] = "cancelled",
+                ["role"] = "consumer",
+                ["notificationRole"] = "consumer",
+                ["title"] = cancelTitle,
+                ["body"] = cancelBody,
+            },
+            role: "consumer");
 
         return Result.Success();
     }

@@ -188,9 +188,12 @@ public class ConsumerOrderService(
                     ["type"] = "new_order",
                     ["orderId"] = order.Id.ToString(),
                     ["shopId"] = shop.Id.ToString(),
+                    ["role"] = "merchant",
+                    ["notificationRole"] = "merchant",
                     ["title"] = merchantTitle,
                     ["body"] = merchantBody,
-                }).ContinueWith(t =>
+                },
+                role: "merchant").ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                         logger.LogError(t.Exception, "Merchant new-order push FAILED for user {MerchantUserId}", merchantUserId);
@@ -200,7 +203,7 @@ public class ConsumerOrderService(
         }
         else
         {
-            logger.LogWarning("No merchant userId found for shop {ShopId} (MerchantId={MerchantId}) — skipping push",
+            logger.LogWarning("No merchant userId found for shop {ShopId} (MerchantId={MerchantId}); skipping push",
                 shop.Id, shop.MerchantId);
         }
 
@@ -285,9 +288,12 @@ public class ConsumerOrderService(
                         ["orderId"] = orderId.ToString(),
                         ["shopId"] = order.Shop.Id.ToString(),
                         ["status"] = "cancelled",
+                        ["role"] = "merchant",
+                        ["notificationRole"] = "merchant",
                         ["title"] = cancelTitle,
                         ["body"] = cancelBody,
-                    }).ContinueWith(t =>
+                    },
+                    role: "merchant").ContinueWith(t =>
                     {
                         if (t.IsFaulted)
                             logger.LogError(t.Exception, "Merchant cancel push FAILED for user {MerchantUserId}", merchantUserId);

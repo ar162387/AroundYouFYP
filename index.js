@@ -5,6 +5,20 @@ import notifee, { AndroidImportance } from '@notifee/react-native';
 import './global.css';
 import App from './App';
 
+function sanitizeNotificationKey(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 60);
+}
+
+function buildNotificationId(data, prefix) {
+  const role = sanitizeNotificationKey(data?.notificationRole || data?.role || 'general');
+  const type = sanitizeNotificationKey(data?.type || 'message');
+  const orderId = sanitizeNotificationKey(data?.orderId || Date.now());
+  return `${prefix}_${role}_${type}_${orderId}`;
+}
+
 // React Native app name must match the MainActivity component name
 AppRegistry.registerComponent('main', () => App);
 
@@ -33,7 +47,7 @@ messaging().setBackgroundMessageHandler(async (remoteMessage) => {
   });
 
   await notifee.displayNotification({
-    id: `bg_${data.orderId || Date.now()}`,
+    id: buildNotificationId(data, 'bg'),
     title,
     body,
     data,
