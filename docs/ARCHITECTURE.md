@@ -69,7 +69,7 @@ All I/O, persistence, and external integrations. This is the only layer that kno
 - **Identity Setup** — `AspNetUsers` table integration, password hashing, claims
 - **JWT Provider** — Token generation and validation
 - **FCM Client** — Firebase Cloud Messaging push notification sender
-- **File Storage** — Local disk storage using `IWebHostEnvironment.ContentRootPath`
+- **File Storage** — Cloudinary uploads for merchant shop/item images (`IFileStorageService`)
 - **Background Services** — `IHostedService` implementations (e.g., webhook event outbox processor)
 - **DI Registration** — `InfrastructureServiceExtensions.AddInfrastructure(IServiceCollection)` extension method
 
@@ -138,7 +138,7 @@ The entry point and HTTP boundary. Contains zero business logic.
 | Validation | FluentValidation | Registered via `AddFluentValidationAutoValidation()` |
 | Real-Time | ASP.NET Core SignalR | Replaces Supabase Realtime; `OrderHub` |
 | Push Notifications | Firebase Admin SDK (.NET) | Replaces Supabase Edge Functions calling FCM |
-| File Storage | Local disk (`wwwroot/uploads/`) | Accessed via `IWebHostEnvironment.ContentRootPath` |
+| File Storage | Cloudinary | Merchant shop/item images via `IFileStorageService` → HTTPS URLs in DB |
 | Error Responses | ProblemDetails (RFC 7807) | All error bodies conform to this spec |
 | API Versioning | `Asp.Versioning.Mvc` | URL-based `/api/v1/` |
 | Logging | `Microsoft.Extensions.Logging` + Serilog | Structured logging to file and console |
@@ -259,17 +259,9 @@ Environment Variables (prod)  ← set on VPS/server; override all above
 
 ## 10. File Storage Convention
 
-All file paths use `IWebHostEnvironment.ContentRootPath` and `Path.Combine(...)`. Absolute paths are forbidden.
+Merchant **shop** and **inventory item** images are uploaded through `MerchantUploadsController`, persisted via **Cloudinary**, and the API stores the returned **secure HTTPS URL** on the shop or item row. Configure `CLOUDINARY_URL` or `Cloudinary:Url` (same `cloudinary://…` string as in the Cloudinary console).
 
-```csharp
-// Correct
-var uploadPath = Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "shops");
-
-// Forbidden
-var uploadPath = "/home/ubuntu/ay/uploads/shops";
-```
-
-Shop images, item images, and profile images are stored under `wwwroot/uploads/{entity}/{id}/`. The URL returned to clients is relative (e.g., `/uploads/shops/abc123/banner.jpg`) so it works on both local (`http://localhost:5000`) and production (`https://api.ay.pk`).
+`UseStaticFiles()` remains enabled so any **legacy** rows that still reference `/uploads/...` can be served from `wwwroot` until those assets are replaced; new uploads do not write to local disk.
 
 ---
 

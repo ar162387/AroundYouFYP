@@ -6,9 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 namespace Ay.WebApi.Controllers.Merchant;
 
 /// <summary>
-/// Image-upload endpoints for merchant-owned shops and their items.
-/// Files are stored under wwwroot/uploads/ and returned as relative URLs
-/// that the mobile app uses as the imageUrl field.
+/// Image-upload endpoints for merchant-owned shops and their items. Files are stored on Cloudinary; the response
+/// contains a secure HTTPS URL for the <c>imageUrl</c> field.
 /// </summary>
 [ApiController]
 [Route("api/v1/merchant")]

@@ -9,6 +9,7 @@ using Ay.Infrastructure.Identity;
 using Ay.Infrastructure.Persistence;
 using Ay.Infrastructure.Persistence.Repositories;
 using Ay.Infrastructure.Services;
+using CloudinaryDotNet;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -107,8 +108,18 @@ public static class InfrastructureServiceExtensions
         // Notifications (FCM)
         services.AddSingleton<INotificationService, FirebaseNotificationService>();
 
-        // File storage
-        services.AddScoped<IFileStorageService, LocalFileStorageService>();
+        // Merchant image uploads (shop + inventory) — Cloudinary only.
+        var cloudinaryUrl = config["CLOUDINARY_URL"] ?? config["Cloudinary:Url"];
+        if (string.IsNullOrWhiteSpace(cloudinaryUrl))
+        {
+            throw new InvalidOperationException(
+                "Cloudinary is required: set environment variable CLOUDINARY_URL or configuration key Cloudinary:Url " +
+                "(cloudinary://api_key:api_secret@cloud_name from the Cloudinary dashboard).");
+        }
+
+        var (cloudName, apiKey, apiSecret) = CloudinaryUrlParser.Parse(cloudinaryUrl);
+        services.AddSingleton(_ => new Cloudinary(new Account(cloudName, apiKey, apiSecret)));
+        services.AddScoped<IFileStorageService, CloudinaryFileStorageService>();
 
         // Phase 3 — Consumer services
         services.AddScoped<IConsumerProfileService, ConsumerProfileService>();

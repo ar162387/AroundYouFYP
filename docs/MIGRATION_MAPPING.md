@@ -171,10 +171,10 @@ Supabase Storage bucket `shop-images` used for shop/item images. URL constructed
 ### New (.NET)
 | Supabase Storage Feature | .NET Equivalent |
 |---|---|
-| Upload to bucket | `IFormFile` in controller → `IFileStorageService.SaveAsync()` → write to `wwwroot/uploads/{entity}/{id}/` |
-| Public URL | Relative URL `/uploads/shops/{shopId}/banner.jpg` served as static files via `UseStaticFiles()` |
-| Delete file | `IFileStorageService.DeleteAsync(relativePath)` |
-| Path construction | `Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", ...)` — no absolute paths |
+| Upload to bucket | `IFormFile` in controller → `IFileStorageService.SaveAsync()` → Cloudinary image upload |
+| Public URL | Secure HTTPS URL from Cloudinary stored on the shop/item record |
+| Delete file | `IFileStorageService.Delete(storedUrl)` (Cloudinary destroy when URL is a Cloudinary delivery URL) |
+| Configuration | `CLOUDINARY_URL` or `Cloudinary:Url` (`cloudinary://api_key:api_secret@cloud_name`) |
 
 ---
 

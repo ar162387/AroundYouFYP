@@ -86,7 +86,22 @@ adb reverse tcp:8081 tcp:8081
 npm run android
 ```
 
-## 8) Build release APK (for testing)
+## 8) Build APKs (debug + release)
+
+Debug APK:
+
+```bash
+cd /Users/syedshahabdurrehman/Code/ay
+./android/gradlew -p ./android :app:assembleDebug
+```
+
+Output:
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+Release APK:
 
 ```bash
 cd /Users/syedshahabdurrehman/Code/ay
@@ -143,4 +158,41 @@ BACKEND_API_URL=https://193.123.68.165
 ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo systemctl is-active ay-backend nginx postgresql"
 ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo ss -ltn | awk 'NR==1 || /:80|:443|:5017|:5432/'"
 ssh -i ./aroundyou-ssh-oracle-priv.key ubuntu@193.123.68.165 "sudo journalctl -u ay-backend -n 80 --no-pager"
+```
+
+## 13) Cloudinary (required for merchant shop + item images)
+
+The API **requires** `CLOUDINARY_URL` (or `Cloudinary:Url` / `Cloudinary__Url`) at startup — copy the `cloudinary://…` value from the Cloudinary dashboard.
+
+**Local:** in gitignored `backend/appsettings.Development.json`, set `Cloudinary:Url`, or export `CLOUDINARY_URL` before `dotnet run`.
+
+**Production (VPS):** a systemd drop-in installs the variable (see deploy notes). To set or replace it manually:
+
+```bash
+ssh -i ./ssh-key.key ubuntu@193.123.68.165
+sudo mkdir -p /etc/systemd/system/ay-backend.service.d
+sudo nano /etc/systemd/system/ay-backend.service.d/50-cloudinary.conf
+```
+
+Use (paste your real URL from the Cloudinary console; do not commit secrets to git):
+
+```ini
+[Service]
+Environment="CLOUDINARY_URL=cloudinary://YOUR_API_KEY:YOUR_API_SECRET@YOUR_CLOUD_NAME"
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ay-backend
+sudo systemctl is-active ay-backend
+```
+
+Legacy DB rows may still reference `/uploads/...`; static files under `wwwroot` can continue to serve those until replaced. New uploads use Cloudinary only.
+
+## 14) Backend version check
+
+```bash
+curl -sS http://193.123.68.165/health/version
 ```
