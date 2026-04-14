@@ -27,29 +27,40 @@ public class FirebaseNotificationService(
         string body,
         Dictionary<string, string>? data = null)
     {
+        logger.LogInformation(
+            "[FCM] SendAsync called — userId={UserId}, title={Title}",
+            userId, title);
+
         await using var scope = scopeFactory.CreateAsyncScope();
         var deviceTokenRepo = scope.ServiceProvider.GetRequiredService<IDeviceTokenRepository>();
         var prefRepo = scope.ServiceProvider.GetRequiredService<INotificationPreferenceRepository>();
 
         // 1. Check notification preferences (dual consumer+merchant accounts share one user id).
-        // Allow if either role row is missing or allows — suppress only when BOTH rows exist and are off.
-        // This avoids "consumer profile push off" blocking merchant new-order alerts for the same person.
         var consumerPref = await prefRepo.GetAsync(userId, "consumer");
         var merchantPref = await prefRepo.GetAsync(userId, "merchant");
         var consumerAllows = consumerPref?.AllowPushNotifications ?? true;
         var merchantAllows = merchantPref?.AllowPushNotifications ?? true;
         var allowPush = consumerAllows || merchantAllows;
+
+        logger.LogInformation(
+            "[FCM] Prefs for {UserId}: consumerRow={ConsumerExists}({ConsumerAllows}), merchantRow={MerchantExists}({MerchantAllows}) → allow={Allow}",
+            userId,
+            consumerPref is not null, consumerAllows,
+            merchantPref is not null, merchantAllows,
+            allowPush);
+
         if (!allowPush)
         {
-            logger.LogDebug("Push suppressed for user {UserId} (consumer and merchant prefs both off)", userId);
+            logger.LogWarning("[FCM] Push suppressed for user {UserId} — both prefs off", userId);
             return;
         }
 
         // 2. Fetch device tokens
         var tokens = await deviceTokenRepo.GetByUserIdAsync(userId);
+        logger.LogInformation("[FCM] Device tokens for {UserId}: count={Count}", userId, tokens.Count);
         if (tokens.Count == 0)
         {
-            logger.LogDebug("No device tokens registered for user {UserId}", userId);
+            logger.LogWarning("[FCM] No device tokens for user {UserId} — cannot send", userId);
             return;
         }
 
@@ -74,7 +85,7 @@ public class FirebaseNotificationService(
 
                 var messageId = await messaging.SendAsync(message);
                 logger.LogInformation(
-                    "FCM sent to user {UserId} token …{Suffix}: {MessageId}",
+                    "[FCM] Sent to user {UserId} token …{Suffix}: messageId={MessageId}",
                     userId, device.Token[^6..], messageId);
             }
             catch (FirebaseMessagingException ex) when (
@@ -82,14 +93,13 @@ public class FirebaseNotificationService(
                     or MessagingErrorCode.Unregistered
                     or MessagingErrorCode.SenderIdMismatch)
             {
-                // Stale / invalid token — remove it so we don't keep trying
                 logger.LogWarning(
-                    "Removing stale FCM token for user {UserId}: {Error}", userId, ex.Message);
+                    "[FCM] Removing stale token for user {UserId}: {Error}", userId, ex.Message);
                 await deviceTokenRepo.DeleteByTokenAsync(device.Token);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "FCM send failed for user {UserId}", userId);
+                logger.LogError(ex, "[FCM] Send FAILED for user {UserId}", userId);
             }
         }
     }

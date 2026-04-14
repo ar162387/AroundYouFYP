@@ -11,18 +11,21 @@ export type NotificationPreference = {
   updated_at: string;
 };
 
-const TABLE = 'notification_preferences';
+function prefEndpoint(role: 'consumer' | 'merchant'): string {
+  return role === 'merchant'
+    ? '/api/v1/merchant/notification-preferences'
+    : '/api/v1/consumer/notification-preferences';
+}
 
 /**
  * Get notification preferences for a user and role
  */
 export async function getNotificationPreferences(
   _userId: string,
-  _role: 'consumer' | 'merchant'
+  role: 'consumer' | 'merchant'
 ): Promise<ServiceResult<NotificationPreference>> {
   try {
-    // Backend currently exposes a shared authenticated endpoint for app users.
-    const data = await apiClient.get<NotificationPreference>('/api/v1/consumer/notification-preferences');
+    const data = await apiClient.get<NotificationPreference>(prefEndpoint(role));
     return { data, error: null };
   } catch (error) {
     const apiError = toApiError(error);
@@ -38,12 +41,12 @@ export async function getNotificationPreferences(
  */
 export async function updateNotificationPreferences(
   _userId: string,
-  _role: 'consumer' | 'merchant',
+  role: 'consumer' | 'merchant',
   allowPushNotifications: boolean
 ): Promise<ServiceResult<NotificationPreference>> {
   try {
     const data = await apiClient.put<NotificationPreference>(
-      '/api/v1/consumer/notification-preferences',
+      prefEndpoint(role),
       { allow_push_notifications: allowPushNotifications }
     );
     return { data, error: null };
@@ -61,8 +64,7 @@ export async function areNotificationsEnabled(
   role: 'consumer' | 'merchant'
 ): Promise<boolean> {
   const { data } = await getNotificationPreferences(userId, role);
-  
-  // Default to enabled if no preference exists
+
   if (!data) {
     return true;
   }

@@ -174,6 +174,9 @@ public class ConsumerOrderService(
             .FirstOrDefaultAsync();
         if (merchantUserId != Guid.Empty)
         {
+            logger.LogInformation(
+                "Sending merchant new-order push: merchantUserId={MerchantUserId}, orderId={OrderId}, shopId={ShopId}",
+                merchantUserId, order.Id, shop.Id);
             var merchantTitle = "New Order!";
             var merchantBody = $"Order #{orderNumber} received at {shop.Name}.";
             _ = notifications.SendAsync(
@@ -187,7 +190,18 @@ public class ConsumerOrderService(
                     ["shopId"] = shop.Id.ToString(),
                     ["title"] = merchantTitle,
                     ["body"] = merchantBody,
-                });
+                }).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                        logger.LogError(t.Exception, "Merchant new-order push FAILED for user {MerchantUserId}", merchantUserId);
+                    else
+                        logger.LogInformation("Merchant new-order push completed for user {MerchantUserId}", merchantUserId);
+                }, TaskScheduler.Default);
+        }
+        else
+        {
+            logger.LogWarning("No merchant userId found for shop {ShopId} (MerchantId={MerchantId}) — skipping push",
+                shop.Id, shop.MerchantId);
         }
 
         return Result.Success(ToDto(created!, false));
@@ -273,7 +287,11 @@ public class ConsumerOrderService(
                         ["status"] = "cancelled",
                         ["title"] = cancelTitle,
                         ["body"] = cancelBody,
-                    });
+                    }).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                            logger.LogError(t.Exception, "Merchant cancel push FAILED for user {MerchantUserId}", merchantUserId);
+                    }, TaskScheduler.Default);
             }
         }
 
