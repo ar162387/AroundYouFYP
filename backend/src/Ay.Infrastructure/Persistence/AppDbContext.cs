@@ -40,8 +40,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.Property(p => p.Role)
                 .HasConversion(
                     v => v.ToString().ToLower(),
-                    v => Enum.Parse<Domain.Enums.UserRole>(v, ignoreCase: true))
+                    v => Enum.Parse<Domain.Enums.UserRole>(v, true))
                 .HasMaxLength(20);
+            e.Property(p => p.PhoneNumber).HasMaxLength(20);
             e.Property(p => p.CreatedAt).HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
             e.Property(p => p.UpdatedAt).HasDefaultValueSql("NOW() AT TIME ZONE 'utc'");
             e.HasOne<AppUser>()

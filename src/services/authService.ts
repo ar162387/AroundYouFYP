@@ -7,6 +7,7 @@ import { clearAuthSession, getAccessToken, setAuthSession } from './authTokenSto
 type MeApiPayload = User & {
   access_token?: string;
   expires_at?: string;
+  phoneNumber?: string | null;
 };
 
 export type UserRole = 'consumer' | 'merchant' | 'admin';
@@ -15,6 +16,7 @@ export interface User {
   id: string;
   email: string | null;
   name?: string | null;
+  phone_number?: string | null;
   role: UserRole;
   created_at: string;
 }
@@ -31,6 +33,8 @@ type AuthResponse = {
     id: string;
     email: string;
     name?: string | null;
+    phone_number?: string | null;
+    phoneNumber?: string | null;
     role: UserRole;
     created_at: string;
   };
@@ -41,6 +45,7 @@ function mapUser(user: AuthResponse['user']): User {
     id: user.id,
     email: user.email,
     name: user.name ?? null,
+    phone_number: user.phone_number ?? user.phoneNumber ?? null,
     role: user.role || 'consumer',
     created_at: user.created_at,
   };
@@ -210,6 +215,7 @@ export async function getCurrentUser(): Promise<{ user: User | null; error: Auth
       id: payload.id,
       email: payload.email,
       name: payload.name ?? null,
+      phone_number: payload.phone_number ?? payload.phoneNumber ?? null,
       role: payload.role || 'consumer',
       created_at: payload.created_at,
     };
@@ -221,6 +227,27 @@ export async function getCurrentUser(): Promise<{ user: User | null; error: Auth
       return { user: null, error: null };
     }
     return { user: null, error: { message: apiError.message } };
+  }
+}
+
+export async function updateConsumerProfile(
+  name: string,
+  phoneNumber: string
+): Promise<{ error: AuthError | null }> {
+  try {
+    await apiClient.put('/api/v1/auth/me', {
+      name,
+      phoneNumber,
+    });
+    return { error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return {
+      error: {
+        message: apiError.message,
+        fieldErrors: Object.keys(apiError.fieldErrors).length ? apiError.fieldErrors : undefined,
+      },
+    };
   }
 }
 

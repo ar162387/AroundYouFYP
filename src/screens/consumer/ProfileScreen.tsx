@@ -23,6 +23,15 @@ import LinearGradient from 'react-native-linear-gradient';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+function formatPakPhoneNumber(phone: string | null | undefined): string {
+  if (!phone) return 'Not set';
+  const trimmed = phone.trim();
+  const normalized = trimmed.startsWith('+92') ? trimmed : `+92${trimmed.replace(/^\+?92/, '')}`;
+  const digits = normalized.slice(3).replace(/\D/g, '');
+  if (digits.length !== 10) return trimmed;
+  return `+92 ${digits.slice(0, 3)} ${digits.slice(3)}`;
+}
+
 export default function ProfileScreen() {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -271,6 +280,13 @@ export default function ProfileScreen() {
               <Text className="text-gray-500 text-xs">{t('profile.email')}</Text>
               <Text className="text-gray-900 text-lg font-semibold mt-1">
                 {user.email || t('profile.notSet')}
+              </Text>
+
+              <View className="h-3" />
+
+              <Text className="text-gray-500 text-xs">Phone</Text>
+              <Text className="text-gray-900 text-lg font-semibold mt-1">
+                {user.phone_number ? formatPakPhoneNumber(user.phone_number) : t('profile.notSet')}
               </Text>
             </View>
 

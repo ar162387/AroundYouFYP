@@ -6,7 +6,7 @@ public record LoginRequest(string Email, string Password);
 
 public record GoogleSignInRequest(string IdToken);
 
-public record UpdateProfileRequest(string? Name);
+public record UpdateProfileRequest(string? Name, string? PhoneNumber);
 
 public record RegisterDeviceTokenRequest(string Token, string Platform);
 
@@ -14,7 +14,7 @@ public record RemoveDeviceTokenRequest(string Token);
 
 public record AuthResponse(string AccessToken, DateTimeOffset ExpiresAt, UserDto User);
 
-public record UserDto(Guid Id, string Email, string? Name, string Role, DateTimeOffset CreatedAt);
+public record UserDto(Guid Id, string Email, string? Name, string? PhoneNumber, string Role, DateTimeOffset CreatedAt);
 
 /// <summary>
 /// Same fields as <see cref="UserDto"/> for JSON shape compatibility, plus optional session refresh when the
@@ -24,6 +24,7 @@ public record AuthMeDto(
     Guid Id,
     string Email,
     string? Name,
+    string? PhoneNumber,
     string Role,
     DateTimeOffset CreatedAt,
     string? AccessToken = null,

@@ -51,7 +51,13 @@ public class AuthService(
         var (token, expiresAt) = jwtGenerator.GenerateToken(
             user.Id, user.Email!, profile.Name, profile.Role.ToString().ToLower());
 
-        var dto = new UserDto(user.Id, user.Email!, profile.Name, profile.Role.ToString().ToLower(), user.CreatedAt);
+        var dto = new UserDto(
+            user.Id,
+            user.Email!,
+            profile.Name,
+            profile.PhoneNumber,
+            profile.Role.ToString().ToLower(),
+            user.CreatedAt);
         return Result.Success(new AuthResponse(token, expiresAt, dto));
     }
 
@@ -72,7 +78,13 @@ public class AuthService(
         var (token, expiresAt) = jwtGenerator.GenerateToken(
             user.Id, user.Email!, profile.Name, profile.Role.ToString().ToLower());
 
-        var dto = new UserDto(user.Id, user.Email!, profile.Name, profile.Role.ToString().ToLower(), user.CreatedAt);
+        var dto = new UserDto(
+            user.Id,
+            user.Email!,
+            profile.Name,
+            profile.PhoneNumber,
+            profile.Role.ToString().ToLower(),
+            user.CreatedAt);
         return Result.Success(new AuthResponse(token, expiresAt, dto));
     }
 
@@ -87,11 +99,11 @@ public class AuthService(
             return Result.Failure<AuthMeDto>("User profile not found.");
 
         var role = profile.Role.ToString().ToLowerInvariant();
-        var dto = new UserDto(user.Id, user.Email!, profile.Name, role, user.CreatedAt);
+        var dto = new UserDto(user.Id, user.Email!, profile.Name, profile.PhoneNumber, role, user.CreatedAt);
 
         var bearerRole = bearer.FindFirstValue(ClaimTypes.Role) ?? bearer.FindFirstValue("role");
         if (string.Equals(bearerRole, role, StringComparison.OrdinalIgnoreCase))
-            return Result.Success(new AuthMeDto(dto.Id, dto.Email, dto.Name, dto.Role, dto.CreatedAt));
+            return Result.Success(new AuthMeDto(dto.Id, dto.Email, dto.Name, dto.PhoneNumber, dto.Role, dto.CreatedAt));
 
         var (token, expiresAt) = jwtGenerator.GenerateToken(
             user.Id, user.Email!, profile.Name, role);
@@ -102,7 +114,7 @@ public class AuthService(
             bearerRole ?? "(none)",
             role);
 
-        return Result.Success(new AuthMeDto(dto.Id, dto.Email, dto.Name, dto.Role, dto.CreatedAt, token, expiresAt));
+        return Result.Success(new AuthMeDto(dto.Id, dto.Email, dto.Name, dto.PhoneNumber, dto.Role, dto.CreatedAt, token, expiresAt));
     }
 
     public async Task<Result> UpdateProfileAsync(Guid userId, UpdateProfileRequest request)
@@ -113,6 +125,8 @@ public class AuthService(
 
         if (request.Name is not null)
             profile.Name = request.Name;
+        if (request.PhoneNumber is not null)
+            profile.PhoneNumber = request.PhoneNumber;
 
         profile.UpdatedAt = DateTimeOffset.UtcNow;
         await profileRepo.UpdateAsync(profile);

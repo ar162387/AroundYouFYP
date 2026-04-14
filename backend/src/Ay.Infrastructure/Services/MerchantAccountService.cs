@@ -58,7 +58,13 @@ public class MerchantAccountService(
             profile.Name,
             profile.Role.ToString().ToLowerInvariant());
 
-        var userDto = new UserDto(userId, profile.Email ?? string.Empty, profile.Name, profile.Role.ToString().ToLowerInvariant(), profile.CreatedAt);
+        var userDto = new UserDto(
+            userId,
+            profile.Email ?? string.Empty,
+            profile.Name,
+            profile.PhoneNumber,
+            profile.Role.ToString().ToLowerInvariant(),
+            profile.CreatedAt);
         var payload = new MerchantAccountCreatedResponse(ToDto(account), accessToken, expiresAt, userDto);
         return Result.Success(payload);
     }

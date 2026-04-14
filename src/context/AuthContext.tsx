@@ -16,6 +16,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signUp: (email: string, password: string, name?: string) => Promise<AuthCredentialResult>;
+  completeConsumerProfile: (name: string, phoneNumber: string) => Promise<AuthCredentialResult>;
   signIn: (email: string, password: string) => Promise<AuthCredentialResult>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -94,6 +95,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: error.message || 'An error occurred' };
     } finally {
       setLoading(false);
+    }
+  };
+
+  const completeConsumerProfile = async (name: string, phoneNumber: string) => {
+    try {
+      const { error } = await authService.updateConsumerProfile(name, phoneNumber);
+      if (error) {
+        return { error: error.message, fieldErrors: error.fieldErrors };
+      }
+
+      const { user: refreshedUser, error: refreshError } = await authService.getCurrentUser();
+      if (refreshError || !refreshedUser) {
+        return { error: refreshError?.message || 'Failed to refresh profile' };
+      }
+
+      setUser(refreshedUser);
+      return { error: null };
+    } catch (error: any) {
+      return { error: error.message || 'An error occurred' };
     }
   };
 
@@ -188,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     loading,
     signUp,
+    completeConsumerProfile,
     signIn,
     signInWithGoogle,
     signOut,
