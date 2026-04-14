@@ -1,5 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, View, Text, TouchableOpacity, TextInput, ScrollView, Switch, Image, Alert } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  TextInput,
+  ScrollView,
+  Switch,
+  Image,
+  Alert,
+  StyleSheet,
+} from 'react-native';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -7,6 +19,8 @@ import type { InventoryItem, InventoryTemplateItem } from '../../../types/invent
 import { useTranslation } from 'react-i18next';
 import { uploadItemImage } from '../../../services/merchant/shopService';
 import { useAuth } from '../../../context/AuthContext';
+import { Camera, useCameraDevice, useCodeScanner } from 'react-native-vision-camera';
+import Svg, { Path, Rect } from 'react-native-svg';
 
 const centsRegex = /^\d+(\.\d{0,2})?$/;
 
@@ -15,7 +29,6 @@ type InventoryItemFormState = {
   name: string;
   description?: string | null;
   barcode?: string | null;
-  sku: string;
   priceDisplay: string;
   isActive: boolean;
   categoryIds: string[];
@@ -57,6 +70,10 @@ export function InventoryItemFormSheet({
   const { user } = useAuth();
   const [imageUri, setImageUri] = useState<string | null>(defaultItem?.imageUrl || null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [isScanningBarcode, setIsScanningBarcode] = useState(false);
+  const [cameraPermissionGranted, setCameraPermissionGranted] = useState(false);
+  const cameraDevice = useCameraDevice('back');
 
   const schema = useMemo(() => z.object({
     templateId: z.string().uuid().optional().nullable(),
@@ -66,10 +83,6 @@ export function InventoryItemFormSheet({
       .max(100, 'Name must be under 100 characters'),
     description: z.string().optional().nullable(),
     barcode: z.string().optional().nullable(),
-    sku: z
-      .string()
-      .min(1, t('merchant.inventory.form.required'))
-      .max(32, 'SKU must be under 32 characters'),
     priceDisplay: z
       .string()
       .min(1, t('merchant.inventory.form.required'))
@@ -85,7 +98,6 @@ export function InventoryItemFormSheet({
         name: defaultItem.name,
         description: defaultItem.description ?? '',
         barcode: defaultItem.barcode ?? '',
-        sku: defaultItem.sku,
         priceDisplay: (defaultItem.priceCents / 100).toFixed(2),
         isActive: defaultItem.isActive,
         categoryIds: defaultItem.categories.map((c) => c.id),
@@ -97,7 +109,6 @@ export function InventoryItemFormSheet({
         name: template.name,
         description: template.description ?? '',
         barcode: template.barcode ?? '',
-        sku: '',
         priceDisplay: '',
         isActive: true,
         categoryIds: [],
@@ -108,7 +119,6 @@ export function InventoryItemFormSheet({
       name: '',
       description: '',
       barcode: '',
-      sku: '',
       priceDisplay: '',
       isActive: true,
       categoryIds: [] as string[],
@@ -124,12 +134,58 @@ export function InventoryItemFormSheet({
   useEffect(() => {
     if (visible) {
       reset(defaultValues);
-      setImageUri(defaultItem?.imageUrl || null);
+      // Template create: catalog image lives on `template`, not `defaultItem`
+      setImageUri(defaultItem?.imageUrl ?? template?.imageUrl ?? null);
     }
-  }, [visible, reset, defaultValues, defaultItem]);
+  }, [visible, reset, defaultValues, defaultItem, template]);
 
   const templateLocked = Boolean(template) || Boolean(defaultItem?.templateId);
   const isCustomItem = !templateLocked; // Only allow image upload for custom items
+  const codeScanner = useCodeScanner({
+    codeTypes: ['ean-13', 'ean-8', 'upc-a', 'upc-e', 'code-128', 'code-39', 'qr'],
+    onCodeScanned: (codes) => {
+      if (!scannerVisible || isScanningBarcode) {
+        return;
+      }
+
+      const scannedValue = codes[0]?.value?.trim();
+      if (!scannedValue) {
+        return;
+      }
+
+      setIsScanningBarcode(true);
+      setValue('barcode', scannedValue, { shouldDirty: true, shouldValidate: true });
+      setScannerVisible(false);
+      setTimeout(() => setIsScanningBarcode(false), 700);
+    },
+  });
+
+  const handleOpenBarcodeScanner = async () => {
+    try {
+      const currentPermission = await Camera.getCameraPermissionStatus();
+      if (currentPermission === 'granted') {
+        setCameraPermissionGranted(true);
+        setScannerVisible(true);
+        return;
+      }
+
+      const nextPermission = await Camera.requestCameraPermission();
+      const granted = nextPermission === 'granted';
+      setCameraPermissionGranted(granted);
+
+      if (!granted) {
+        Alert.alert(
+          'Camera permission needed',
+          'Allow camera access to scan product barcodes.'
+        );
+        return;
+      }
+
+      setScannerVisible(true);
+    } catch (error: any) {
+      Alert.alert('Scanner Error', error?.message || 'Unable to open barcode scanner.');
+    }
+  };
 
   // Image picker handler with 1:1 aspect ratio crop
   const handlePickImage = async () => {
@@ -207,7 +263,7 @@ export function InventoryItemFormSheet({
           </Text>
           {templateLocked ? (
             <Text className="text-xs text-gray-500 mt-2">
-              This item inherits name and barcode from the shared catalog. Adjust SKU, price, and categories for your shop.
+              This item inherits name and barcode from the shared catalog. Adjust price and categories for your shop.
             </Text>
           ) : null}
         </View>
@@ -216,7 +272,7 @@ export function InventoryItemFormSheet({
           contentContainerStyle={{ paddingBottom: 24 }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Image Upload Section - Only for custom items */}
+          {/* Image: upload for custom items; read-only preview for catalog/template items */}
           {isCustomItem ? (
             <View className="mt-6">
               <Text className="text-sm font-semibold text-gray-700 mb-2">{t('merchant.inventory.form.image') || 'Item Image'}</Text>
@@ -237,7 +293,7 @@ export function InventoryItemFormSheet({
                   </View>
                 ) : (
                   <View className="w-24 h-24 rounded-2xl bg-gray-100 border-2 border-dashed border-gray-300 items-center justify-center mr-4">
-                    <Text className="text-gray-400 text-2xl">📷</Text>
+                    <CameraIcon size={28} color="#9CA3AF" />
                   </View>
                 )}
                 <View className="flex-1">
@@ -263,6 +319,19 @@ export function InventoryItemFormSheet({
               </View>
               <Text className="text-xs text-gray-500 mt-2">
                 {t('merchant.inventory.form.imageHint') || 'Upload a square image (1:1 ratio) for best results'}
+              </Text>
+            </View>
+          ) : imageUri ? (
+            <View className="mt-6">
+              <Text className="text-sm font-semibold text-gray-700 mb-2">
+                {t('merchant.inventory.form.catalogImage') || 'Catalog image'}
+              </Text>
+              <View className="w-24 h-24 rounded-2xl bg-gray-100 overflow-hidden border border-gray-200">
+                <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
+              </View>
+              <Text className="text-xs text-gray-500 mt-2">
+                {t('merchant.inventory.form.catalogImageHint') ||
+                  'This image is saved with your inventory when you add the item.'}
               </Text>
             </View>
           ) : null}
@@ -293,32 +362,28 @@ export function InventoryItemFormSheet({
             render={({ field: { value, onChange }, fieldState }) => (
               <View className="mt-5">
                 <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.barcode')}</Text>
-                <TextInput
-                  value={value ?? ''}
-                  onChangeText={onChange}
-                  className={`mt-2 border rounded-xl px-4 py-3 text-base ${templateLocked ? 'bg-gray-100 border-gray-100 text-gray-500' : 'border-gray-200 bg-white text-gray-900'}`}
-                  editable={!templateLocked}
-                  placeholder={t('merchant.inventory.form.enterBarcode')}
-                />
-                {fieldState.error ? (
-                  <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
+                <View className="mt-2 relative justify-center">
+                  <TextInput
+                    value={value ?? ''}
+                    onChangeText={onChange}
+                    className={`border rounded-xl px-4 py-3 text-base ${templateLocked ? 'bg-gray-100 border-gray-100 text-gray-500 pr-4' : 'border-gray-200 bg-white text-gray-900 pr-14'}`}
+                    editable={!templateLocked}
+                    placeholder={t('merchant.inventory.form.enterBarcode')}
+                  />
+                  {!templateLocked ? (
+                    <TouchableOpacity
+                      onPress={handleOpenBarcodeScanner}
+                      className="absolute right-3 h-9 w-9 rounded-lg bg-blue-50 border border-blue-200 items-center justify-center"
+                      accessibilityRole="button"
+                      accessibilityLabel="Scan barcode using camera"
+                    >
+                      <CameraIcon size={18} color="#2563EB" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+                {!templateLocked ? (
+                  <Text className="text-xs text-gray-500 mt-1">Tap the camera icon to scan barcode automatically.</Text>
                 ) : null}
-              </View>
-            )}
-          />
-
-          <Controller
-            control={control}
-            name="sku"
-            render={({ field: { value, onChange }, fieldState }) => (
-              <View className="mt-5">
-                <Text className="text-sm font-semibold text-gray-700">{t('merchant.inventory.form.sku')}</Text>
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  className="mt-2 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
-                  placeholder={t('merchant.inventory.form.enterSku')}
-                />
                 {fieldState.error ? (
                   <Text className="text-xs text-red-500 mt-1">{fieldState.error.message}</Text>
                 ) : null}
@@ -469,7 +534,11 @@ export function InventoryItemFormSheet({
                       } finally {
                         setIsUploadingImage(false);
                       }
-                    } else if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+                    } else if (
+                      imageUri.startsWith('http://') ||
+                      imageUri.startsWith('https://') ||
+                      imageUri.startsWith('/uploads/')
+                    ) {
                       // Keep existing image URL (no change)
                       finalImageUrl = imageUri;
                     }
@@ -477,6 +546,16 @@ export function InventoryItemFormSheet({
                     // Image was removed - set to null to clear it
                     finalImageUrl = null;
                   }
+                } else {
+                  // Template / catalog item: backend never copies template image automatically — send catalog URL
+                  const remote =
+                    imageUri &&
+                    (imageUri.startsWith('http://') ||
+                      imageUri.startsWith('https://') ||
+                      imageUri.startsWith('/uploads/'))
+                      ? imageUri
+                      : null;
+                  finalImageUrl = remote ?? template?.imageUrl ?? defaultItem?.imageUrl ?? null;
                 }
 
                 onSubmit({ 
@@ -516,8 +595,145 @@ export function InventoryItemFormSheet({
           ) : null}
         </View>
       </View>
+      <Modal
+        visible={scannerVisible}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setScannerVisible(false)}
+      >
+        <View style={styles.scannerRoot}>
+          {cameraPermissionGranted && cameraDevice ? (
+            <Camera
+              style={StyleSheet.absoluteFill}
+              device={cameraDevice}
+              isActive={scannerVisible}
+              codeScanner={codeScanner}
+            />
+          ) : (
+            <View style={styles.centerFallback}>
+              <Text style={styles.fallbackTitle}>Camera unavailable</Text>
+              <Text style={styles.fallbackText}>Check camera permission and try again.</Text>
+            </View>
+          )}
+
+          <View style={styles.overlay}>
+            <View style={styles.overlayTop}>
+              <Text style={styles.overlayTitle}>Scan Product Barcode</Text>
+              <Text style={styles.overlaySubtitle}>Place the barcode inside the frame.</Text>
+            </View>
+            <View style={styles.overlayMiddleRow}>
+              <View style={styles.overlaySide} />
+              <View style={styles.scanFrame} />
+              <View style={styles.overlaySide} />
+            </View>
+            <View style={styles.overlayBottom} />
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setScannerVisible(false)}
+            style={styles.closeButton}
+            accessibilityRole="button"
+            accessibilityLabel="Close barcode scanner"
+          >
+            <Text style={styles.closeButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </Modal>
   );
 }
+
+function CameraIcon({ size = 20, color = '#2563EB' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect x="3.75" y="7.75" width="16.5" height="12.5" rx="2.25" stroke={color} strokeWidth="1.5" />
+      <Path d="M9.25 7.75L10.3 5.95C10.6 5.45 11.12 5.15 11.7 5.15H12.3C12.88 5.15 13.4 5.45 13.7 5.95L14.75 7.75" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <Path d="M12 16.5C13.52 16.5 14.75 15.27 14.75 13.75C14.75 12.23 13.52 11 12 11C10.48 11 9.25 12.23 9.25 13.75C9.25 15.27 10.48 16.5 12 16.5Z" stroke={color} strokeWidth="1.5" />
+    </Svg>
+  );
+}
+
+const styles = StyleSheet.create({
+  scannerRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  centerFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  fallbackTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  fallbackText: {
+    marginTop: 8,
+    color: '#CBD5E1',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+  },
+  overlayTop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+  },
+  overlayMiddleRow: {
+    height: 240,
+    flexDirection: 'row',
+  },
+  overlaySide: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  scanFrame: {
+    width: 280,
+    borderWidth: 2,
+    borderColor: '#22D3EE',
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+  },
+  overlayBottom: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  overlayTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  overlaySubtitle: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 56,
+    right: 16,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  closeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});
 
 

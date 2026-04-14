@@ -31,7 +31,7 @@ export function useCreateDeliveryRunner(shopId: string) {
     return data;
   }, {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['delivery-runners', shopId] });
+      queryClient.invalidateQueries(['delivery-runners', shopId]);
     },
   });
 }
@@ -47,7 +47,7 @@ export function useUpdateDeliveryRunner(shopId: string) {
     return data;
   }, {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['delivery-runners', shopId] });
+      queryClient.invalidateQueries(['delivery-runners', shopId]);
     },
   });
 }
@@ -63,7 +63,7 @@ export function useDeleteDeliveryRunner(shopId: string) {
     return runnerId;
   }, {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['delivery-runners', shopId] });
+      queryClient.invalidateQueries(['delivery-runners', shopId]);
     },
   });
 }

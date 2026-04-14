@@ -8,14 +8,14 @@
  */
 
 import { Platform } from 'react-native';
-import notifee, { AndroidImportance } from '@notifee/react-native';
-import { supabase } from './supabase';
+import notifee, { AndroidImportance, AndroidCategory } from '@notifee/react-native';
 import { subscribeToUserOrders, getActiveOrder } from './consumer/orderService';
 import type { OrderWithAll } from '../types/orders';
 
 const PERSISTENT_NOTIFICATION_ID = 'active_order_notification';
 let currentOrderId: string | null = null;
 let unsubscribe: (() => void) | null = null;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Get notification title and body based on order status
@@ -24,6 +24,12 @@ function getNotificationContent(order: OrderWithAll): { title: string; body: str
   const shopName = order.shop?.name || 'Your order';
   
   switch (order.status) {
+    case 'pending':
+      return {
+        title: 'Order Pending',
+        body: `${shopName} is reviewing your order`,
+        progress: 25,
+      };
     case 'confirmed':
       return {
         title: 'Order Confirmed',
@@ -71,12 +77,6 @@ async function updatePersistentNotification(order: OrderWithAll | null): Promise
       return;
     }
 
-    // Only show persistent notification for confirmed orders and beyond
-    if (order.status !== 'confirmed' && order.status !== 'out_for_delivery') {
-      // Order is pending - wait for confirmation
-      return;
-    }
-
     const { title, body, progress } = getNotificationContent(order);
     
     // Build notification body with runner info if out for delivery
@@ -102,10 +102,12 @@ async function updatePersistentNotification(order: OrderWithAll | null): Promise
         smallIcon: 'ic_notification', // White icon with transparent background
         ongoing: true, // Makes it non-dismissible
         autoCancel: false, // Cannot be dismissed by user
+        category: AndroidCategory.PROGRESS,
         progress: {
           max: 100,
           current: progress,
         },
+        onlyAlertOnce: true,
         pressAction: {
           id: 'default',
         },
@@ -158,6 +160,16 @@ export function startPersistentOrderNotification(): () => void {
     await checkAndUpdateNotification();
   });
 
+  // Poll periodically as a fallback if realtime events are delayed/missed
+  if (pollInterval) {
+    clearInterval(pollInterval);
+  }
+  pollInterval = setInterval(() => {
+    checkAndUpdateNotification().catch((error) => {
+      console.error('[PersistentNotification] Polling error:', error);
+    });
+  }, 30000);
+
   console.log('[PersistentNotification] Started monitoring active orders');
 
   // Return cleanup function
@@ -165,6 +177,10 @@ export function startPersistentOrderNotification(): () => void {
     if (unsubscribe) {
       unsubscribe();
       unsubscribe = null;
+    }
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
     }
     notifee.cancelNotification(PERSISTENT_NOTIFICATION_ID);
     currentOrderId = null;
@@ -186,6 +202,10 @@ export async function stopPersistentOrderNotification(): Promise<void> {
   if (unsubscribe) {
     unsubscribe();
     unsubscribe = null;
+  }
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
   }
   await notifee.cancelNotification(PERSISTENT_NOTIFICATION_ID);
   currentOrderId = null;

@@ -82,13 +82,17 @@ export default function MerchantProfileScreen() {
     try {
       const { shops: fetchedShops, error } = await getMerchantShops(user.id);
       if (error) {
-        console.error('Error loading shops:', error);
+        if (__DEV__) {
+          console.warn('Could not load shops:', error.message);
+        }
         setShops([]);
       } else {
         setShops(fetchedShops || []);
       }
     } catch (error) {
-      console.error('Error loading shops:', error);
+      if (__DEV__) {
+        console.warn('Error loading shops:', error);
+      }
       setShops([]);
     } finally {
       setLoadingShops(false);
@@ -570,7 +574,7 @@ export default function MerchantProfileScreen() {
 
           </>
         )}
-        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 0.1</Text>
+        <Text className="text-center text-gray-400 text-xs mt-2 px-4">{t('profile.version')} 1.0.4</Text>
       </ScrollView>
 
       <LanguageActionSheet

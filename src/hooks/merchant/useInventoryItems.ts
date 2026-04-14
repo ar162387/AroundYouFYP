@@ -58,7 +58,8 @@ export function useCreateInventoryItem(shopId: string, params: InventoryListPara
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['inventory', shopId, 'items'] });
+        queryClient.invalidateQueries(['inventory', shopId, 'items']);
+        queryClient.invalidateQueries(['inventory', shopId, 'audit-log']);
       },
     }
   );
@@ -78,7 +79,8 @@ export function useUpdateInventoryItem(shopId: string, params: InventoryListPara
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['inventory', shopId, 'items'] });
+        queryClient.invalidateQueries(['inventory', shopId, 'items']);
+        queryClient.invalidateQueries(['inventory', shopId, 'audit-log']);
       },
     }
   );
@@ -98,7 +100,8 @@ export function useToggleInventoryItem(shopId: string, params: InventoryListPara
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['inventory', shopId, 'items'] });
+        queryClient.invalidateQueries(['inventory', shopId, 'items']);
+        queryClient.invalidateQueries(['inventory', shopId, 'audit-log']);
       },
     }
   );
@@ -128,7 +131,8 @@ export function useDeleteInventoryItem(shopId: string, params: InventoryListPara
     },
     {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['inventory', shopId, 'items'] });
+        queryClient.invalidateQueries(['inventory', shopId, 'items']);
+        queryClient.invalidateQueries(['inventory', shopId, 'audit-log']);
       },
     }
   );

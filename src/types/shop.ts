@@ -1,0 +1,20 @@
+export type Shop = {
+  id: string;
+  name: string;
+  image_url: string;
+  rating: number;
+  orders?: number;
+  delivery_fee: number;
+  delivery_time?: string;
+  tags: string[];
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  is_open: boolean;
+  created_at: string;
+  shop_type?: string;
+  minimumOrderValue?: number;
+  opening_hours?: any;
+  holidays?: any;
+  open_status_mode?: 'auto' | 'manual_open' | 'manual_closed' | null;
+};

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { View, Text, Image, TouchableOpacity, Dimensions } from 'react-native';
-import type { Shop } from '../../services/supabase';
+import type { Shop } from '../../types/shop';
 import DeliveryRunnerIcon from '../../icons/DeliveryRunnerIcon';
 import MoneyIcon from '../../icons/MoneyIcon';
 import { getShopReviewStats } from '../../services/consumer/reviewService';

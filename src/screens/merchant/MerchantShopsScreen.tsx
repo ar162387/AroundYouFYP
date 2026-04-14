@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StatusBar, Dimensions, RefreshControl, Alert } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StatusBar, Dimensions, RefreshControl, Alert, Animated, Easing, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -44,15 +44,18 @@ export default function MerchantShopsScreen() {
     try {
       const { shops: fetchedShops, error } = await getMerchantShops(user.id);
       if (error) {
-        console.error('Error loading shops:', error);
+        if (__DEV__) {
+          console.warn('Could not load shops:', error.message);
+        }
         return;
       }
       setShops(fetchedShops || []);
     } catch (error) {
-      console.error('Error loading shops:', error);
+      if (__DEV__) {
+        console.warn('Error loading shops:', error);
+      }
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -83,7 +86,8 @@ export default function MerchantShopsScreen() {
       if (user && !loading) {
         // Small delay to ensure smooth transition
         const timer = setTimeout(() => {
-          loadShops();
+          void loadShops();
+          void loadMerchantAccount();
         }, 300);
         return () => clearTimeout(timer);
       }
@@ -97,16 +101,51 @@ export default function MerchantShopsScreen() {
     // Refresh every 30 seconds to update shop opening status in real-time
     const interval = setInterval(() => {
       if (!loading) {
-        loadShops();
+        void loadShops();
+        void loadMerchantAccount();
       }
     }, 30000);
 
     return () => clearInterval(interval);
   }, [user, loading]);
 
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  const spinLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (refreshing) {
+      spinAnim.setValue(0);
+      spinLoopRef.current = Animated.loop(
+        Animated.timing(spinAnim, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      spinLoopRef.current.start();
+      return () => {
+        spinLoopRef.current?.stop();
+      };
+    }
+    spinLoopRef.current?.stop();
+    spinAnim.setValue(0);
+    return undefined;
+  }, [refreshing]);
+
+  const spin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
   const handleRefresh = async () => {
+    if (!user) return;
     setRefreshing(true);
-    await loadShops();
+    try {
+      await Promise.all([loadShops(), loadMerchantAccount()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleCreateShop = () => {
@@ -206,6 +245,11 @@ export default function MerchantShopsScreen() {
             zIndex: 2
           }}
         >
+          {/*
+            Native RefreshControl cannot use a custom logo on Android (SwipeRefreshLayout
+            always draws the Material progress). Keep refreshing={false} so the native
+            arrow never stays visible; onRefresh still runs and we show our own spinner.
+          */}
           <ScrollView
             style={{ flex: 1 }}
             contentContainerStyle={{
@@ -216,43 +260,75 @@ export default function MerchantShopsScreen() {
             showsVerticalScrollIndicator={true}
             nestedScrollEnabled={true}
             refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+              <RefreshControl
+                refreshing={false}
+                onRefresh={() => void handleRefresh()}
+                tintColor="#2563eb"
+                colors={['#2563eb']}
+                progressBackgroundColor="#ffffff"
+              />
             }
           >
             {/* Verification Warning Banner */}
             {showVerificationWarning && (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (merchantAccount?.status === 'none') {
-                    setVerificationFormVisible(true);
-                  }
-                }}
-                className={`mx-4 mt-4 mb-4 p-4 rounded-xl border ${
+              <View
+                className={`mx-4 mt-4 mb-4 p-4 rounded-xl border pe-14 ${
                   merchantAccount?.status === 'pending'
                     ? 'bg-yellow-50 border-yellow-200'
                     : 'bg-orange-50 border-orange-200'
                 }`}
               >
                 <View className={`flex-row items-start ${isRTL ? 'flex-row-reverse' : ''}`}>
-                  <Text className="text-2xl mr-2">⚠️</Text>
-                  <View className="flex-1">
-                    <Text className={`text-base font-semibold text-gray-900 mb-1 ${isRTL ? 'text-right' : 'text-left'}`}>
-                      {t('merchant.verification.warningTitle')}
-                    </Text>
-                    <Text className={`text-sm text-gray-700 ${isRTL ? 'text-right' : 'text-left'}`}>
-                      {merchantAccount?.status === 'pending'
-                        ? t('merchant.verification.warningMessagePending')
-                        : t('merchant.verification.warningMessage')}
-                    </Text>
-                    {merchantAccount?.status === 'none' && (
+                  <Text className={`text-2xl ${isRTL ? 'ml-2' : 'mr-2'}`}>⚠️</Text>
+                  {merchantAccount?.status === 'none' ? (
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      onPress={() => setVerificationFormVisible(true)}
+                      className="flex-1"
+                    >
+                      <Text className={`text-base font-semibold text-gray-900 mb-1 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {t('merchant.verification.warningTitle')}
+                      </Text>
+                      <Text className={`text-sm text-gray-700 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {t('merchant.verification.warningMessage')}
+                      </Text>
                       <Text className={`text-sm text-blue-600 font-semibold mt-2 ${isRTL ? 'text-right' : 'text-left'}`}>
                         {t('merchant.verification.warningTitle')} →
                       </Text>
-                    )}
-                  </View>
+                    </TouchableOpacity>
+                  ) : (
+                    <View className="flex-1">
+                      <Text className={`text-base font-semibold text-gray-900 mb-1 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {t('merchant.verification.warningTitle')}
+                      </Text>
+                      <Text className={`text-sm text-gray-700 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {merchantAccount?.status === 'pending'
+                          ? t('merchant.verification.warningMessagePending')
+                          : t('merchant.verification.warningMessage')}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={t('merchant.shops.refreshA11y')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  disabled={refreshing}
+                  onPress={() => void handleRefresh()}
+                  className={`absolute top-3 ${isRTL ? 'left-3' : 'right-3'} rounded-full bg-blue-600 p-1.5 shadow-sm`}
+                  style={{
+                    elevation: Platform.OS === 'android' ? 3 : 0,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.12,
+                    shadowRadius: 3,
+                  }}
+                >
+                  <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                    <AppLogo size={24} color="rgba(255,255,255,0.95)" />
+                  </Animated.View>
+                </TouchableOpacity>
+              </View>
             )}
             {loading ? (
               <ShopListSkeleton count={3} />
@@ -308,6 +384,32 @@ export default function MerchantShopsScreen() {
               </View>
             )}
           </ScrollView>
+
+          {refreshing && (
+            <View
+              style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.72)' }]}
+              pointerEvents="auto"
+              accessibilityViewIsModal
+              importantForAccessibility="yes"
+            >
+              <View className="flex-1 items-center justify-center px-6">
+                <View
+                  className="rounded-full bg-blue-600 p-3.5"
+                  style={{
+                    elevation: 6,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 6,
+                  }}
+                >
+                  <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                    <AppLogo size={36} color="rgba(255,255,255,0.95)" />
+                  </Animated.View>
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       </View>
 

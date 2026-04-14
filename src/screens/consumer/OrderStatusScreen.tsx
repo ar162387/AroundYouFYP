@@ -170,6 +170,7 @@ export default function OrderStatusScreen() {
     );
   }
 
+  const orderItems = order.order_items ?? [];
   const statusDisplay = getOrderStatusDisplay(order.status);
 
   return (
@@ -272,27 +273,27 @@ export default function OrderStatusScreen() {
         {/* Shop Info */}
         <View className="bg-white rounded-xl p-4 mb-4">
           <Text className="text-lg font-bold text-gray-900 mb-3">{t('orders.shopDetails')}</Text>
-          <Text className="text-gray-900 text-base font-semibold">{order.shop.name}</Text>
-          <Text className="text-gray-600 text-sm mt-1">{order.shop.shop_type}</Text>
-          <Text className="text-gray-600 text-sm mt-1">{order.shop.address}</Text>
+          <Text className="text-gray-900 text-base font-semibold">{order.shop?.name ?? '—'}</Text>
+          <Text className="text-gray-600 text-sm mt-1">{order.shop?.shop_type ?? ''}</Text>
+          <Text className="text-gray-600 text-sm mt-1">{order.shop?.address ?? ''}</Text>
         </View>
 
         {/* Delivery Address */}
         <View className="bg-white rounded-xl p-4 mb-4">
           <Text className="text-lg font-bold text-gray-900 mb-3">{t('checkout.deliveryAddress')}</Text>
           <Text className="text-gray-900 text-base">
-            {order.delivery_address.street_address}
+            {order.delivery_address?.street_address ?? '—'}
           </Text>
           <Text className="text-gray-600 text-sm mt-1">
-            {order.delivery_address.city}
-            {order.delivery_address.region && `, ${order.delivery_address.region}`}
+            {order.delivery_address?.city ?? ''}
+            {order.delivery_address?.region ? `, ${order.delivery_address.region}` : ''}
           </Text>
-          {order.delivery_address.landmark && (
+          {order.delivery_address?.landmark ? (
             <View className="mt-2">
               <Text className="text-xs text-gray-500">{t('checkout.landmark')}</Text>
               <Text className="text-gray-700 text-sm">{order.delivery_address.landmark}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         {/* Special Instructions */}
@@ -306,10 +307,10 @@ export default function OrderStatusScreen() {
         {/* Order Items */}
         <View className="bg-white rounded-xl p-4 mb-4">
           <Text className="text-lg font-bold text-gray-900 mb-3">{t('orders.orderItems')}</Text>
-          {order.order_items.map((item, index) => (
+          {orderItems.map((item, index) => (
             <View
               key={item.id}
-              className={`flex-row justify-between py-2 ${index < order.order_items.length - 1 ? 'border-b border-gray-100' : ''
+              className={`flex-row justify-between py-2 ${index < orderItems.length - 1 ? 'border-b border-gray-100' : ''
                 }`}
             >
               <View className="flex-1">

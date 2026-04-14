@@ -199,7 +199,7 @@ export default function ShopScreen() {
     ? calculateDeliveryFee(distanceInMeters, shopDetails.deliveryLogic)
     : null);
 
-  // Show free delivery info if user is within free delivery radius
+  // Free-delivery promo chip only when the user is within the shop's free-delivery radius (distance-qualified)
   const showFreeDeliveryInfo =
     shopDetails?.deliveryLogic && distanceInMeters !== null && distanceInMeters > 0
       ? distanceInMeters <= shopDetails.deliveryLogic.freeDeliveryRadius

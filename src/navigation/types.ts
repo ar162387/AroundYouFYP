@@ -28,7 +28,6 @@ export type RootStackParamList = {
   MerchantShopPortal: { shop: MerchantShop };
   ManageDeliveryAreas: { shop: MerchantShop };
   MerchantOrder: { shopId: string; orderId: string };
-  ShoppingAssistant: undefined;
   PrivacyPolicy: { accountType: 'consumer' | 'merchant' };
   SuggestionsComplaints: undefined;
   AccountDeletion: { accountType: 'consumer' | 'merchant' };

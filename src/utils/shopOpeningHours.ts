@@ -25,6 +25,7 @@ export interface ShopHoliday {
 export type OpenStatusMode = 'auto' | 'manual_open' | 'manual_closed';
 
 export type OpeningStatusReason =
+  | 'auto'
   | 'manual_open'
   | 'manual_closed'
   | 'holiday'

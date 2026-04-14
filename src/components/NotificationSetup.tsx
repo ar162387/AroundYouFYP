@@ -6,7 +6,6 @@ import {
   initializeNotifications,
   cleanupNotifications,
   setupNotificationTapHandler,
-  getFCMToken,
 } from '../services/notificationService';
 import {
   startPersistentOrderNotification,
@@ -24,10 +23,11 @@ export function NotificationSetup() {
   const persistentNotificationCleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    // Initialize notifications when user logs in
-    if (user?.id) {
-      console.log('[NotificationSetup] User logged in, initializing notifications for user:', user.id);
-      initializeNotifications(user.id)
+    const currentUserId = user?.id ?? null;
+
+    if (currentUserId) {
+      console.log('[NotificationSetup] User logged in, initializing notifications for user:', currentUserId);
+      initializeNotifications(currentUserId)
         .then(() => {
           console.log('[NotificationSetup] Notifications initialized successfully');
         })
@@ -57,9 +57,12 @@ export function NotificationSetup() {
       persistentNotificationCleanupRef.current = startPersistentOrderNotification();
     } else {
       console.log('[NotificationSetup] No user logged in, skipping notification initialization');
+      stopPersistentOrderNotification();
     }
 
-    // Cleanup on unmount or logout
+    // Server-side device token detach on account switch is handled in authService
+    // (before new JWT is stored). Do not call DELETE here — JWT is already the new user → 401.
+
     return () => {
       if (cleanupRef.current) {
         cleanupRef.current();
@@ -69,38 +72,8 @@ export function NotificationSetup() {
         persistentNotificationCleanupRef.current();
         persistentNotificationCleanupRef.current = null;
       }
-      if (user?.id) {
-        getFCMToken().then((token) => {
-          if (token) {
-            cleanupNotifications(token).catch((error) => {
-              console.error('Error cleaning up notifications:', error);
-            });
-          }
-        });
-        stopPersistentOrderNotification();
-      }
     };
   }, [user?.id]);
-
-  // Clean up when user logs out
-  useEffect(() => {
-    if (!user) {
-      // Stop persistent notification monitoring
-      stopPersistentOrderNotification();
-      if (persistentNotificationCleanupRef.current) {
-        persistentNotificationCleanupRef.current();
-        persistentNotificationCleanupRef.current = null;
-      }
-      
-      getFCMToken().then((token) => {
-        if (token) {
-          cleanupNotifications(token).catch((error) => {
-            console.error('Error cleaning up notifications on logout:', error);
-          });
-        }
-      });
-    }
-  }, [user]);
 
   return null;
 }

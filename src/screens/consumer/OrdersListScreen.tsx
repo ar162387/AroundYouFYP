@@ -168,9 +168,15 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
     minute: '2-digit',
   });
 
+  // Some backend payloads can omit nested arrays/objects; guard to avoid runtime crashes.
+  const safeOrderItems = Array.isArray(order.order_items) ? order.order_items : [];
+  const safeDeliveryAddress = order.delivery_address ?? null;
+  const safeShopId = order.shop_id || order.shop?.id || '';
+  const safeShopName = order.shop?.name || 'Unknown Shop';
+
   // Get order items preview (max 5 items)
-  const itemsPreview = order.order_items.slice(0, 5);
-  const remainingCount = order.order_items.length - 5;
+  const itemsPreview = safeOrderItems.slice(0, 5);
+  const remainingCount = safeOrderItems.length - 5;
 
   // Check if this order has been reviewed
   const [reviewRating, setReviewRating] = useState<number | null>(null);
@@ -190,7 +196,12 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
       if (orderReview) {
         setReviewRating(orderReview.rating);
       } else {
-        const { data: shopReview } = await getReview(order.shop_id);
+        if (!safeShopId) {
+          setReviewRating(null);
+          setIsCheckingReview(false);
+          return;
+        }
+        const { data: shopReview } = await getReview(safeShopId);
         if (shopReview) {
           setReviewRating(shopReview.rating);
         } else {
@@ -201,12 +212,12 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
     };
 
     checkReview();
-  }, [order.id, order.shop_id, order.status]);
+  }, [order.id, safeShopId, order.status]);
 
   const handleStarsPress = (e: any) => {
     e.stopPropagation();
-    if (order.status === 'delivered') {
-      onReviewPress(order.shop_id, order.shop.name, order.id);
+    if (order.status === 'delivered' && safeShopId) {
+      onReviewPress(safeShopId, safeShopName, order.id);
     }
   };
 
@@ -219,7 +230,9 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
       {/* Order Header */}
       <View className="flex-row items-start justify-between mb-3">
         <View className="flex-1 mr-3">
-          <Text className="text-gray-900 text-base font-bold mb-1">{order.shop.name}</Text>
+          <Text className="text-gray-900 text-base font-bold mb-1">
+            {safeShopName}
+          </Text>
           <Text className="text-gray-500 text-xs">{order.order_number}</Text>
         </View>
         <View
@@ -260,8 +273,8 @@ function OrderCard({ order, navigation, onReviewPress, onReviewSubmitted }: Orde
             <LocationMarkerIcon size={18} color="#1D4ED8" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
           </View>
           <Text className="text-gray-700 text-sm flex-1">
-            {order.delivery_address.street_address}
-            {order.delivery_address.landmark && ` (${order.delivery_address.landmark})`}
+            {safeDeliveryAddress?.street_address || 'Address unavailable'}
+            {safeDeliveryAddress?.landmark && ` (${safeDeliveryAddress.landmark})`}
           </Text>
         </View>
       </View>

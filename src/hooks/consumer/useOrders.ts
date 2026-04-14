@@ -76,9 +76,27 @@ export function useOrder(orderId: string | undefined) {
     if (!orderId) return;
 
     const unsubscribe = subscribeToOrder(orderId, (updatedOrder) => {
-      (queryClient as any).setQueryData(orderKeys.detail(orderId), (old: any) => {
-        if (!old) return updatedOrder;
-        return { ...old, ...updatedOrder };
+      const patch = updatedOrder as unknown as Record<string, unknown>;
+      (queryClient as any).setQueryData(orderKeys.detail(orderId), (old: OrderWithAll | null | undefined) => {
+        // Hub sends partial payloads (e.g. `{ orderId, status }`). Never replace a full order with that.
+        if (!old) {
+          void queryClient.invalidateQueries(orderKeys.detail(orderId));
+          return old;
+        }
+        return {
+          ...old,
+          ...(patch as Partial<OrderWithAll>),
+          order_items:
+            (patch.order_items as OrderWithAll['order_items'] | undefined) ??
+            (patch.orderItems as OrderWithAll['order_items'] | undefined) ??
+            old.order_items ??
+            [],
+          shop: (patch.shop as OrderWithAll['shop'] | undefined) ?? old.shop,
+          delivery_address:
+            (patch.delivery_address as OrderWithAll['delivery_address'] | undefined) ??
+            (patch.deliveryAddress as OrderWithAll['delivery_address'] | undefined) ??
+            old.delivery_address,
+        };
       });
     });
 

@@ -26,7 +26,7 @@ export function useSaveDeliveryAreas(shopId: string) {
     return data ?? [];
   }, {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['delivery-areas', shopId] });
+      queryClient.invalidateQueries(['delivery-areas', shopId]);
     },
   });
 }
@@ -42,7 +42,7 @@ export function useDeleteDeliveryArea(shopId: string) {
     return areaId;
   }, {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['delivery-areas', shopId] });
+      queryClient.invalidateQueries(['delivery-areas', shopId]);
     },
   });
 }

@@ -1,13 +1,12 @@
-import type { PostgrestError } from '@supabase/supabase-js';
-
 import { loogin } from '../../lib/loogin';
-import { supabase, executeWithRetry, isTimeoutOrConnectionError } from '../supabase';
+import { apiClient, toApiError } from '../apiClient';
 
 const log = loogin.scope('deliveryLogicService');
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: any | null };
 
 const TABLE = 'shop_delivery_logic';
+const logicIdToShopId = new Map<string, string>();
 
 export type DistanceTier = {
   max_distance: number; // in meters
@@ -56,6 +55,9 @@ const DEFAULT_DISTANCE_TIERS: DistanceTier[] = [
 ];
 
 function mapRow(row: any): DeliveryLogic {
+  if (row.id && row.shop_id) {
+    logicIdToShopId.set(row.id, row.shop_id);
+  }
   // Ensure distanceTiers is always an array
   let distanceTiers = DEFAULT_DISTANCE_TIERS;
   if (row.distance_tiers) {
@@ -91,37 +93,54 @@ function mapRow(row: any): DeliveryLogic {
   };
 }
 
-export async function fetchDeliveryLogic(shopId: string): Promise<ServiceResult<DeliveryLogic | null>> {
-  log.debug('fetchDeliveryLogic', { shopId });
-
+async function fetchDeliveryLogicFromConsumerShop(
+  shopId: string
+): Promise<ServiceResult<DeliveryLogic | null>> {
   try {
-    const result = await executeWithRetry(async (client) => {
-      const { data, error } = await client
-        .from(TABLE)
-        .select('*')
-        .eq('shop_id', shopId)
-        .maybeSingle();
-      return { data, error };
+    // Consumer endpoint exposes delivery logic as part of shop details and does not require merchant role.
+    const detail = await apiClient.get<any>(`/api/v1/consumer/shops/${shopId}`, {
+      requiresAuth: false,
     });
-
-    const { data, error } = result;
-
-    if (error) {
-      log.error('Failed to fetch delivery logic', error);
-      return { data: null, error };
+    const delivery = detail?.delivery_logic || detail?.deliveryLogic;
+    if (!delivery) {
+      return { data: null, error: null };
     }
 
+    const normalizedRow = {
+      ...delivery,
+      shop_id: delivery.shop_id || delivery.shopId || shopId,
+    };
+    return { data: mapRow(normalizedRow), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.status === 404) {
+      return { data: null, error: null };
+    }
+    return { data: null, error: apiError };
+  }
+}
+
+export async function fetchDeliveryLogic(shopId: string): Promise<ServiceResult<DeliveryLogic | null>> {
+  try {
+    const data = await apiClient.get<any>(`/api/v1/merchant/shops/${shopId}/delivery-logic`);
     if (!data) {
       return { data: null, error: null };
     }
 
     return { data: mapRow(data), error: null };
-  } catch (error: any) {
-    log.error('Exception fetching delivery logic:', error);
-    if (isTimeoutOrConnectionError(error)) {
-      return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.status === 404) {
+      return { data: null, error: null };
     }
-    return { data: null, error: error as PostgrestError };
+    if (apiError.status === 401 || apiError.status === 403) {
+      const fallbackResult = await fetchDeliveryLogicFromConsumerShop(shopId);
+      if (fallbackResult.data || !fallbackResult.error) {
+        return fallbackResult;
+      }
+    }
+    log.error('Exception fetching delivery logic:', error);
+    return { data: null, error: apiError };
   }
 }
 
@@ -132,56 +151,19 @@ export async function fetchDeliveryLogic(shopId: string): Promise<ServiceResult<
 export async function fetchDeliveryLogicBatch(
   shopIds: string[]
 ): Promise<Map<string, DeliveryLogic | null>> {
-  log.debug('fetchDeliveryLogicBatch', { shopCount: shopIds.length });
-
   const resultMap = new Map<string, DeliveryLogic | null>();
 
   if (shopIds.length === 0) {
     return resultMap;
   }
 
-  try {
-    const result = await executeWithRetry(async (client) => {
-      const { data, error } = await client
-        .from(TABLE)
-        .select('*')
-        .in('shop_id', shopIds);
-      return { data, error };
-    });
-
-    const { data, error } = result;
-
-    if (error) {
-      log.error('Failed to batch fetch delivery logic', error);
-      // Initialize all shops with null (no delivery logic)
-      shopIds.forEach(shopId => resultMap.set(shopId, null));
-      return resultMap;
-    }
-
-    // Create a map of shop_id -> DeliveryLogic from results
-    const logicMap = new Map<string, DeliveryLogic>();
-    if (data && Array.isArray(data)) {
-      data.forEach((row: any) => {
-        try {
-          logicMap.set(row.shop_id, mapRow(row));
-        } catch (mapError) {
-          log.error('Error mapping delivery logic row', { shopId: row.shop_id, error: mapError });
-        }
-      });
-    }
-
-    // Populate result map - set to null if no logic exists for a shop
-    shopIds.forEach(shopId => {
-      resultMap.set(shopId, logicMap.get(shopId) || null);
-    });
-
-    return resultMap;
-  } catch (error: any) {
-    log.error('Exception batch fetching delivery logic:', error);
-    // Initialize all shops with null on error
-    shopIds.forEach(shopId => resultMap.set(shopId, null));
-    return resultMap;
-  }
+  await Promise.all(
+    shopIds.map(async (shopId) => {
+      const { data } = await fetchDeliveryLogic(shopId);
+      resultMap.set(shopId, data || null);
+    })
+  );
+  return resultMap;
 }
 
 export async function createDeliveryLogic(
@@ -191,7 +173,6 @@ export async function createDeliveryLogic(
   log.debug('createDeliveryLogic', { shopId, payload });
 
   const insertData: any = {
-    shop_id: shopId,
     minimum_order_value: payload.minimumOrderValue,
     small_order_surcharge: payload.smallOrderSurcharge,
     least_order_value: payload.leastOrderValue,
@@ -206,18 +187,14 @@ export async function createDeliveryLogic(
   if (payload.freeDeliveryThreshold !== undefined) insertData.free_delivery_threshold = payload.freeDeliveryThreshold;
   if (payload.freeDeliveryRadius !== undefined) insertData.free_delivery_radius = payload.freeDeliveryRadius;
 
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert(insertData)
-    .select('*')
-    .single();
-
-  if (error) {
-    log.error('Failed to create delivery logic', error);
-    return { data: null, error };
+  try {
+    const data = await apiClient.put<any>(`/api/v1/merchant/shops/${shopId}/delivery-logic`, insertData);
+    return { data: mapRow(data), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to create delivery logic', apiError);
+    return { data: null, error: apiError };
   }
-
-  return { data: mapRow(data), error: null };
 }
 
 export async function updateDeliveryLogic(
@@ -225,6 +202,17 @@ export async function updateDeliveryLogic(
   payload: DeliveryLogicPayload
 ): Promise<ServiceResult<DeliveryLogic>> {
   log.debug('updateDeliveryLogic', { logicId, payload });
+  const shopId = logicIdToShopId.get(logicId);
+  if (!shopId) {
+    const missingError: any = {
+      name: 'ShopLookupError',
+      code: 'shop_lookup_failed',
+      message: 'Unable to resolve shop for delivery logic update.',
+      details: '',
+      hint: '',
+    };
+    return { data: null, error: missingError };
+  }
 
   const updateData: any = {
     minimum_order_value: payload.minimumOrderValue,
@@ -241,19 +229,14 @@ export async function updateDeliveryLogic(
   if (payload.freeDeliveryThreshold !== undefined) updateData.free_delivery_threshold = payload.freeDeliveryThreshold;
   if (payload.freeDeliveryRadius !== undefined) updateData.free_delivery_radius = payload.freeDeliveryRadius;
 
-  const { data, error } = await supabase
-    .from(TABLE)
-    .update(updateData)
-    .eq('id', logicId)
-    .select('*')
-    .single();
-
-  if (error) {
-    log.error('Failed to update delivery logic', error);
-    return { data: null, error };
+  try {
+    const data = await apiClient.put<any>(`/api/v1/merchant/shops/${shopId}/delivery-logic`, updateData);
+    return { data: mapRow(data), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to update delivery logic', apiError);
+    return { data: null, error: apiError };
   }
-
-  return { data: mapRow(data), error: null };
 }
 
 // Helper function to calculate order surcharge based on order value

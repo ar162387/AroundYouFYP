@@ -75,6 +75,8 @@ export default function MerchantOrderScreen() {
   }, [order]);
 
   const isLoadingOrder = isLoading && !order;
+  const orderItems = order?.order_items ?? [];
+  const deliveryAddress = order?.delivery_address;
 
   const blockIfProcessing = useCallback(() => {
     if (isProcessingMutationRef.current) {
@@ -213,11 +215,11 @@ export default function MerchantOrderScreen() {
   }, [order]);
 
   const handleGetDirections = useCallback(() => {
-    if (!order) return;
-    const { latitude, longitude } = order.delivery_address;
+    if (deliveryAddress?.latitude == null || deliveryAddress?.longitude == null) return;
+    const { latitude, longitude } = deliveryAddress;
     const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
     Linking.openURL(url);
-  }, [order]);
+  }, [deliveryAddress]);
 
   const actionContent = useMemo(() => {
     if (!order) return null;
@@ -396,18 +398,18 @@ export default function MerchantOrderScreen() {
                 {t('merchant.orders.deliveryAddress')}
               </Text>
               <Text className="text-gray-900 text-base">
-                {order.delivery_address.street_address}
+                {deliveryAddress?.street_address || '—'}
               </Text>
               <Text className="text-gray-600 text-sm mt-1">
-                {order.delivery_address.city}
-                {order.delivery_address.region &&
-                  `, ${order.delivery_address.region}`}
+                {deliveryAddress?.city || ''}
+                {deliveryAddress?.region &&
+                  `, ${deliveryAddress.region}`}
               </Text>
-              {order.delivery_address.landmark && (
+              {deliveryAddress?.landmark && (
                 <View className="mt-2">
                   <Text className="text-xs text-gray-500">{t('merchant.orders.landmark')}</Text>
                   <Text className="text-gray-700 text-sm">
-                    {order.delivery_address.landmark}
+                    {deliveryAddress.landmark}
                   </Text>
                 </View>
               )}
@@ -434,10 +436,10 @@ export default function MerchantOrderScreen() {
               <Text className="text-lg font-bold text-gray-900 mb-3">
                 {t('merchant.orders.orderItems')}
               </Text>
-              {order.order_items.map((item, index) => (
+              {orderItems.map((item, index) => (
                 <View
                   key={item.id}
-                  className={`flex-row justify-between py-2 ${index < order.order_items.length - 1
+                  className={`flex-row justify-between py-2 ${index < orderItems.length - 1
                     ? 'border-b border-gray-100'
                     : ''
                     }`}

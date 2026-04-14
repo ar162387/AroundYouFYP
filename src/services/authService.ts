@@ -1,5 +1,13 @@
-import { supabase, supabaseAdmin } from './supabase';
+import { cleanupNotifications, getFCMToken } from './notificationService';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { apiClient, toApiError, type FieldErrors } from './apiClient';
+import { clearAuthSession, getAccessToken, setAuthSession } from './authTokenStorage';
+
+/** /auth/me may append these when the JWT role is out of sync with the profile (e.g. merchant upgrade). */
+type MeApiPayload = User & {
+  access_token?: string;
+  expires_at?: string;
+};
 
 export type UserRole = 'consumer' | 'merchant' | 'admin';
 
@@ -13,6 +21,50 @@ export interface User {
 
 export interface AuthError {
   message: string;
+  fieldErrors?: FieldErrors;
+}
+
+type AuthResponse = {
+  access_token: string;
+  expires_at: string;
+  user: {
+    id: string;
+    email: string;
+    name?: string | null;
+    role: UserRole;
+    created_at: string;
+  };
+};
+
+function mapUser(user: AuthResponse['user']): User {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name ?? null,
+    role: user.role || 'consumer',
+    created_at: user.created_at,
+  };
+}
+
+async function persistAuth(response: AuthResponse): Promise<User> {
+  await setAuthSession(response.access_token, response.expires_at);
+  return mapUser(response.user);
+}
+
+/**
+ * Remove this device's FCM row while the *previous* JWT is still in storage.
+ * Prevents 401 when switching accounts (NotificationSetup used to unregister after JWT swap).
+ */
+async function detachDeviceTokenFromPreviousSession(): Promise<void> {
+  const prevJwt = await getAccessToken();
+  if (!prevJwt) return;
+  const fcm = await getFCMToken();
+  if (!fcm) return;
+  try {
+    await apiClient.delete('/api/v1/auth/device-token', { token: fcm }, { requiresAuth: false, token: prevJwt });
+  } catch {
+    // Row may already be gone; switching without prior session — ignore
+  }
 }
 
 // Email & Password Sign Up
@@ -22,98 +74,23 @@ export async function signUpWithEmail(
   name?: string
 ): Promise<{ user: User | null; error: AuthError | null }> {
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          name: name || null,
-          role: 'consumer', // Default role is consumer
-        },
-      },
-    });
-
-    if (error) {
-      return { user: null, error: { message: error.message } };
-    }
-
-    if (!data.user) {
-      return { user: null, error: { message: 'Failed to create user' } };
-    }
-
-    // Auto-confirm user email using Admin API (service_role key)
-    // This bypasses email confirmation requirement
-    if (supabaseAdmin && !data.user.email_confirmed_at) {
-      try {
-        const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
-          data.user.id,
-          {
-            email_confirm: true,
-          }
-        );
-        if (confirmError) {
-          console.warn('Failed to auto-confirm user:', confirmError);
-        }
-      } catch (error) {
-        console.warn('Error confirming user:', error);
-      }
-    }
-
-    // Profile is automatically created by trigger function handle_new_user()
-    // Wait a moment for the trigger to complete, then fetch the profile
-    await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
-
-    // Fetch the user profile (created by trigger)
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
-
-    // If profile doesn't exist yet (trigger might be delayed), use function to create it
-    // This bypasses RLS because the function is SECURITY DEFINER
-    if (profileError && profileError.code === 'PGRST116') {
-      const { error: createError } = await supabase.rpc('create_user_profile_if_not_exists', {
-        user_id: data.user.id,
-        user_email: data.user.email || '',
-        user_name: name || data.user.user_metadata?.name || null,
-        user_role: 'consumer',
-      });
-
-      if (createError) {
-        console.warn('Fallback profile creation error:', createError);
-      }
-
-      // Fetch again after function call
-      const { data: newProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-
-      const user: User = {
-        id: data.user.id,
-        email: data.user.email,
-        name: newProfile?.name || name || data.user.user_metadata?.name || null,
-        role: (newProfile?.role as UserRole) || 'consumer',
-        created_at: data.user.created_at,
-      };
-
-      return { user, error: null };
-    }
-
-    // Use profile data if available
-    const user: User = {
-      id: data.user.id,
-      email: data.user.email,
-      name: profile?.name || name || data.user.user_metadata?.name || null,
-      role: (profile?.role as UserRole) || 'consumer',
-      created_at: data.user.created_at,
-    };
-
+    const response = await apiClient.post<AuthResponse>(
+      '/api/v1/auth/register',
+      { email, password, name: name || null },
+      { requiresAuth: false }
+    );
+    await detachDeviceTokenFromPreviousSession();
+    const user = await persistAuth(response);
     return { user, error: null };
-  } catch (error: any) {
-    return { user: null, error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return {
+      user: null,
+      error: {
+        message: apiError.message,
+        fieldErrors: Object.keys(apiError.fieldErrors).length ? apiError.fieldErrors : undefined,
+      },
+    };
   }
 }
 
@@ -123,68 +100,23 @@ export async function signInWithEmail(
   password: string
 ): Promise<{ user: User | null; error: AuthError | null }> {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      return { user: null, error: { message: error.message } };
-    }
-
-    if (!data.user) {
-      return { user: null, error: { message: 'Failed to sign in' } };
-    }
-
-    // Fetch user profile to get role
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
-
-    // If profile doesn't exist, use function to create it (bypasses RLS)
-    if (profileError && profileError.code === 'PGRST116') {
-      const { error: createError } = await supabase.rpc('create_user_profile_if_not_exists', {
-        user_id: data.user.id,
-        user_email: data.user.email || '',
-        user_name: data.user.user_metadata?.name || null,
-        user_role: 'consumer',
-      });
-
-      if (createError) {
-        console.warn('Profile creation error:', createError);
-      }
-
-      // Fetch again after function call
-      const { data: newProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-
-      const user: User = {
-        id: data.user.id,
-        email: data.user.email,
-        name: newProfile?.name || data.user.user_metadata?.name || null,
-        role: (newProfile?.role as UserRole) || 'consumer',
-        created_at: data.user.created_at,
-      };
-
-      return { user, error: null };
-    }
-
-    const user: User = {
-      id: data.user.id,
-      email: data.user.email,
-      name: profile?.name || data.user.user_metadata?.name || null,
-      role: (profile?.role as UserRole) || 'consumer',
-      created_at: data.user.created_at,
-    };
-
+    const response = await apiClient.post<AuthResponse>(
+      '/api/v1/auth/login',
+      { email, password },
+      { requiresAuth: false }
+    );
+    await detachDeviceTokenFromPreviousSession();
+    const user = await persistAuth(response);
     return { user, error: null };
-  } catch (error: any) {
-    return { user: null, error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return {
+      user: null,
+      error: {
+        message: apiError.message,
+        fieldErrors: Object.keys(apiError.fieldErrors).length ? apiError.fieldErrors : undefined,
+      },
+    };
   }
 }
 
@@ -209,90 +141,10 @@ export async function signInWithGoogle(): Promise<{ user: User | null; error: Au
       return { user: null, error: { message: 'Failed to get Google ID token' } };
     }
 
-    // Sign in to Supabase using the Google ID token
-    const { data: sessionData, error: sessionError } = await supabase.auth.signInWithIdToken({
-      provider: 'google',
-      token: userInfo.data.idToken,
-    });
-
-    if (sessionError) {
-      return { user: null, error: { message: sessionError.message } };
-    }
-
-    if (!sessionData.user) {
-      return { user: null, error: { message: 'Failed to sign in' } };
-    }
-
-    // Auto-confirm user email if not confirmed (for Google signups)
-    if (supabaseAdmin && !sessionData.user.email_confirmed_at) {
-      try {
-        const { error: confirmError } = await supabaseAdmin.auth.admin.updateUserById(
-          sessionData.user.id,
-          {
-            email_confirm: true,
-          }
-        );
-        if (confirmError) {
-          console.warn('Failed to auto-confirm user:', confirmError);
-        }
-      } catch (error) {
-        console.warn('Error confirming user:', error);
-      }
-    }
-
-    // Extract name from Google user info
-    const googleName = userInfo.data.user?.name || userInfo.data.user?.givenName || null;
-
-    // Wait a bit for the trigger to create the profile, then fetch it
-    await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
-
-    // Fetch user profile (trigger should have created it)
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', sessionData.user.id)
-      .single();
-
-    // If profile doesn't exist yet, use function to create it (bypasses RLS)
-    if (profileError && profileError.code === 'PGRST116') {
-      const { error: createError } = await supabase.rpc('create_user_profile_if_not_exists', {
-        user_id: sessionData.user.id,
-        user_email: sessionData.user.email || '',
-        user_name: googleName || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
-        user_role: 'consumer',
-      });
-
-      if (createError) {
-        console.warn('Profile creation error:', createError);
-      }
-
-      // Fetch again after function call
-      const { data: newProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', sessionData.user.id)
-        .single();
-
-      const user: User = {
-        id: sessionData.user.id,
-        email: sessionData.user.email,
-        name: newProfile?.name || googleName || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
-        role: (newProfile?.role as UserRole) || 'consumer',
-        created_at: sessionData.user.created_at,
-      };
-
-      return { user, error: null };
-    }
-
-    const user: User = {
-      id: sessionData.user.id,
-      email: sessionData.user.email,
-      name: profile?.name || googleName || sessionData.user.user_metadata?.full_name || sessionData.user.user_metadata?.name || null,
-      role: (profile?.role as UserRole) || 'consumer',
-      created_at: sessionData.user.created_at,
+    return {
+      user: null,
+      error: { message: 'Google sign-in is currently unavailable on the backend. Use email login.' },
     };
-
-    return { user, error: null };
   } catch (error: any) {
     // Handle specific Google Sign-In errors
     if (error.code === statusCodes.SIGN_IN_CANCELLED) {
@@ -328,70 +180,47 @@ export async function signOut(): Promise<{ error: AuthError | null }> {
       }
     }
 
-    // Sign out from Supabase
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      return { error: { message: error.message } };
+    const { user } = await getCurrentUser();
+    const token = await getFCMToken();
+    if (token) {
+      try {
+        await apiClient.delete('/api/v1/auth/device-token', { token });
+      } catch {
+        // Ignore cleanup failures on sign out.
+      }
     }
+
+    await cleanupNotifications(token ?? undefined, user?.id);
+    await clearAuthSession();
     return { error: null };
-  } catch (error: any) {
-    return { error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { error: { message: apiError.message } };
   }
 }
 
 // Get Current User
 export async function getCurrentUser(): Promise<{ user: User | null; error: AuthError | null }> {
   try {
-    const { data: { user: authUser }, error } = await supabase.auth.getUser();
-
-    if (error || !authUser) {
-      return { user: null, error: error ? { message: error.message } : null };
+    const payload = await apiClient.get<MeApiPayload>('/api/v1/auth/me');
+    if (payload.access_token && payload.expires_at) {
+      await setAuthSession(payload.access_token, payload.expires_at);
     }
-
-    // Fetch user profile
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', authUser.id)
-      .single();
-
-    if (profileError && profileError.code === 'PGRST116') {
-      // Profile doesn't exist, try to create it using the function
-      const { error: createError } = await supabase.rpc('create_user_profile_if_not_exists', {
-        user_id: authUser.id,
-        user_email: authUser.email || '',
-        user_name: authUser.user_metadata?.name || null,
-        user_role: 'consumer',
-      });
-
-      // Fetch again after function call (even if it failed, try to get profile)
-      const { data: newProfile } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-
-      const user: User = {
-        id: authUser.id,
-        email: authUser.email,
-        name: newProfile?.name || authUser.user_metadata?.name || null,
-        role: (newProfile?.role as UserRole) || 'consumer',
-        created_at: authUser.created_at,
-      };
-      return { user, error: null };
-    }
-
     const user: User = {
-      id: authUser.id,
-      email: authUser.email,
-      name: profile?.name || authUser.user_metadata?.name || null,
-      role: (profile?.role as UserRole) || 'consumer',
-      created_at: authUser.created_at,
+      id: payload.id,
+      email: payload.email,
+      name: payload.name ?? null,
+      role: payload.role || 'consumer',
+      created_at: payload.created_at,
     };
-
     return { user, error: null };
-  } catch (error: any) {
-    return { user: null, error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.status === 401) {
+      await clearAuthSession();
+      return { user: null, error: null };
+    }
+    return { user: null, error: { message: apiError.message } };
   }
 }
 
@@ -401,18 +230,19 @@ export async function updateUserRole(
   role: UserRole
 ): Promise<{ error: AuthError | null }> {
   try {
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ role })
-      .eq('id', userId);
-
-    if (error) {
-      return { error: { message: error.message } };
+    if (role === 'consumer') {
+      await apiClient.put('/api/v1/auth/me', { name: null });
+      return { error: null };
     }
-
-    return { error: null };
-  } catch (error: any) {
-    return { error: { message: error.message || 'An error occurred' } };
+    return {
+      error: {
+        message:
+          'Role updates are no longer handled by auth profile updates. Create a merchant account to switch role.',
+      },
+    };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { error: { message: apiError.message } };
   }
 }
 
@@ -421,17 +251,12 @@ export async function deleteUserProfile(
   userId: string
 ): Promise<{ error: AuthError | null }> {
   try {
-    // Use the PostgreSQL function to delete account and all related data
-    // This function handles all cascading deletions properly
-    const { error } = await supabase.rpc('delete_user_account');
-
-    if (error) {
-      return { error: { message: error.message } };
-    }
-
+    await apiClient.delete('/api/v1/auth/me');
+    await clearAuthSession();
     return { error: null };
-  } catch (error: any) {
-    return { error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { error: { message: apiError.message } };
   }
 }
 

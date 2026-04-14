@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Linking } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../navigation/types';
 import { useTranslation } from 'react-i18next';
 import BackIcon from '../icons/BackIcon';
@@ -10,7 +11,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'PrivacyPolicy'>;
-type Route = { params: { accountType: 'consumer' | 'merchant' } };
+type Route = RouteProp<RootStackParamList, 'PrivacyPolicy'>;
 
 const PRIVACY_POLICY_URL = 'https://docs.google.com/document/d/1GeNXyKBF18eRBEVfCdp4Nl4UzkY_SuEfmRCnnrbfCos/edit?usp=sharing';
 

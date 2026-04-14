@@ -22,6 +22,9 @@ export function useUserLocation(): UserLocationState {
 
   useEffect(() => {
     let isMounted = true;
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUserLocation.ts:23',message:'Location hook initialized',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+    // #endregion
     (async () => {
       try {
         setLoading(true);
@@ -39,6 +42,9 @@ export function useUserLocation(): UserLocationState {
               buttonPositive: 'OK',
             }
           );
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUserLocation.ts:42',message:'Location permission result',data:{granted},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+          // #endregion
           if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
             throw new Error('Location permission denied');
           }
@@ -56,6 +62,9 @@ export function useUserLocation(): UserLocationState {
 
         if (!isMounted) return;
         const { latitude, longitude } = position;
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUserLocation.ts:59',message:'Location obtained',data:{latitude,longitude},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+        // #endregion
         setCoords({ latitude, longitude });
 
         // Use Geoapify Reverse Geocoding API (faster and no Google billing)
@@ -94,9 +103,17 @@ export function useUserLocation(): UserLocationState {
         setAddressLine(line);
       } catch (e: any) {
         if (!isMounted) return;
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUserLocation.ts:95',message:'Location error',data:{errorMessage:e?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+        // #endregion
         setError(e?.message || 'Failed to fetch location');
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useUserLocation.ts:99',message:'Location loading complete',data:{loading:false},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+          // #endregion
+          setLoading(false);
+        }
       }
     })();
     return () => {

@@ -170,13 +170,40 @@ type AuditTabProps = {
   loading: boolean;
   entries: InventoryAuditLogEntry[];
   items: InventoryItem[];
+  filteredItem: InventoryItem | null;
+  onClearItemFilter: () => void;
   contentContainerStyle?: any;
 };
 
-const AuditTab = React.memo(function AuditTab({ loading, entries, items, contentContainerStyle }: AuditTabProps) {
+const AuditTab = React.memo(function AuditTab({
+  loading,
+  entries,
+  items,
+  filteredItem,
+  onClearItemFilter,
+  contentContainerStyle,
+}: AuditTabProps) {
   const { t } = useTranslation();
   return (
     <View className="flex-1">
+      {filteredItem ? (
+        <View className="mb-3 flex-row items-center self-start max-w-full">
+          <View className="flex-row items-center bg-blue-50 border border-blue-200 rounded-full pl-3 pr-1 py-1.5 max-w-full">
+            <Text className="text-sm font-medium text-blue-900 flex-shrink pr-2" numberOfLines={1}>
+              {filteredItem.name}
+            </Text>
+            <TouchableOpacity
+              onPress={onClearItemFilter}
+              className="h-8 w-8 rounded-full items-center justify-center bg-blue-100"
+              accessibilityRole="button"
+              accessibilityLabel={t('merchant.inventory.audit.clearItemFilter')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text className="text-base font-semibold text-blue-800 leading-none">×</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
       <View className="mb-4">
         <Text className="text-sm text-gray-500">
           {t('merchant.inventory.common.transparencyLog')}
@@ -226,6 +253,8 @@ export default function InventorySection({ shop }: InventorySectionProps) {
   const [isItemDeleting, setIsItemDeleting] = useState(false);
   const [isCategorySubmitting, setIsCategorySubmitting] = useState(false);
   const [isCategoryDeleting, setIsCategoryDeleting] = useState(false);
+  /** When set, audit log API is scoped to this item (from "Audit" on item card). Cleared by chip or when leaving the audit tab. */
+  const [auditFilterItem, setAuditFilterItem] = useState<InventoryItem | null>(null);
 
   const listParams = useMemo(() => ({ ...filters, search }), [filters, search]);
 
@@ -243,7 +272,13 @@ export default function InventorySection({ shop }: InventorySectionProps) {
   const toggleItemMutation = useToggleInventoryItem(shop.id, listParams);
   const deleteItemMutation = useDeleteInventoryItem(shop.id, listParams);
 
-  const auditLogFilters = useMemo(() => ({ limit: 50 }), []);
+  const auditLogFilters = useMemo(
+    () => ({
+      limit: 50,
+      ...(auditFilterItem ? { merchantItemId: auditFilterItem.id } : {}),
+    }),
+    [auditFilterItem]
+  );
   const { data: auditLogData, isLoading: auditLoading } = useInventoryAuditLog(shop.id, auditLogFilters);
   const templateCategoriesQuery = useInventoryTemplateCategories();
   const templateCategories = templateCategoriesQuery.data ?? [];
@@ -277,7 +312,6 @@ export default function InventorySection({ shop }: InventorySectionProps) {
           description: values.description,
           barcode: values.barcode,
           imageUrl: values.imageUrl,
-          sku: values.sku,
           priceCents: values.priceCents,
           isActive: values.isActive,
           categoryIds: values.categoryIds ?? [],
@@ -299,7 +333,6 @@ export default function InventorySection({ shop }: InventorySectionProps) {
           itemId: selectedItem.id,
           updates: {
             description: values.description,
-            sku: values.sku,
             priceCents: values.priceCents,
             isActive: values.isActive,
             categoryIds: values.categoryIds,
@@ -492,14 +525,23 @@ export default function InventorySection({ shop }: InventorySectionProps) {
     setCategoryTemplatePickerOpen(true);
   }, []);
 
-  const handleViewAudit = useCallback(
-    (item: InventoryItem) => {
-      setActiveTab('audit');
-      setTimeout(() => {
-        // Placeholder for potential future filtering by item
-      }, 0);
+  const handleViewAudit = useCallback((item: InventoryItem) => {
+    setAuditFilterItem(item);
+    setActiveTab('audit');
+  }, []);
+
+  const handleClearAuditItemFilter = useCallback(() => {
+    setAuditFilterItem(null);
+  }, []);
+
+  const handleInventoryTabChange = useCallback(
+    (tab: InventoryTab) => {
+      if (activeTab === 'audit' && tab !== 'audit') {
+        setAuditFilterItem(null);
+      }
+      setActiveTab(tab);
     },
-    []
+    [activeTab]
   );
 
   const openCreateItem = useCallback(() => {
@@ -511,7 +553,7 @@ export default function InventorySection({ shop }: InventorySectionProps) {
   return (
     <View className="flex-1 space-y-6 px-5 pt-6">
       <View className="space-y-4">
-        <InventoryTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+        <InventoryTabBar activeTab={activeTab} onTabChange={handleInventoryTabChange} />
 
         {activeTab === 'items' ? (
           <View className="space-y-4 pt-4">
@@ -577,6 +619,8 @@ export default function InventorySection({ shop }: InventorySectionProps) {
             loading={auditLoading}
             entries={auditLogData?.entries ?? []}
             items={items}
+            filteredItem={auditFilterItem}
+            onClearItemFilter={handleClearAuditItemFilter}
             contentContainerStyle={{ paddingBottom: 100 }}
           />
         ) : null}

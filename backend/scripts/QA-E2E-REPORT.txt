@@ -1,0 +1,97 @@
+=== Ay backend QA — BASE_URL=http://localhost:5017 ===
+--- Fixture: register ---
+PASS REG-M1 HTTP 200
+PASS REG-M2 HTTP 200
+PASS REG-C1 HTTP 200
+PASS REG-C2 HTTP 200
+--- Fixture: merchant accounts + verify DB ---
+PASS FIX-M1-ACCT HTTP 200
+PASS FIX-M2-ACCT HTTP 200
+--- Fixture: shops / categories / items ---
+PASS FIX-SHOP-A HTTP 200
+PASS FIX-SHOP-B HTTP 200
+PASS FIX-CAT-A HTTP 200
+PASS FIX-CAT-B HTTP 200
+PASS FIX-ITEM-A1 HTTP 200
+PASS FIX-ITEM-A2 HTTP 200
+PASS FIX-ITEM-B1 HTTP 200
+PASS FIX-DL-A HTTP 200
+PASS FIX-DL-B HTTP 200
+PASS FIX-ADDR-C1 HTTP 200
+PASS FIX-ADDR-C2 HTTP 200
+PASS FIX-ADDR-C2B HTTP 200
+Fixture SHOP_A=b3de58bd-42d2-4d7b-9365-adc26d7e3df6 SHOP_B=2dfa39aa-5302-48fa-b5c5-ab96395fe46d
+=== Phase B: Consumer ===
+PASS C-01 HTTP 200
+PASS C-01b role consumer
+PASS C-02 HTTP 400 — name > 100 chars
+PASS C-02b HTTP 200
+PASS C-03-LIST HTTP 200
+PASS C-04 HTTP 404 — other user address
+PASS C-05 HTTP 200
+PASS C-05b discovery
+PASS C-06 HTTP 200
+PASS C-06b categories
+PASS C-07 HTTP 200
+PASS C-08 HTTP 422 — C2 + C1 address
+PASS C-09 HTTP 422 — below least order
+PASS C-10 HTTP 200
+PASS C-11 HTTP 404
+PASS C-12 HTTP 200
+PASS C-12b
+PASS C-13 no-active HTTP 204
+PASS C-14a HTTP 204
+PASS C-14b-CONF HTTP 204
+PASS C-14c HTTP 422 — cancel after confirm
+PASS C-15-PLACE HTTP 200
+PASS C-15-CONF HTTP 204
+PASS C-15-RUN HTTP 200
+PASS C-15-DISP HTTP 204
+PASS C-15-DEL HTTP 204
+PASS C-15a HTTP 200
+PASS C-15b HTTP 422 — duplicate review
+PASS C-15c HTTP 200
+PASS C-16a HTTP 200
+PASS C-16b HTTP 200
+=== Phase C: Merchant ===
+PASS M-01 HTTP 200
+PASS M-01b
+PASS M-02 HTTP 404 — M1 on M2 shop
+PASS M-03 HTTP 404 — order on other shop
+PASS M-04a HTTP 204
+PASS M-04b HTTP 204
+PASS M-04c HTTP 204
+PASS M-05 HTTP 200
+=== Phase D: Cross-actor ===
+PASS X-01 HTTP 200
+PASS X-01b
+PASS X-02 HTTP 404 — M2 list shop A
+PASS X-03 HTTP 404
+PASS X-04 M1/shopA
+PASS X-04b M2/shopB
+PASS X-05 C1 both shops in history
+=== Phase E: Edge ===
+PASS E-01 HTTP 422 — cross-shop item
+PASS E-02a HTTP 200
+PASS E-02b HTTP 422 — inactive item
+PASS E-03 HTTP 400
+PASS E-04 HTTP 403
+PASS E-05 HTTP 403
+PASS E-06 HTTP 401
+PASS E-07 HTTP 200
+PASS E-07b pageSize=1
+=== Summary: failures=0 ===
+
+--- Product / HTTP semantics (observed) ---
+- Merchant access to another merchant shop: 404 + ProblemDetails (not 403).
+- Consumer GET /orders/active when none: 204 No Content (Ok(null)).
+- Register always creates consumer; POST /api/v1/merchant/account promotes to merchant; re-login required for JWT role.
+- Order number collisions: script runs setval on order_number_seq when psql is available.
+- Cross-shop item in cart: 422; inactive item: 422; invalid paymentMethod: 400 (FluentValidation).
+
+--- How to re-run ---
+  cd backend && BASE_URL=http://localhost:5017 ./scripts/qa-e2e.sh
+
+--- Artifacts ---
+  Script: scripts/qa-e2e.sh
+  This log: scripts/QA-E2E-REPORT.txt

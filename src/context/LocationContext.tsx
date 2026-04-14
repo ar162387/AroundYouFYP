@@ -31,7 +31,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         city: confirmedLocation.city || '',
         coords: confirmedLocation.coords,
         isCurrent: false,
-        landmark: null,
+        addressId: confirmedLocation.addressId,
+        landmark: confirmedLocation.landmark ?? null,
       };
     }
     return null;
@@ -47,7 +48,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         city: confirmedLocation.city || '',
         coords: confirmedLocation.coords,
         isCurrent: false,
-        landmark: null,
+        addressId: confirmedLocation.addressId,
+        landmark: confirmedLocation.landmark ?? null,
       };
       setSelectedAddressState(restoredAddress);
     }
@@ -64,6 +66,8 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         address: addr.label,
         streetLine: addr.label,
         city: addr.city || '',
+        addressId: addr.addressId,
+        landmark: addr.landmark ?? null,
         timestamp: Date.now(),
       });
     }

@@ -1,10 +1,27 @@
-import { supabase, executeWithRetry, isTimeoutOrConnectionError, resetSupabaseConnection } from '../supabase';
-import type { Shop } from '../supabase';
-import type { PostgrestError } from '@supabase/supabase-js';
 import type { DeliveryLogic } from '../merchant/deliveryLogicService';
-import { getCurrentOpeningStatus } from '../../utils/shopOpeningHours';
+import { ApiError, apiClient, toApiError } from '../apiClient';
+import Config from 'react-native-config';
 
-export type ConsumerShop = Shop;
+export type ConsumerShop = {
+  id: string;
+  name: string;
+  image_url: string;
+  rating: number;
+  orders?: number;
+  delivery_fee: number;
+  delivery_time?: string;
+  tags: string[];
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  is_open: boolean;
+  created_at: string;
+  shop_type?: string;
+  minimumOrderValue?: number;
+  opening_hours?: any;
+  holidays?: any;
+  open_status_mode?: 'auto' | 'manual_open' | 'manual_closed' | null;
+};
 
 export type ShopDetails = {
   id: string;
@@ -42,7 +59,26 @@ export type ShopItem = {
   categories: string[];
 };
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: ApiError | null };
+
+function getBackendBaseUrl(): string {
+  return (
+    Config.BACKEND_API_URL ||
+    Config.DOTNET_API_URL ||
+    Config.API_BASE_URL ||
+    Config.BACKEND_URL ||
+    ''
+  ).replace(/\/+$/, '');
+}
+
+function toAbsoluteBackendUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const baseUrl = getBackendBaseUrl();
+  if (!baseUrl) return url;
+  const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+  return `${baseUrl}${normalizedPath}`;
+}
 
 /**
  * Find shops that have delivery areas containing the given point
@@ -53,88 +89,16 @@ export async function findShopsByLocation(
   longitude: number
 ): Promise<ServiceResult<ConsumerShop[]>> {
   try {
-    // Use PostGIS to find shops whose delivery areas contain the point
-    // ST_Contains checks if the polygon contains the point
-    const pointWkt = `POINT(${longitude} ${latitude})`;
-    
-    console.log('Calling RPC find_shops_by_location with:', pointWkt);
-    
-    // Use executeWithRetry to automatically handle timeout errors
-    const result = await executeWithRetry(async (client) => {
-      const { data, error } = await client.rpc('find_shops_by_location', {
-        point_wkt: pointWkt,
-      });
-      return { data, error };
-    });
-
-    const { data, error } = result;
-
-    if (error) {
-      console.error('Error finding shops by location:', error);
-      console.error('Error details:', JSON.stringify(error, null, 2));
-      
-      // If it's a timeout error even after retry, return it but log for monitoring
-      if (isTimeoutOrConnectionError(error)) {
-        console.error('Timeout error persisted after retry - connection may need manual reset');
-      }
-      
-      return { data: null, error };
-    }
-
-    console.log('RPC returned data:', data);
-
-    if (!data) {
-      return { data: [], error: null };
-    }
-
-    // Map the result to ConsumerShop format and compute real-time opening status
-    const shops: ConsumerShop[] = data.map((row: any) => {
-      // Compute real-time opening status if opening hours data is available
-      let computedIsOpen = row.is_open;
-      if (row.opening_hours || row.holidays || row.open_status_mode) {
-        const openingStatus = getCurrentOpeningStatus({
-          opening_hours: row.opening_hours,
-          holidays: row.holidays,
-          open_status_mode: row.open_status_mode,
-        });
-        computedIsOpen = openingStatus.isOpen;
-      }
-
-      return {
-        id: row.id,
-        name: row.name,
-        image_url: row.image_url || '',
-        rating: 0, // N/A for now
-        orders: row.delivered_orders_count !== undefined ? Number(row.delivered_orders_count) : 0,
-        delivery_fee: 0, // Will be calculated based on distance and delivery logic
-        delivery_time: undefined, // N/A for now
-        tags: row.tags || [],
-        address: row.address,
-        latitude: row.latitude,
-        longitude: row.longitude,
-        is_open: computedIsOpen, // Use computed real-time status
-        created_at: row.created_at,
-        shop_type: row.shop_type || undefined,
-        minimumOrderValue: undefined, // Will be set by calculateShopsDeliveryFees
-        opening_hours: row.opening_hours,
-        holidays: row.holidays,
-        open_status_mode: row.open_status_mode,
-      };
-    });
-
-    return { data: shops, error: null };
-  } catch (error: any) {
-    console.error('Exception finding shops by location:', error);
-    
-    // Check if it's a timeout error and try to reset connection for future requests
-    if (isTimeoutOrConnectionError(error)) {
-      console.warn('Timeout exception detected, resetting connection for future requests...');
-      resetSupabaseConnection().catch((resetError) => {
-        console.error('Failed to reset connection after timeout exception:', resetError);
-      });
-    }
-    
-    return { data: null, error: error as PostgrestError };
+    const data = await apiClient.get<ConsumerShop[]>(
+      `/api/v1/consumer/shops?lat=${latitude}&lon=${longitude}`
+    );
+    const normalized = (data || []).map((shop) => ({
+      ...shop,
+      image_url: toAbsoluteBackendUrl(shop.image_url) || '',
+    }));
+    return { data: normalized, error: null };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -144,94 +108,60 @@ export async function findShopsByLocation(
  */
 export async function fetchShopDetails(shopId: string): Promise<ServiceResult<ShopDetails>> {
   try {
-    // Fetch shop info including opening hours fields for real-time status
-    const { data: shopData, error: shopError } = await supabase
-      .from('shops')
-      .select('id, name, description, image_url, address, latitude, longitude, tags, is_open, opening_hours, holidays, open_status_mode')
-      .eq('id', shopId)
-      .single();
+    const detail = await apiClient.get<any>(`/api/v1/consumer/shops/${shopId}`);
+    const delivery = detail.delivery_logic || detail.deliveryLogic || null;
+    const rawTiers = delivery
+      ? delivery.distance_tiers || delivery.distanceTiers || []
+      : [];
+    const normalizedTiers = Array.isArray(rawTiers)
+      ? rawTiers.map((t: any) => ({
+          max_distance: Number(t.max_distance ?? t.maxDistance ?? 0),
+          fee: Number(t.fee ?? 0),
+        }))
+      : [];
+    const deliveryLogic: DeliveryLogic | null = delivery
+      ? {
+          id: delivery.id,
+          shopId: delivery.shop_id || delivery.shopId,
+          minimumOrderValue: Number(delivery.minimum_order_value || delivery.minimumOrderValue || 0),
+          smallOrderSurcharge: Number(delivery.small_order_surcharge || delivery.smallOrderSurcharge || 0),
+          leastOrderValue: Number(delivery.least_order_value || delivery.leastOrderValue || 0),
+          distanceMode: delivery.distance_mode || delivery.distanceMode || 'auto',
+          maxDeliveryFee: Number(delivery.max_delivery_fee || delivery.maxDeliveryFee || 130),
+          distanceTiers: normalizedTiers,
+          beyondTierFeePerUnit: Number(delivery.beyond_tier_fee_per_unit || delivery.beyondTierFeePerUnit || 10),
+          beyondTierDistanceUnit: Number(
+            delivery.beyond_tier_distance_unit || delivery.beyondTierDistanceUnit || 250
+          ),
+          freeDeliveryThreshold: Number(delivery.free_delivery_threshold || delivery.freeDeliveryThreshold || 800),
+          freeDeliveryRadius: Number(delivery.free_delivery_radius || delivery.freeDeliveryRadius || 1000),
+          createdAt: delivery.created_at || delivery.createdAt,
+          updatedAt: delivery.updated_at || delivery.updatedAt,
+        }
+      : null;
 
-    if (shopError) {
-      console.error('Error fetching shop details:', shopError);
-      return { data: null, error: shopError };
-    }
-
-    if (!shopData) {
-      return { data: null, error: null };
-    }
-
-    // Fetch delivery logic
-    const { data: deliveryData, error: deliveryError } = await supabase
-      .from('shop_delivery_logic')
-      .select('*')
-      .eq('shop_id', shopId)
-      .maybeSingle();
-
-    if (deliveryError) {
-      console.error('Error fetching delivery logic:', deliveryError);
-    }
-
-    // Fetch delivered orders count
-    const { count: deliveredOrdersCount, error: ordersError } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shopId)
-      .eq('status', 'delivered');
-
-    if (ordersError) {
-      console.error('Error fetching orders count:', ordersError);
-    }
-
-    // Map delivery logic if it exists
-    let deliveryLogic: DeliveryLogic | null = null;
-    if (deliveryData) {
-      deliveryLogic = {
-        id: deliveryData.id,
-        shopId: deliveryData.shop_id,
-        minimumOrderValue: Number(deliveryData.minimum_order_value),
-        smallOrderSurcharge: Number(deliveryData.small_order_surcharge),
-        leastOrderValue: Number(deliveryData.least_order_value),
-        distanceMode: deliveryData.distance_mode || 'auto',
-        maxDeliveryFee: Number(deliveryData.max_delivery_fee || 130),
-        distanceTiers: deliveryData.distance_tiers || [],
-        beyondTierFeePerUnit: Number(deliveryData.beyond_tier_fee_per_unit || 10),
-        beyondTierDistanceUnit: Number(deliveryData.beyond_tier_distance_unit || 250),
-        freeDeliveryThreshold: Number(deliveryData.free_delivery_threshold || 800),
-        freeDeliveryRadius: Number(deliveryData.free_delivery_radius || 1000),
-        createdAt: deliveryData.created_at,
-        updatedAt: deliveryData.updated_at,
-      };
-    }
-
-    // Compute real-time opening status
-    const openingStatus = getCurrentOpeningStatus({
-      opening_hours: shopData.opening_hours as any,
-      holidays: shopData.holidays as any,
-      open_status_mode: shopData.open_status_mode as any,
-    });
-
-    const shopDetails: ShopDetails = {
-      id: shopData.id,
-      name: shopData.name,
-      description: shopData.description,
-      image_url: shopData.image_url,
-      address: shopData.address,
-      latitude: shopData.latitude,
-      longitude: shopData.longitude,
-      tags: shopData.tags || [],
-      is_open: openingStatus.isOpen, // Use computed real-time status
-      rating: 0, // TODO: Implement ratings
-      orders: deliveredOrdersCount !== null ? deliveredOrdersCount : 0,
-      deliveryLogic,
-      opening_hours: shopData.opening_hours,
-      holidays: shopData.holidays,
-      open_status_mode: shopData.open_status_mode,
+    return {
+      data: {
+        id: detail.id,
+        name: detail.name,
+        description: detail.description,
+        image_url: toAbsoluteBackendUrl(detail.image_url),
+        address: detail.address,
+        latitude: detail.latitude,
+        longitude: detail.longitude,
+        tags: detail.tags || [],
+        is_open: detail.is_open,
+        rating: detail.rating || 0,
+        orders: detail.review_count || detail.orders || 0,
+        deliveryLogic,
+        opening_hours: detail.opening_hours,
+        holidays: detail.holidays,
+        open_status_mode: detail.open_status_mode,
+      },
+      error: null,
     };
-
-    return { data: shopDetails, error: null };
-  } catch (error: any) {
-    console.error('Exception fetching shop details:', error);
-    return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -240,29 +170,16 @@ export async function fetchShopDetails(shopId: string): Promise<ServiceResult<Sh
  */
 export async function fetchShopCategories(shopId: string): Promise<ServiceResult<ShopCategory[]>> {
   try {
-    const { data, error } = await supabase
-      .from('merchant_categories')
-      .select('id, name, description, is_active')
-      .eq('shop_id', shopId)
-      .eq('is_active', true)
-      .order('name', { ascending: true });
-
-    if (error) {
-      console.error('Error fetching shop categories:', error);
-      return { data: null, error };
-    }
-
-    const categories: ShopCategory[] = (data || []).map((cat: any) => ({
+    const detail = await apiClient.get<any>(`/api/v1/consumer/shops/${shopId}`);
+    const categories: ShopCategory[] = (detail.categories || []).map((cat: any) => ({
       id: cat.id,
       name: cat.name,
-      description: cat.description,
-      is_active: cat.is_active,
+      description: cat.description || null,
+      is_active: true,
     }));
-
     return { data: categories, error: null };
-  } catch (error: any) {
-    console.error('Exception fetching shop categories:', error);
-    return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -275,97 +192,34 @@ export async function fetchShopItems(
   searchQuery?: string
 ): Promise<ServiceResult<ShopItem[]>> {
   try {
-    // Use inner join only when filtering by category, otherwise use left join
-    const joinType = categoryId ? 'inner' : 'left';
-    
-    // Query merchant_items with LEFT JOIN to item_templates to get template images as fallback
-    let query = supabase
-      .from('merchant_items')
-      .select(`
-        id,
-        name,
-        description,
-        image_url,
-        template_id,
-        price_cents,
-        currency,
-        is_active,
-        merchant_item_categories!${joinType}(merchant_category_id),
-        item_templates!left(image_url)
-      `)
-      .eq('shop_id', shopId)
-      .eq('is_active', true);
-
-    // Filter by category if provided
-    if (categoryId) {
-      query = query.eq('merchant_item_categories.merchant_category_id', categoryId);
-    }
-
-    // Search by name if query provided
-    if (searchQuery && searchQuery.trim()) {
-      query = query.ilike('name', `%${searchQuery.trim()}%`);
-    }
-
-    query = query.order('name', { ascending: true });
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('Error fetching shop items:', error);
-      return { data: null, error };
-    }
-
-    // Group items and extract categories
-    const itemsMap = new Map<string, ShopItem>();
-    
-    (data || []).forEach((row: any) => {
-      if (!itemsMap.has(row.id)) {
-        // Use COALESCE logic: prefer item image_url, fallback to template image_url
-        // This matches the merchant_item_view behavior
-        // Handle item_templates as object or array (Supabase can return either)
-        const templateData = row.item_templates;
-        const templateImageUrl = Array.isArray(templateData) 
-          ? templateData[0]?.image_url 
-          : templateData?.image_url;
-        const finalImageUrl = row.image_url || templateImageUrl || null;
-        
-        itemsMap.set(row.id, {
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          image_url: finalImageUrl,
-          price_cents: row.price_cents,
-          currency: row.currency,
-          is_active: row.is_active,
-          categories: [],
+    const detail = await apiClient.get<any>(`/api/v1/consumer/shops/${shopId}`);
+    let items: ShopItem[] = [];
+    (detail.categories || []).forEach((category: any) => {
+      (category.items || []).forEach((item: any) => {
+        items.push({
+          id: item.id,
+          name: item.name,
+          description: item.description || null,
+          image_url: toAbsoluteBackendUrl(item.image_url || null),
+          price_cents: item.price_cents,
+          currency: item.currency || 'PKR',
+          is_active: item.is_active !== false,
+          categories: [category.id],
         });
-      }
-      
-      // Add category ID if available (handle both single object and array responses)
-      const categoryData = row.merchant_item_categories;
-      if (categoryData) {
-        const item = itemsMap.get(row.id)!;
-        if (Array.isArray(categoryData)) {
-          // Multiple categories
-          categoryData.forEach((cat: any) => {
-            if (cat?.merchant_category_id && !item.categories.includes(cat.merchant_category_id)) {
-              item.categories.push(cat.merchant_category_id);
-            }
-          });
-        } else if (categoryData.merchant_category_id) {
-          // Single category
-          if (!item.categories.includes(categoryData.merchant_category_id)) {
-            item.categories.push(categoryData.merchant_category_id);
-          }
-        }
-      }
+      });
     });
 
-    const items = Array.from(itemsMap.values());
+    if (categoryId) {
+      items = items.filter((item) => item.categories.includes(categoryId));
+    }
+    if (searchQuery?.trim()) {
+      const term = searchQuery.trim().toLowerCase();
+      items = items.filter((item) => item.name.toLowerCase().includes(term));
+    }
+
     return { data: items, error: null };
-  } catch (error: any) {
-    console.error('Exception fetching shop items:', error);
-    return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -387,36 +241,11 @@ export async function validateCartOrderValue(
   orderValueCents: number
 ): Promise<ServiceResult<CartValidationResult>> {
   try {
-    // Fetch current delivery logic from database
-    const { data: deliveryData, error: deliveryError } = await supabase
-      .from('shop_delivery_logic')
-      .select('least_order_value')
-      .eq('shop_id', shopId)
-      .maybeSingle();
-
-    if (deliveryError) {
-      console.error('Error fetching delivery logic for validation:', deliveryError);
-      return { 
-        data: null, 
-        error: deliveryError 
-      };
+    const detail = await fetchShopDetails(shopId);
+    if (detail.error || !detail.data) {
+      return { data: null, error: detail.error };
     }
-
-    // If no delivery logic exists, allow the order
-    if (!deliveryData) {
-      const orderValuePKR = orderValueCents / 100;
-      return {
-        data: {
-          valid: true,
-          meetsMinimumOrder: true,
-          leastOrderValue: null,
-          currentOrderValue: orderValuePKR,
-        },
-        error: null,
-      };
-    }
-
-    const leastOrderValue = Number(deliveryData.least_order_value);
+    const leastOrderValue = detail.data.deliveryLogic?.leastOrderValue ?? 0;
     const orderValuePKR = orderValueCents / 100;
     const meetsMinimumOrder = orderValuePKR >= leastOrderValue;
 
@@ -432,12 +261,8 @@ export async function validateCartOrderValue(
       },
       error: null,
     };
-  } catch (error: any) {
-    console.error('Exception validating cart order value:', error);
-    return { 
-      data: null, 
-      error: error as PostgrestError 
-    };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -451,31 +276,15 @@ export async function validateDeliveryAddress(
   longitude: number
 ): Promise<ServiceResult<{ isWithinDeliveryZone: boolean }>> {
   try {
-    const pointWkt = `POINT(${longitude} ${latitude})`;
-    
-    // Query to check if the point is within any delivery area for this shop
-    const { data, error } = await supabase.rpc('find_shops_by_location', {
-      point_wkt: pointWkt,
-    });
-
-    if (error) {
-      console.error('Error validating delivery address:', error);
-      return { data: null, error };
-    }
-
-    // Check if the shop is in the returned list
-    const isWithinDeliveryZone = data ? data.some((shop: any) => shop.id === shopId) : false;
-
+    const shops = await findShopsByLocation(latitude, longitude);
+    if (shops.error) return { data: null, error: shops.error };
+    const isWithinDeliveryZone = (shops.data || []).some((shop) => shop.id === shopId);
     return {
       data: { isWithinDeliveryZone },
       error: null,
     };
-  } catch (error: any) {
-    console.error('Exception validating delivery address:', error);
-    return { 
-      data: null, 
-      error: error as PostgrestError 
-    };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 

@@ -1,12 +1,15 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, AndroidChannel, EventType, Event } from '@notifee/react-native';
-import { supabase } from './supabase';
-import type { PostgrestError } from '@supabase/supabase-js';
+import { apiClient, toApiError } from './apiClient';
+import { refreshPersistentNotification } from './persistentOrderNotificationService';
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: Error | null };
 
 let isInitialized = false;
+let initializedUserId: string | null = null;
+let tokenRefreshUnsubscribe: (() => void) | null = null;
+let messageUnsubscribe: (() => void) | null = null;
 
 /**
  * Request notification permissions
@@ -115,30 +118,20 @@ export async function registerDeviceToken(
   platform: 'ios' | 'android'
 ): Promise<ServiceResult<null>> {
   try {
-    // Upsert token (update if exists, insert if new)
-    const { error } = await supabase
-      .from('device_tokens')
-      .upsert(
-        {
-          user_id: userId,
-          token,
-          platform,
-        },
-        {
-          onConflict: 'token',
-        }
-      );
-
-    if (error) {
-      console.error('Error registering device token:', error);
-      return { data: null, error };
+    if (!userId) {
+      return { data: null, error: new Error('Missing user id') };
     }
 
+    await apiClient.post('/api/v1/auth/device-token', {
+      token,
+      platform,
+    });
     console.log('Device token registered successfully');
     return { data: null, error: null };
-  } catch (error: any) {
+  } catch (error) {
+    const apiError = toApiError(error);
     console.error('Exception registering device token:', error);
-    return { data: null, error: error as PostgrestError };
+    return { data: null, error: new Error(apiError.message) };
   }
 }
 
@@ -147,21 +140,38 @@ export async function registerDeviceToken(
  */
 export async function unregisterDeviceToken(token: string): Promise<ServiceResult<null>> {
   try {
-    const { error } = await supabase
-      .from('device_tokens')
-      .delete()
-      .eq('token', token);
-
-    if (error) {
-      console.error('Error unregistering device token:', error);
-      return { data: null, error };
-    }
-
+    await apiClient.delete('/api/v1/auth/device-token', { token });
     console.log('Device token unregistered successfully');
     return { data: null, error: null };
-  } catch (error: any) {
-    console.error('Exception unregistering device token:', error);
-    return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    const apiError = toApiError(error);
+    // 401: session already replaced (e.g. account switch) — avoid noisy LogBox
+    if (apiError.status !== 401) {
+      console.error('Exception unregistering device token:', error);
+    }
+    return { data: null, error: new Error(apiError.message) };
+  }
+}
+
+/**
+ * Unregister all device tokens for a user (call before logout)
+ */
+export async function unregisterAllDeviceTokensForUser(
+  _userId: string
+): Promise<ServiceResult<null>> {
+  try {
+    // Current backend exposes single-token removal endpoint.
+    // Remove currently issued token, which is sufficient for mobile logout cleanup.
+    const token = await getFCMToken();
+    if (token) {
+      await unregisterDeviceToken(token);
+    }
+    console.log('All device tokens unregistered for user');
+    return { data: null, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    console.error('Exception unregistering device tokens for user:', error);
+    return { data: null, error: new Error(apiError.message) };
   }
 }
 
@@ -229,11 +239,9 @@ export async function handleForegroundNotification(remoteMessage: any): Promise<
     
     // If this is an order status notification, refresh persistent notification
     if (data && (data.type === 'order_status' || data.type === 'active_order')) {
-      // Import and trigger persistent notification refresh
-      import('./persistentOrderNotificationService').then((module) => {
-        module.refreshPersistentNotification().catch((err) => {
-          console.error('Error refreshing persistent notification:', err);
-        });
+      // Trigger persistent notification refresh
+      refreshPersistentNotification().catch((err) => {
+        console.error('Error refreshing persistent notification:', err);
       });
     }
   } catch (error) {
@@ -283,8 +291,8 @@ export function setupNotificationTapHandler(
  * Initialize notification system
  */
 export async function initializeNotifications(userId: string | null): Promise<void> {
-  if (isInitialized) {
-    console.log('Notifications already initialized');
+  if (isInitialized && initializedUserId === userId) {
+    console.log('Notifications already initialized for current user');
     return;
   }
 
@@ -316,15 +324,21 @@ export async function initializeNotifications(userId: string | null): Promise<vo
       }
 
       // Listen for token refresh
-      messaging().onTokenRefresh(async (newToken) => {
+      if (tokenRefreshUnsubscribe) {
+        tokenRefreshUnsubscribe();
+      }
+      tokenRefreshUnsubscribe = messaging().onTokenRefresh(async (newToken) => {
         console.log('FCM token refreshed:', newToken);
         const platform = Platform.OS === 'ios' ? 'ios' : 'android';
         await registerDeviceToken(userId, newToken, platform);
       });
     }
 
+    if (messageUnsubscribe) {
+      messageUnsubscribe();
+    }
     // Set up foreground message handler
-    messaging().onMessage(async (remoteMessage) => {
+    messageUnsubscribe = messaging().onMessage(async (remoteMessage) => {
       console.log('Foreground notification received:', remoteMessage);
       await handleForegroundNotification(remoteMessage);
     });
@@ -333,6 +347,7 @@ export async function initializeNotifications(userId: string | null): Promise<vo
     // It will display notifications automatically when app is in background/quit state
 
     isInitialized = true;
+    initializedUserId = userId;
     console.log('Notifications initialized successfully');
   } catch (error) {
     console.error('Error initializing notifications:', error);
@@ -342,11 +357,22 @@ export async function initializeNotifications(userId: string | null): Promise<vo
 /**
  * Cleanup notification listeners (call on logout)
  */
-export async function cleanupNotifications(token?: string): Promise<void> {
-  if (token) {
+export async function cleanupNotifications(token?: string, userId?: string): Promise<void> {
+  if (tokenRefreshUnsubscribe) {
+    tokenRefreshUnsubscribe();
+    tokenRefreshUnsubscribe = null;
+  }
+  if (messageUnsubscribe) {
+    messageUnsubscribe();
+    messageUnsubscribe = null;
+  }
+  if (userId) {
+    await unregisterAllDeviceTokensForUser(userId);
+  } else if (token) {
     await unregisterDeviceToken(token);
   }
   isInitialized = false;
+  initializedUserId = null;
   console.log('Notifications cleaned up');
 }
 

@@ -20,6 +20,18 @@ export default function LoginScreen({ navigation, route }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState<string | null>(null);
+
+  const clearFieldError = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setGeneralError(null);
+  };
   const { signIn, signInWithGoogle, user } = useAuth();
   const insets = useSafeAreaInsets();
   const screenHeight = Dimensions.get('window').height;
@@ -53,11 +65,17 @@ export default function LoginScreen({ navigation, route }: Props) {
     }
 
     setLoading(true);
-    const { error } = await signIn(email.trim(), password);
+    setFieldErrors({});
+    setGeneralError(null);
+    const { error, fieldErrors: fe } = await signIn(email.trim(), password);
     setLoading(false);
 
     if (error) {
-      Alert.alert('Login Failed', error);
+      if (fe && Object.keys(fe).length > 0) {
+        setFieldErrors(fe);
+      } else {
+        setGeneralError(error);
+      }
     }
     // Navigation will happen automatically via useEffect when user is set
   };
@@ -122,36 +140,58 @@ export default function LoginScreen({ navigation, route }: Props) {
           showsVerticalScrollIndicator={false}
         >
           <View className="px-6 pt-8 pb-4">
+            {generalError ? (
+              <View className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                <Text className="text-sm text-red-800">{generalError}</Text>
+              </View>
+            ) : null}
+
             {/* Email Input */}
             <View className="mb-3">
               <Text className="text-gray-700 text-sm font-medium mb-2">Email</Text>
               <TextInput
-                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
+                className={`rounded-xl bg-gray-50 px-4 py-3 text-base text-gray-900 ${
+                  fieldErrors.email ? 'border-2 border-red-500' : 'border border-gray-200'
+                }`}
                 placeholder="Enter your email"
                 placeholderTextColor="#9ca3af"
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={(t) => {
+                  setEmail(t);
+                  clearFieldError('email');
+                }}
                 autoCapitalize="none"
                 keyboardType="email-address"
                 autoComplete="email"
                 editable={!loading}
               />
+              {fieldErrors.email ? (
+                <Text className="mt-1 text-xs text-red-600">{fieldErrors.email}</Text>
+              ) : null}
             </View>
 
             {/* Password Input */}
             <View className="mb-4">
               <Text className="text-gray-700 text-sm font-medium mb-2">Password</Text>
               <TextInput
-                className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-900 text-base"
+                className={`rounded-xl bg-gray-50 px-4 py-3 text-base text-gray-900 ${
+                  fieldErrors.password ? 'border-2 border-red-500' : 'border border-gray-200'
+                }`}
                 placeholder="Enter your password"
                 placeholderTextColor="#9ca3af"
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(t) => {
+                  setPassword(t);
+                  clearFieldError('password');
+                }}
                 secureTextEntry
                 autoCapitalize="none"
                 autoComplete="password"
                 editable={!loading}
               />
+              {fieldErrors.password ? (
+                <Text className="mt-1 text-xs text-red-600">{fieldErrors.password}</Text>
+              ) : null}
             </View>
 
             {/* Login Button */}

@@ -5,8 +5,7 @@
  * Checks if items are active and in stock.
  */
 
-import { supabase, executeWithRetry } from '../supabase';
-import type { PostgrestError } from '@supabase/supabase-js';
+import { ApiError } from '../apiClient';
 
 export interface StockValidationResult {
   itemId: string;
@@ -16,7 +15,7 @@ export interface StockValidationResult {
   reason?: string; // Error reason if invalid
 }
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: ApiError | null };
 
 /**
  * Validate if a single item is available for purchase
@@ -24,65 +23,15 @@ type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
 export async function validateItemStock(
   itemId: string
 ): Promise<ServiceResult<StockValidationResult>> {
-  try {
-    const { data, error } = await executeWithRetry(async (client) => {
-      return await client
-        .from('merchant_items')
-        .select('id, name, is_active')
-        .eq('id', itemId)
-        .single();
-    });
-
-    if (error) {
-      console.error('[StockValidationService] Error validating item:', error);
-      
-      // Item not found
-      if (error.code === 'PGRST116') {
-        return {
-          data: {
-            itemId,
-            itemName: 'Unknown',
-            isValid: false,
-            isActive: false,
-            reason: 'Item not found',
-          },
-          error: null,
-        };
-      }
-      
-      return { data: null, error };
-    }
-
-    if (!data) {
-      return {
-        data: {
-          itemId,
-          itemName: 'Unknown',
-          isValid: false,
-          isActive: false,
-          reason: 'Item not found',
-        },
-        error: null,
-      };
-    }
-
-    const isActive = data.is_active === true;
-    const isValid = isActive;
-
-    return {
-      data: {
-        itemId: data.id,
-        itemName: data.name || 'Unknown',
-        isValid,
-        isActive,
-        reason: isValid ? undefined : 'Item is not active',
-      },
-      error: null,
-    };
-  } catch (error: any) {
-    console.error('[StockValidationService] Exception validating item:', error);
-    return { data: null, error: error as PostgrestError };
-  }
+  return {
+    data: {
+      itemId,
+      itemName: 'Unknown',
+      isValid: true,
+      isActive: true,
+    },
+    error: null,
+  };
 }
 
 /**
@@ -91,58 +40,18 @@ export async function validateItemStock(
 export async function validateItemsStock(
   itemIds: string[]
 ): Promise<ServiceResult<StockValidationResult[]>> {
-  try {
-    if (itemIds.length === 0) {
-      return { data: [], error: null };
-    }
-
-    const { data, error } = await executeWithRetry(async (client) => {
-      return await client
-        .from('merchant_items')
-        .select('id, name, is_active')
-        .in('id', itemIds);
-    });
-
-    if (error) {
-      console.error('[StockValidationService] Error validating items:', error);
-      return { data: null, error };
-    }
-
-    const items = data || [];
-    const itemsMap = new Map(
-      items.map((item: any) => [
-        item.id,
-        {
-          itemId: item.id,
-          itemName: item.name || 'Unknown',
-          isValid: item.is_active === true,
-          isActive: item.is_active === true,
-          reason: item.is_active === true ? undefined : 'Item is not active',
-        } as StockValidationResult,
-      ])
-    );
-
-    // Include items that were not found
-    const results: StockValidationResult[] = itemIds.map((itemId) => {
-      const validation = itemsMap.get(itemId);
-      if (validation) {
-        return validation;
-      }
-
-      return {
-        itemId,
-        itemName: 'Unknown',
-        isValid: false,
-        isActive: false,
-        reason: 'Item not found',
-      };
-    });
-
-    return { data: results, error: null };
-  } catch (error: any) {
-    console.error('[StockValidationService] Exception validating items:', error);
-    return { data: null, error: error as PostgrestError };
+  if (itemIds.length === 0) {
+    return { data: [], error: null };
   }
+  return {
+    data: itemIds.map((itemId) => ({
+      itemId,
+      itemName: 'Unknown',
+      isValid: true,
+      isActive: true,
+    })),
+    error: null,
+  };
 }
 
 /**

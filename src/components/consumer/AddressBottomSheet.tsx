@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, Pressable, Platform, ScrollView, Image } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, Pressable, Platform, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Config from 'react-native-config';
+import MapView, { Marker } from 'react-native-maps';
 import { useUserLocation } from '../../hooks/useUserLocation';
 import { useLocationSelection } from '../../context/LocationContext';
 import { useAuth } from '../../context/AuthContext';
@@ -74,6 +74,8 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
       city: address.city,
       coords,
       isCurrent: false,
+      addressId: address.id,
+      landmark: address.landmark || null,
     });
     onClose();
   };
@@ -104,18 +106,6 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
   const cardLabel = selectedAddress?.label || placeLabel || addressLine || t('address.selectYourAddress');
   const cardCity = selectedAddress?.city || city || '';
   const previewCoords = selectedAddress?.coords || coords || null;
-
-  // Generate Google Static Maps URL
-  const getStaticMapUrl = (coords: { latitude: number; longitude: number }) => {
-    const googleApiKey = Config.GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
-    const lat = coords.latitude;
-    const lon = coords.longitude;
-    const zoom = 16; // Street-level zoom
-    const size = '400x112'; // Width x Height
-    const markerColor = '0x3B82F6'; // Blue marker
-
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=${zoom}&size=${size}&scale=2&maptype=roadmap&markers=color:${markerColor}%7C${lat},${lon}&key=${googleApiKey}`;
-  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -161,29 +151,34 @@ export default function AddressBottomSheet({ visible, onClose }: AddressBottomSh
               {/* 3. Selected Address Card with mini map preview */}
               <View className="bg-white border border-pink-200 rounded-xl overflow-hidden mb-3">
                 {previewCoords ? (
-                  <View style={{ height: 112, position: 'relative' }}>
-                    <Image
-                      source={{ uri: getStaticMapUrl(previewCoords) }}
-                      style={{ width: '100%', height: 112 }}
-                      resizeMode="cover"
-                    />
-                    <View
-                      style={{
-                        position: 'absolute',
-                        left: '50%',
-                        top: '50%',
-                        marginLeft: -16,
-                        marginTop: -30,
-                        shadowColor: '#000',
-                        shadowOpacity: 0.25,
-                        shadowRadius: 3.5,
-                        shadowOffset: { width: 0, height: 2 },
-                        elevation: 6,
-                      }}
+                  <View style={{ height: 112 }}>
+                    <MapView
+                      style={{ width: '100%', height: '100%' }}
                       pointerEvents="none"
+                      scrollEnabled={false}
+                      zoomEnabled={false}
+                      rotateEnabled={false}
+                      pitchEnabled={false}
+                      initialRegion={{
+                        latitude: previewCoords.latitude,
+                        longitude: previewCoords.longitude,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }}
+                      region={{
+                        latitude: previewCoords.latitude,
+                        longitude: previewCoords.longitude,
+                        latitudeDelta: 0.005,
+                        longitudeDelta: 0.005,
+                      }}
                     >
-                      <PinMarker size={32} color="#3B82F6" />
-                    </View>
+                      <Marker
+                        coordinate={{
+                          latitude: previewCoords.latitude,
+                          longitude: previewCoords.longitude,
+                        }}
+                      />
+                    </MapView>
                   </View>
                 ) : (
                   <View className="h-28 bg-pink-50 items-center justify-center">

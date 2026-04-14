@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
-import type { Shop } from '../services/supabase';
+import type { Shop } from '../types/shop';
 
 interface ShopCardProps {
   shop: Shop;

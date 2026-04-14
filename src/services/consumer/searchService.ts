@@ -1,6 +1,7 @@
-import { supabase, executeWithRetry } from '../supabase';
 import { calculateShopsDeliveryFees } from './deliveryFeeService';
 import type { ConsumerShop } from './shopService';
+import { findShopsByLocation } from './shopService';
+import { apiClient } from '../apiClient';
 
 export type SearchItem = {
 	id: string;
@@ -57,32 +58,12 @@ export async function searchShopsAndItems(
 			ilikePatterns.add(`%${apostrophe2}%`);
 		}
 
-		// Step 1: fetch visible shops via RPC
-		const pointWkt = `POINT(${longitude} ${latitude})`;
 		console.log('[search] using coords:', { latitude, longitude }, 'query:', query, 'normalized:', normalized);
-		const { data: shopsData, error: shopsError } = await executeWithRetry(async (client) =>
-			client.rpc('find_shops_by_location', { point_wkt: pointWkt })
-		);
-		if (shopsError) {
-			return { results: [], error: { message: shopsError.message } };
+		const shopsResponse = await findShopsByLocation(latitude, longitude);
+		if (shopsResponse.error) {
+			return { results: [], error: { message: shopsResponse.error.message } };
 		}
-		const visibleShops: ConsumerShop[] = (shopsData || []).map((row: any) => ({
-			id: row.id,
-			name: row.name,
-			image_url: row.image_url || '',
-			rating: 0,
-			orders: row.delivered_orders_count !== undefined ? Number(row.delivered_orders_count) : 0,
-			delivery_fee: 0,
-			delivery_time: undefined,
-			tags: row.tags || [],
-			address: row.address,
-			latitude: row.latitude,
-			longitude: row.longitude,
-			is_open: row.is_open,
-			created_at: row.created_at,
-			shop_type: row.shop_type || undefined,
-			minimumOrderValue: undefined,
-		}));
+		const visibleShops: ConsumerShop[] = shopsResponse.data || [];
 		if (visibleShops.length === 0) {
 			return { results: [], error: null };
 		}
@@ -92,71 +73,39 @@ export async function searchShopsAndItems(
 		const shopIdSet = new Set(shopsWithFees.map((s) => s.id));
 		const shopIds = shopsWithFees.map((s) => s.id);
 
-		// Step 3: fetch matched items across visible shops, with template image fallback
-		// Fuzzy: ILIKE on raw query and also on normalized (name with apostrophes removed)
-		// We'll use Supabase SQL functions to replace apostrophes on the fly
-		let itemsQuery = supabase
-			.from('merchant_items')
-			.select(`
-        id,
-        name,
-        image_url,
-        price_cents,
-        currency,
-        shop_id,
-        item_templates!left(image_url)
-      `)
-			.in('shop_id', shopIds)
-			.eq('is_active', true)
-			// Build OR chain like: name.ilike.%a%,name.ilike.%b%,...
-			.or(Array.from(ilikePatterns).map((p) => `name.ilike.${p}`).join(','))
-			.order('name', { ascending: true })
-			.limit(200);
-
-		const { data: itemsData, error: itemsError } = await itemsQuery;
-		if (itemsError) {
-			return { results: [], error: { message: itemsError.message } };
-		}
-
 		const matchedItemsByShop = new Map<string, SearchItem[]>();
-		(itemsData || []).forEach((row: any) => {
-			if (!shopIdSet.has(row.shop_id)) return;
-			// Handle item_templates as object or array (Supabase can return either)
-			const templateData = row.item_templates;
-			const templateImageUrl = Array.isArray(templateData)
-				? templateData[0]?.image_url
-				: templateData?.image_url;
-			const finalImageUrl = row.image_url || templateImageUrl || null;
-			const arr = matchedItemsByShop.get(row.shop_id) || [];
-			arr.push({
-				id: row.id,
-				name: row.name,
-				image_url: finalImageUrl,
-				price_cents: row.price_cents ?? null,
-				currency: row.currency ?? null,
-				shop_id: row.shop_id,
-			});
-			matchedItemsByShop.set(row.shop_id, arr);
-		});
-
-		// Step 4: fetch reviews to compute ratings (avg per shop)
-		const { data: reviewsData, error: reviewsError } = await supabase
-			.from('reviews')
-			.select('shop_id, rating')
-			.in('shop_id', shopIds);
 		const ratingMap = new Map<string, { sum: number; count: number }>();
-		if (!reviewsError && reviewsData) {
-			reviewsData.forEach((r: any) => {
-				const key = r.shop_id;
-				const current = ratingMap.get(key) || { sum: 0, count: 0 };
-				current.sum += Number(r.rating || 0);
-				current.count += 1;
-				ratingMap.set(key, current);
-			});
+		for (const shopId of shopIds) {
+			const detail = await apiClient.get<any>(`/api/v1/consumer/shops/${shopId}`);
+			if (detail) {
+				const categories: any[] = detail.categories || [];
+				categories.forEach((category) => {
+					(category.items || []).forEach((item: any) => {
+						const itemName = (item.name || '').toLowerCase();
+						const matches = Array.from(ilikePatterns).some((pattern) =>
+							itemName.includes(pattern.replace(/%/g, '').toLowerCase())
+						);
+						if (!matches) return;
+						const arr = matchedItemsByShop.get(shopId) || [];
+						arr.push({
+							id: item.id,
+							name: item.name,
+							image_url: item.image_url || null,
+							price_cents: item.price_cents ?? null,
+							currency: item.currency ?? null,
+							shop_id: shopId,
+						});
+						matchedItemsByShop.set(shopId, arr);
+					});
+				});
+				const rating = Number(detail.rating || 0);
+				const count = Number(detail.review_count || 0);
+				ratingMap.set(shopId, { sum: rating * Math.max(count, 1), count });
+			}
 		}
 
 		// Step 5: determine shop name matches (fuzzy using normalized compare) and attach ratings
-		const results: ShopSearchResult[] = shopsWithFees.map((shop) => {
+		const results: ShopSearchResult[] = shopsWithFees.filter((shop) => shopIdSet.has(shop.id)).map((shop) => {
 			const nameNorm = normalizeQuery(shop.name);
 			const nameMatched =
 				shop.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -200,36 +149,21 @@ export async function fetchSampleItemsForShop(
 	limit = 6
 ): Promise<{ items: SearchItem[]; error: { message: string } | null }> {
 	try {
-		const { data, error } = await supabase
-			.from('merchant_items')
-			.select(`
-        id,
-        name,
-        image_url,
-        price_cents,
-        currency,
-        shop_id,
-        item_templates!left(image_url)
-      `)
-			.eq('shop_id', shopId)
-			.eq('is_active', true)
-			.order('name', { ascending: true })
-			.limit(limit);
-		if (error) return { items: [], error: { message: error.message } };
-		const items: SearchItem[] = (data || []).map((row: any) => {
-			const templateData = row.item_templates;
-			const templateImageUrl = Array.isArray(templateData)
-				? templateData[0]?.image_url
-				: templateData?.image_url;
-			const finalImageUrl = row.image_url || templateImageUrl || null;
-			return {
-				id: row.id,
-				name: row.name,
-				image_url: finalImageUrl,
-				price_cents: row.price_cents ?? null,
-				currency: row.currency ?? null,
-				shop_id: row.shop_id,
-			};
+		const detail = await apiClient.get<any>(`/api/v1/consumer/shops/${shopId}`);
+		const items: SearchItem[] = [];
+		(detail.categories || []).forEach((category: any) => {
+			(category.items || []).forEach((item: any) => {
+				if (items.length < limit) {
+					items.push({
+						id: item.id,
+						name: item.name,
+						image_url: item.image_url || null,
+						price_cents: item.price_cents ?? null,
+						currency: item.currency ?? null,
+						shop_id: shopId,
+					});
+				}
+			});
 		});
 		return { items, error: null };
 	} catch (error: any) {

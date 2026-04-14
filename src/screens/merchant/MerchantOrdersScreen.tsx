@@ -153,13 +153,19 @@ export default function MerchantOrdersScreen() {
         </View>
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 24,
+            paddingBottom: 32,
+          }}
           refreshControl={
             <RefreshControl refreshing={isFetching} onRefresh={handleRefresh} />
           }
         >
-          <View className="px-4 mt-6">
-            <Text className="text-2xl font-bold text-gray-900 mb-4">
+          <View>
+            <Text className="text-2xl font-bold text-gray-900 mb-4 text-center">
               {t('merchant.orders.title')}
             </Text>
             <View className="bg-white rounded-xl p-6 items-center">
@@ -286,8 +292,15 @@ function OrderCard({ order, onPress, tick }: OrderCardProps) {
     return Math.floor((Date.now() - startTime.getTime()) / 1000);
   }, [order, tick]);
 
-  const itemsPreview = order.order_items.slice(0, 5);
-  const remainingCount = order.order_items.length - 5;
+  const orderItems = order.order_items ?? [];
+  const itemsPreview = orderItems.slice(0, 5);
+  const remainingCount = Math.max(0, orderItems.length - 5);
+  const addressLine = (order.delivery_address?.street_address ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(', ');
 
   return (
     <TouchableOpacity
@@ -350,9 +363,8 @@ function OrderCard({ order, onPress, tick }: OrderCardProps) {
             />
           </View>
           <Text className="text-gray-700 text-sm flex-1">
-            {order.delivery_address.street_address.split(',').slice(0, 2).join(',')}
-            {order.delivery_address.landmark &&
-              ` (${order.delivery_address.landmark})`}
+            {addressLine || '—'}
+            {order.delivery_address?.landmark ? ` (${order.delivery_address.landmark})` : ''}
           </Text>
         </View>
       </View>

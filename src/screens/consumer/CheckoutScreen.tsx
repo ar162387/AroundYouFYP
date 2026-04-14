@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Image,
   TextInput,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Config from 'react-native-config';
+import MapView, { Marker } from 'react-native-maps';
 import type { RootStackParamList } from '../../navigation/types';
 import { useCart } from '../../context/CartContext';
 import { useLocationSelection } from '../../context/LocationContext';
@@ -22,7 +21,6 @@ import * as addressService from '../../services/consumer/addressService';
 import { usePlaceOrder } from '../../hooks/consumer/useOrders';
 import { PaymentMethod } from '../../types/orders';
 import BackIcon from '../../icons/BackIcon';
-import PinMarker from '../../icons/PinMarker';
 import MoneyIcon from '../../icons/MoneyIcon';
 import AddressSelectionBottomSheet from '../../components/consumer/AddressSelectionBottomSheet';
 import LocationMarkerIcon from '../../icons/LocationMarkerIcon';
@@ -54,7 +52,10 @@ export default function CheckoutScreen() {
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
   const [isCalculatingTotals, setIsCalculatingTotals] = useState(true);
   const [addressId, setAddressId] = useState<string | undefined>(undefined);
-  const [landmark, setLandmark] = useState<string | null>(null);
+  const [addressStreet, setAddressStreet] = useState('');
+  const [addressCity, setAddressCity] = useState('');
+  const [addressLandmark, setAddressLandmark] = useState('');
+  const [landmark, setLandmark] = useState<string | undefined>(undefined);
   const [deliveryInstructions, setDeliveryInstructions] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [totals, setTotals] = useState<CheckoutTotals>({
@@ -67,46 +68,78 @@ export default function CheckoutScreen() {
 
   const placeOrderMutation = usePlaceOrder();
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [inlineAddressSubmitAttempted, setInlineAddressSubmitAttempted] = useState(false);
 
-  // Initialize or save address when component mounts
-  useEffect(() => {
-    const initializeAddress = async () => {
-      if (!selectedAddress) return;
+  const scrollViewRef = useRef<ScrollView>(null);
+  const inlineAddressSectionRef = useRef<View>(null);
+  const streetInputRef = useRef<TextInput>(null);
+  const cityInputRef = useRef<TextInput>(null);
+  const landmarkInputRef = useRef<TextInput>(null);
 
-      // If selectedAddress has an addressId, use it
-      if ('addressId' in selectedAddress && selectedAddress.addressId) {
-        setAddressId(selectedAddress.addressId);
-        return;
-      }
+  const focusFirstMissingInlineField = useCallback(
+    (trimmedStreet: string, trimmedCity: string, trimmedLandmark: string) => {
+      const scrollInlineIntoView = () => {
+        const scrollNode = scrollViewRef.current;
+        const sectionNode = inlineAddressSectionRef.current;
+        if (!scrollNode || !sectionNode) return;
+        sectionNode.measureLayout(
+          scrollNode as unknown as View,
+          (_x, y) => {
+            scrollNode.scrollTo({ y: Math.max(0, y - 16), animated: true });
+          },
+          () => undefined
+        );
+      };
 
-      // If using current location without saved address, save it as a temporary address
-      if (selectedAddress.isCurrent && selectedAddress.coords) {
-        try {
-          // Save the current location as an address
-          const { data: newAddress, error } = await addressService.createAddress({
-            street_address: selectedAddress.label || 'Current Location',
-            city: selectedAddress.city || 'Unknown',
-            region: null,
-            latitude: selectedAddress.coords.latitude,
-            longitude: selectedAddress.coords.longitude,
-            landmark: null,
-            formatted_address: selectedAddress.label,
-          });
-
-          if (!error && newAddress) {
-            setAddressId(newAddress.id);
-            console.log('Auto-saved current location as address:', newAddress.id);
-          } else {
-            console.error('Error saving address:', error);
+      requestAnimationFrame(() => {
+        scrollInlineIntoView();
+        setTimeout(() => {
+          if (!trimmedStreet) {
+            streetInputRef.current?.focus();
+            return;
           }
-        } catch (error) {
-          console.error('Error auto-saving address:', error);
-        }
-      }
-    };
+          if (!trimmedCity) {
+            cityInputRef.current?.focus();
+            return;
+          }
+          if (!trimmedLandmark) {
+            landmarkInputRef.current?.focus();
+          }
+        }, 50);
+      });
+    },
+    []
+  );
 
-    initializeAddress();
+  // Initialize address state when selected address changes
+  useEffect(() => {
+    if (!selectedAddress) {
+      setAddressId(undefined);
+      setAddressStreet('');
+      setAddressCity('');
+      setAddressLandmark('');
+      setInlineAddressSubmitAttempted(false);
+      return;
+    }
+
+    setAddressId(selectedAddress.addressId);
+    setAddressStreet(selectedAddress.label || '');
+    setAddressCity(selectedAddress.city || '');
+    setAddressLandmark(selectedAddress.landmark || '');
+    setInlineAddressSubmitAttempted(false);
   }, [selectedAddress]);
+
+  useEffect(() => {
+    if (
+      !inlineAddressSubmitAttempted ||
+      !addressStreet.trim() ||
+      !addressCity.trim() ||
+      !addressLandmark.trim()
+    ) {
+      return;
+    }
+    setInlineAddressSubmitAttempted(false);
+  }, [addressStreet, addressCity, addressLandmark, inlineAddressSubmitAttempted]);
 
   // Calculate totals when address or cart changes
   // This handles all edge cases including:
@@ -224,14 +257,14 @@ export default function CheckoutScreen() {
           if (!error && addresses) {
             const address = addresses.find(addr => addr.id === addressId);
             if (address) {
-              setLandmark(address.landmark);
+              setLandmark(address.landmark ?? undefined);
             }
           }
         } catch (error) {
           console.error('Error fetching landmark:', error);
         }
       } else {
-        setLandmark(null);
+        setLandmark(undefined);
       }
     };
 
@@ -276,7 +309,7 @@ export default function CheckoutScreen() {
       // Address is valid, set it and recalculate delivery fees
       setSelectedAddress(address);
       setAddressId(address.addressId);
-      setLandmark(address.landmark || null);
+      setLandmark(address.landmark || undefined);
       setShowAddressSheet(false);
 
       // Totals will automatically recalculate via useEffect
@@ -307,14 +340,62 @@ export default function CheckoutScreen() {
       return;
     }
 
-    if (!addressId) {
-      Alert.alert(t('checkout.addressError'), t('checkout.saveAddressMsg'));
-      return;
-    }
-
     // By tapping Place Order, user agrees to terms & conditions
     try {
       setIsPlacingOrder(true);
+      if (!currentCart) {
+        Alert.alert(t('cart.empty'), t('checkout.selectAddressMsg'));
+        return;
+      }
+
+      let resolvedAddressId = addressId;
+
+      if (!resolvedAddressId) {
+        const trimmedStreet = addressStreet.trim();
+        const trimmedCity = addressCity.trim();
+        const trimmedLandmark = addressLandmark.trim();
+
+        if (!selectedAddress.coords) {
+          Alert.alert(t('checkout.addressError'), t('checkout.saveAddressMsg'));
+          return;
+        }
+
+        if (!trimmedStreet || !trimmedCity || !trimmedLandmark) {
+          setInlineAddressSubmitAttempted(true);
+          focusFirstMissingInlineField(trimmedStreet, trimmedCity, trimmedLandmark);
+          return;
+        }
+
+        const { data: createdAddress, error: createAddressError } = await addressService.createAddress({
+          street_address: trimmedStreet,
+          city: trimmedCity,
+          latitude: selectedAddress.coords.latitude,
+          longitude: selectedAddress.coords.longitude,
+          landmark: trimmedLandmark,
+          formatted_address: selectedAddress.label || trimmedStreet,
+        });
+
+        if (createAddressError || !createdAddress) {
+          Alert.alert(t('checkout.addressError'), createAddressError?.message || t('checkout.saveAddressMsg'));
+          return;
+        }
+
+        resolvedAddressId = createdAddress.id;
+        setAddressId(createdAddress.id);
+        setLandmark(createdAddress.landmark || trimmedLandmark);
+        setSelectedAddress({
+          label: createdAddress.street_address,
+          city: createdAddress.city,
+          coords: {
+            latitude: Number(createdAddress.latitude),
+            longitude: Number(createdAddress.longitude),
+          },
+          isCurrent: false,
+          addressId: createdAddress.id,
+          landmark: createdAddress.landmark || trimmedLandmark,
+        });
+      }
+
       const orderItems = currentCart.items.map(item => ({
         merchant_item_id: item.id,
         quantity: item.quantity,
@@ -322,7 +403,7 @@ export default function CheckoutScreen() {
 
       const response = await placeOrderMutation.mutateAsync({
         shop_id: shopId,
-        consumer_address_id: addressId,
+        consumer_address_id: resolvedAddressId,
         items: orderItems,
         payment_method: paymentMethod,
         special_instructions: deliveryInstructions || undefined,
@@ -407,17 +488,16 @@ export default function CheckoutScreen() {
     );
   }
 
-  // Generate Google Static Maps URL
-  const getStaticMapUrl = (coords: { latitude: number; longitude: number }) => {
-    const googleApiKey = Config.GOOGLE_MAPS_API_KEY || 'YOUR_API_KEY';
-    const lat = coords.latitude;
-    const lon = coords.longitude;
-    const zoom = 16; // Street-level zoom
-    const size = '400x150'; // Width x Height
-    const markerColor = '0x3B82F6'; // Blue marker
-
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=${zoom}&size=${size}&scale=2&maptype=roadmap&markers=color:${markerColor}%7C${lat},${lon}&key=${googleApiKey}`;
-  };
+  const requiresInlineAddressDetails = Boolean(selectedAddress?.coords) && !addressId;
+  const hasInlineAddressDetails =
+    addressStreet.trim().length > 0 &&
+    addressCity.trim().length > 0 &&
+    addressLandmark.trim().length > 0;
+  const canPlaceOrder =
+    Boolean(selectedAddress) &&
+    !isValidatingAddress &&
+    !isCalculatingTotals &&
+    !placeOrderMutation.isLoading;
 
   return (
     <View className="flex-1 bg-gray-50">
@@ -440,6 +520,7 @@ export default function CheckoutScreen() {
 
       {/* Content */}
       <ScrollView
+        ref={scrollViewRef}
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: 220 }}
         showsVerticalScrollIndicator={false}
@@ -454,38 +535,38 @@ export default function CheckoutScreen() {
             <Text className="text-lg font-bold text-gray-900">{t('checkout.deliveryAddress')}</Text>
           </View>
 
-          <TouchableOpacity
-            onPress={() => setShowAddressSheet(true)}
-            className="bg-white border border-gray-200 rounded-xl overflow-hidden"
-            activeOpacity={0.7}
-            disabled={isValidatingAddress}
-          >
+          <View className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             {selectedAddress && selectedAddress.coords ? (
               <>
                 {/* Map Preview */}
-                <View style={{ height: 150, position: 'relative' }}>
-                  <Image
-                    source={{ uri: getStaticMapUrl(selectedAddress.coords) }}
-                    style={{ width: '100%', height: 150 }}
-                    resizeMode="cover"
-                  />
-                  <View
-                    style={{
-                      position: 'absolute',
-                      left: '50%',
-                      top: '50%',
-                      marginLeft: -16,
-                      marginTop: -30,
-                      shadowColor: '#000',
-                      shadowOpacity: 0.25,
-                      shadowRadius: 3.5,
-                      shadowOffset: { width: 0, height: 2 },
-                      elevation: 6,
-                    }}
+                <View style={{ height: 150 }}>
+                  <MapView
+                    style={{ width: '100%', height: '100%' }}
                     pointerEvents="none"
+                    scrollEnabled={false}
+                    zoomEnabled={false}
+                    rotateEnabled={false}
+                    pitchEnabled={false}
+                    initialRegion={{
+                      latitude: selectedAddress.coords.latitude,
+                      longitude: selectedAddress.coords.longitude,
+                      latitudeDelta: 0.005,
+                      longitudeDelta: 0.005,
+                    }}
+                    region={{
+                      latitude: selectedAddress.coords.latitude,
+                      longitude: selectedAddress.coords.longitude,
+                      latitudeDelta: 0.005,
+                      longitudeDelta: 0.005,
+                    }}
                   >
-                    <PinMarker size={32} color="#3B82F6" />
-                  </View>
+                    <Marker
+                      coordinate={{
+                        latitude: selectedAddress.coords.latitude,
+                        longitude: selectedAddress.coords.longitude,
+                      }}
+                    />
+                  </MapView>
                 </View>
 
                 {/* Address Details */}
@@ -496,20 +577,76 @@ export default function CheckoutScreen() {
                   <Text className="text-sm text-gray-600 mt-1">{selectedAddress.city}</Text>
 
                   {/* Landmark from Database */}
-                  {landmark && (
+                  {!requiresInlineAddressDetails && landmark && (
                     <View className="mt-3">
                       <Text className="text-xs text-gray-500 mb-1">{t('checkout.landmark')}</Text>
                       <Text className="text-sm text-gray-700">{landmark}</Text>
                     </View>
                   )}
 
-                  <Text className="text-blue-600 text-sm font-medium mt-3">{t('checkout.changeAddress')}</Text>
+                  {requiresInlineAddressDetails && (
+                    <View ref={inlineAddressSectionRef} className="mt-4 border-t border-gray-100 pt-4">
+                      <Text className="text-sm font-semibold text-gray-800 mb-3">
+                        {t('checkout.completeAddressDetails')}
+                      </Text>
+                      <TextInput
+                        ref={streetInputRef}
+                        value={addressStreet}
+                        onChangeText={setAddressStreet}
+                        placeholder={t('checkout.streetAddressPlaceholder')}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-3"
+                        placeholderTextColor="#9CA3AF"
+                        returnKeyType="next"
+                        blurOnSubmit={false}
+                        onSubmitEditing={() => cityInputRef.current?.focus()}
+                      />
+                      <TextInput
+                        ref={cityInputRef}
+                        value={addressCity}
+                        onChangeText={setAddressCity}
+                        placeholder={t('checkout.cityPlaceholder')}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-3"
+                        placeholderTextColor="#9CA3AF"
+                        returnKeyType="next"
+                        blurOnSubmit={false}
+                        onSubmitEditing={() => landmarkInputRef.current?.focus()}
+                      />
+                      <TextInput
+                        ref={landmarkInputRef}
+                        value={addressLandmark}
+                        onChangeText={setAddressLandmark}
+                        placeholder={t('checkout.landmarkPlaceholder')}
+                        className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900"
+                        placeholderTextColor="#9CA3AF"
+                        returnKeyType="done"
+                      />
+                      {inlineAddressSubmitAttempted && !hasInlineAddressDetails && (
+                        <Text className="text-red-600 text-sm mt-3">{t('checkout.addressDetailsMsg')}</Text>
+                      )}
+                    </View>
+                  )}
+
+                  <TouchableOpacity
+                    onPress={() => setShowAddressSheet(true)}
+                    className="mt-3"
+                    activeOpacity={0.7}
+                    disabled={isValidatingAddress}
+                  >
+                    <Text className="text-blue-600 text-sm font-medium">{t('checkout.changeAddress')}</Text>
+                  </TouchableOpacity>
                 </View>
               </>
             ) : (
               <View className="p-4">
                 <Text className="text-base font-semibold text-gray-900">{t('checkout.selectAddress')}</Text>
                 <Text className="text-sm text-gray-500 mt-1">{t('checkout.tapToChoose')}</Text>
+                <TouchableOpacity
+                  onPress={() => setShowAddressSheet(true)}
+                  className="mt-3"
+                  activeOpacity={0.7}
+                >
+                  <Text className="text-blue-600 text-sm font-medium">{t('checkout.changeAddress')}</Text>
+                </TouchableOpacity>
               </View>
             )}
             {isValidatingAddress && (
@@ -517,7 +654,7 @@ export default function CheckoutScreen() {
                 <ActivityIndicator size="small" color="#2563eb" />
               </View>
             )}
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* Delivery Instructions/Contact Details */}
@@ -724,12 +861,12 @@ export default function CheckoutScreen() {
         {/* Place Order Button */}
         <TouchableOpacity
           onPress={handlePlaceOrder}
-          disabled={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isLoading}
-          className={`rounded-2xl py-4 px-6 items-center justify-center ${!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isLoading
+          disabled={!canPlaceOrder}
+          className={`rounded-2xl py-4 px-6 items-center justify-center ${!canPlaceOrder
             ? 'bg-gray-300'
             : 'bg-blue-600'
             }`}
-          activeOpacity={!selectedAddress || isValidatingAddress || isCalculatingTotals || placeOrderMutation.isLoading ? 1 : 0.8}
+          activeOpacity={!canPlaceOrder ? 1 : 0.8}
         >
           <View className="flex-row items-center justify-center">
             {(isPlacingOrder || placeOrderMutation.isLoading) && (

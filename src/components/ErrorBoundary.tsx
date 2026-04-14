@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import crashlytics from '@react-native-firebase/crashlytics';
 
 interface Props {
   children: ReactNode;
@@ -32,6 +33,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    try {
+      crashlytics().log('ErrorBoundary caught an error');
+      if (errorInfo?.componentStack) {
+        crashlytics().setAttribute('componentStack', errorInfo.componentStack);
+      }
+      crashlytics().recordError(error);
+    } catch (crashlyticsError) {
+      console.warn('Crashlytics logging failed:', crashlyticsError);
+    }
     this.setState({
       error,
       errorInfo,
@@ -82,4 +92,3 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
-

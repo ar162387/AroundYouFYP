@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Platform, ActivityIndicator } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import type { MerchantShop } from '../../../../services/merchant/shopService';
 import OrdersRevenueLineChart from '../../../../components/merchant/charts/OrdersRevenueLineChart';
 import { useShopOrderTimeSeries, useShopOrderAnalytics } from '../../../../hooks/merchant/useOrders';
@@ -17,15 +18,40 @@ type DashboardSectionProps = {
 
 type RangeType = 'today' | 'yesterday' | '7_days' | '30_days' | 'all_time' | 'custom';
 
+function normalizeCalendarDate(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+}
+
+function getShopMinSelectableDate(createdAtIso: string, maxDate: Date): Date {
+  const c = new Date(createdAtIso);
+  if (Number.isNaN(c.getTime())) {
+    return normalizeCalendarDate(maxDate);
+  }
+  const min = normalizeCalendarDate(c);
+  return min.getTime() > maxDate.getTime() ? normalizeCalendarDate(maxDate) : min;
+}
+
 export default function DashboardSection({ shop, onShowOrders }: DashboardSectionProps) {
   const { t } = useTranslation();
   const [range, setRange] = useState<RangeType>('today');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
-  const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
-  const [startInput, setStartInput] = useState({ day: '', month: '', year: '' });
-  const [endInput, setEndInput] = useState({ day: '', month: '', year: '' });
+  const [customStartDate, setCustomStartDate] = useState<Date | null>(() => normalizeCalendarDate(new Date()));
+  const [customEndDate, setCustomEndDate] = useState<Date | null>(() => normalizeCalendarDate(new Date()));
+  const [draftStart, setDraftStart] = useState<Date>(() => normalizeCalendarDate(new Date()));
+  const [draftEnd, setDraftEnd] = useState<Date>(() => normalizeCalendarDate(new Date()));
+  const [androidPickerField, setAndroidPickerField] = useState<'start' | 'end' | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
+
+  const minSelectableDate = useMemo(
+    () => getShopMinSelectableDate(shop.created_at, normalizeCalendarDate(new Date())),
+    [shop.created_at]
+  );
+
+  useEffect(() => {
+    if (!showDatePicker) {
+      setAndroidPickerField(null);
+    }
+  }, [showDatePicker]);
 
   // Map DashboardSection range to order service timeFilter
   const timeFilterMap: Record<RangeType, 'today' | 'yesterday' | '7days' | '30days' | 'all_time' | 'custom'> = {
@@ -70,9 +96,6 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
 
   // Calculate time differences (always using all-time data)
   const timeMetrics = useMemo(() => {
-    console.log('All-Time Analytics:', allTimeAnalytics);
-    console.log('Previous All-Time Analytics:', previousAllTimeAnalytics);
-
     if (!allTimeAnalytics) {
       return {
         confirmation: { current: null, change: null, changeType: null },
@@ -172,87 +195,107 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
     value,
   }));
 
-  const formatFromDate = (date: Date | null) => {
-    if (!date) {
-      return { day: '', month: '', year: '' };
-    }
-
-    const pad = (value: number) => value.toString().padStart(2, '0');
-    return {
-      day: pad(date.getDate()),
-      month: pad(date.getMonth() + 1),
-      year: date.getFullYear().toString(),
-    };
-  };
-
   const handleRangeSelect = (selectedRange: RangeType) => {
     if (selectedRange === 'custom') {
-      setStartInput(formatFromDate(customStartDate));
-      setEndInput(formatFromDate(customEndDate));
+      const maxD = normalizeCalendarDate(new Date());
+      const minD = minSelectableDate;
+      let s = customStartDate ? normalizeCalendarDate(customStartDate) : maxD;
+      let e = customEndDate ? normalizeCalendarDate(customEndDate) : maxD;
+      if (s.getTime() < minD.getTime()) s = new Date(minD);
+      if (e.getTime() < minD.getTime()) e = new Date(minD);
+      if (s.getTime() > maxD.getTime()) s = new Date(maxD);
+      if (e.getTime() > maxD.getTime()) e = new Date(maxD);
+      if (s.getTime() > e.getTime()) {
+        e = new Date(s);
+      }
+      setDraftStart(s);
+      setDraftEnd(e);
       setDateError(null);
+      setAndroidPickerField(null);
       setShowDatePicker(true);
     }
     setRange(selectedRange);
   };
 
-  const parseDateInput = (input: { day: string; month: string; year: string }) => {
-    const day = Number(input.day);
-    const month = Number(input.month);
-    const year = Number(input.year);
-
-    if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) {
-      return null;
-    }
-
-    if (input.year.length !== 4) {
-      return null;
-    }
-
-    const date = new Date(year, month - 1, day);
-
-    if (
-      date.getFullYear() !== year ||
-      date.getMonth() !== month - 1 ||
-      date.getDate() !== day
-    ) {
-      return null;
-    }
-
-    return date;
-  };
-
   const handleApplyCustomRange = () => {
-    const startDate = parseDateInput(startInput);
-    const endDate = parseDateInput(endInput);
+    const maxD = normalizeCalendarDate(new Date());
+    const minD = minSelectableDate;
+    const s = normalizeCalendarDate(draftStart);
+    const e = normalizeCalendarDate(draftEnd);
 
-    if (!startDate || !endDate) {
-      setDateError(t('merchant.dashboardSection.datePicker.invalidDate'));
+    if (s.getTime() < minD.getTime()) {
+      setDateError(t('merchant.dashboardSection.datePicker.startNotBeforeCreation'));
       return;
     }
-
-    if (startDate > endDate) {
+    if (e.getTime() < minD.getTime()) {
+      setDateError(t('merchant.dashboardSection.datePicker.startNotBeforeCreation'));
+      return;
+    }
+    if (s.getTime() > maxD.getTime() || e.getTime() > maxD.getTime()) {
+      setDateError(t('merchant.dashboardSection.datePicker.notAfterToday'));
+      return;
+    }
+    if (s.getTime() > e.getTime()) {
       setDateError(t('merchant.dashboardSection.datePicker.dateErrorStart'));
       return;
     }
 
-    if (endDate < startDate) {
-      setDateError(t('merchant.dashboardSection.datePicker.dateErrorEnd'));
-      return;
-    }
-
-    setCustomStartDate(startDate);
-    setCustomEndDate(endDate);
+    setCustomStartDate(s);
+    setCustomEndDate(e);
     setDateError(null);
     setShowDatePicker(false);
-
-    Alert.alert(
-      t('merchant.dashboardSection.datePicker.customRangeApplied'),
-      t('merchant.dashboardSection.datePicker.showingStats', {
-        start: startDate.toLocaleDateString(),
-        end: endDate.toLocaleDateString(),
-      })
-    );
   };
+
+  const formatMediumDate = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+  const onDraftStartChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setAndroidPickerField(null);
+    }
+    if (Platform.OS === 'android' && event.type === 'dismissed') {
+      return;
+    }
+    if (!date) return;
+    const maxD = normalizeCalendarDate(new Date());
+    let next = normalizeCalendarDate(date);
+    if (next.getTime() < minSelectableDate.getTime()) next = new Date(minSelectableDate);
+    if (next.getTime() > maxD.getTime()) next = new Date(maxD);
+    setDraftStart(next);
+    setDraftEnd((prev) => {
+      const p = normalizeCalendarDate(prev);
+      if (p.getTime() < next.getTime()) return next;
+      if (p.getTime() > maxD.getTime()) return new Date(maxD);
+      return p;
+    });
+  };
+
+  const onDraftEndChange = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') {
+      setAndroidPickerField(null);
+    }
+    if (Platform.OS === 'android' && event.type === 'dismissed') {
+      return;
+    }
+    if (!date) return;
+    const maxD = normalizeCalendarDate(new Date());
+    let next = normalizeCalendarDate(date);
+    const startNorm = normalizeCalendarDate(draftStart);
+    const endMin =
+      startNorm.getTime() < minSelectableDate.getTime() ? minSelectableDate : startNorm;
+    if (next.getTime() < endMin.getTime()) next = new Date(endMin);
+    if (next.getTime() > maxD.getTime()) next = new Date(maxD);
+    setDraftEnd(next);
+    if (startNorm.getTime() > next.getTime()) {
+      setDraftStart(new Date(next));
+    }
+  };
+
+  const customRangeTodayMax = normalizeCalendarDate(new Date());
+  const customRangeStartPickerMax =
+    draftEnd.getTime() < customRangeTodayMax.getTime() ? draftEnd : customRangeTodayMax;
+  const customRangeEndPickerMin =
+    draftStart.getTime() > minSelectableDate.getTime() ? draftStart : minSelectableDate;
 
   const formatDateRange = () => {
     if (!customStartDate && !customEndDate) {
@@ -430,7 +473,7 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
             { key: '7_days', label: t('merchant.dashboardSection.ranges.last7Days') },
             { key: '30_days', label: t('merchant.dashboardSection.ranges.last30Days') },
             { key: 'all_time', label: t('merchant.dashboardSection.ranges.allTime') },
-            { key: 'custom', label: range === 'custom' && (customStartDate || customEndDate) ? formatDateRange() : t('merchant.dashboardSection.ranges.custom') },
+            { key: 'custom', label: range === 'custom' ? formatDateRange() : t('merchant.dashboardSection.ranges.custom') },
           ].map((item) => {
             const isActive = range === item.key;
             return (
@@ -558,76 +601,118 @@ export default function DashboardSection({ shop, onShowOrders }: DashboardSectio
         onRequestClose={() => setShowDatePicker(false)}
       >
         <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-3xl p-6 pb-10">
-            <View className="flex-row justify-between items-center mb-6">
+          <View className="bg-white rounded-t-3xl p-6 pb-10 max-h-[90%]">
+            <View className="flex-row justify-between items-center mb-4">
               <Text className="text-xl font-bold text-gray-900">{t('merchant.dashboardSection.datePicker.selectRange')}</Text>
               <TouchableOpacity onPress={() => setShowDatePicker(false)}>
                 <Text className="text-blue-600 font-semibold text-base">{t('merchant.dashboardSection.datePicker.close')}</Text>
               </TouchableOpacity>
             </View>
 
-            <View className="space-y-6">
-              <View>
-                <Text className="text-sm font-semibold text-gray-700 mb-3">{t('merchant.dashboardSection.datePicker.startDate')}</Text>
-                <View className="flex-row space-x-3">
-                  {[
-                    { key: 'day', placeholder: 'DD', maxLength: 2 },
-                    { key: 'month', placeholder: 'MM', maxLength: 2 },
-                    { key: 'year', placeholder: 'YYYY', maxLength: 4 },
-                  ].map((field) => (
-                    <View key={`start-${field.key}`} className="flex-1">
-                      <TextInput
-                        value={startInput[field.key as keyof typeof startInput]}
-                        onChangeText={(text) =>
-                          setStartInput((prev) => ({ ...prev, [field.key]: text.replace(/[^0-9]/g, '') }))
-                        }
-                        placeholder={field.placeholder}
-                        keyboardType="number-pad"
-                        maxLength={field.maxLength}
-                        className="border border-gray-200 rounded-2xl px-4 py-3 text-base text-gray-900"
-                      />
-                    </View>
-                  ))}
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {Platform.OS === 'ios' ? (
+                <View className="space-y-4">
+                  <View>
+                    <Text className="text-sm font-semibold text-gray-700 mb-2">
+                      {t('merchant.dashboardSection.datePicker.startDate')}
+                    </Text>
+                    <DateTimePicker
+                      value={draftStart}
+                      mode="date"
+                      display="spinner"
+                      minimumDate={minSelectableDate}
+                      maximumDate={customRangeStartPickerMax}
+                      onChange={onDraftStartChange}
+                      style={{ height: 180 }}
+                    />
+                  </View>
+                  <View>
+                    <Text className="text-sm font-semibold text-gray-700 mb-2">
+                      {t('merchant.dashboardSection.datePicker.endDate')}
+                    </Text>
+                    <DateTimePicker
+                      value={draftEnd}
+                      mode="date"
+                      display="spinner"
+                      minimumDate={customRangeEndPickerMin}
+                      maximumDate={customRangeTodayMax}
+                      onChange={onDraftEndChange}
+                      style={{ height: 180 }}
+                    />
+                  </View>
                 </View>
-              </View>
-
-              <View>
-                <Text className="text-sm font-semibold text-gray-700 mb-3">{t('merchant.dashboardSection.datePicker.endDate')}</Text>
-                <View className="flex-row space-x-3">
-                  {[
-                    { key: 'day', placeholder: 'DD', maxLength: 2 },
-                    { key: 'month', placeholder: 'MM', maxLength: 2 },
-                    { key: 'year', placeholder: 'YYYY', maxLength: 4 },
-                  ].map((field) => (
-                    <View key={`end-${field.key}`} className="flex-1">
-                      <TextInput
-                        value={endInput[field.key as keyof typeof endInput]}
-                        onChangeText={(text) =>
-                          setEndInput((prev) => ({ ...prev, [field.key]: text.replace(/[^0-9]/g, '') }))
-                        }
-                        placeholder={field.placeholder}
-                        keyboardType="number-pad"
-                        maxLength={field.maxLength}
-                        className="border border-gray-200 rounded-2xl px-4 py-3 text-base text-gray-900"
-                      />
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              {dateError && (
-                <View className="bg-red-50 border border-red-200 rounded-2xl p-3">
-                  <Text className="text-xs text-red-600">{dateError}</Text>
+              ) : (
+                <View className="space-y-4">
+                  <View>
+                    <Text className="text-sm font-semibold text-gray-700 mb-2">
+                      {t('merchant.dashboardSection.datePicker.startDate')}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setAndroidPickerField('start')}
+                      className="border border-gray-200 rounded-2xl px-4 py-4 bg-gray-50"
+                      activeOpacity={0.85}
+                    >
+                      <Text className="text-base text-gray-900 font-medium">{formatMediumDate(draftStart)}</Text>
+                      <Text className="text-xs text-gray-500 mt-1">
+                        {t('merchant.dashboardSection.datePicker.tapToChooseStart')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View>
+                    <Text className="text-sm font-semibold text-gray-700 mb-2">
+                      {t('merchant.dashboardSection.datePicker.endDate')}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => setAndroidPickerField('end')}
+                      className="border border-gray-200 rounded-2xl px-4 py-4 bg-gray-50"
+                      activeOpacity={0.85}
+                    >
+                      <Text className="text-base text-gray-900 font-medium">{formatMediumDate(draftEnd)}</Text>
+                      <Text className="text-xs text-gray-500 mt-1">
+                        {t('merchant.dashboardSection.datePicker.tapToChooseEnd')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {androidPickerField === 'start' && (
+                    <DateTimePicker
+                      key={`android-start-${draftStart.getTime()}`}
+                      value={draftStart}
+                      mode="date"
+                      display="default"
+                      minimumDate={minSelectableDate}
+                      maximumDate={customRangeStartPickerMax}
+                      onChange={onDraftStartChange}
+                    />
+                  )}
+                  {androidPickerField === 'end' && (
+                    <DateTimePicker
+                      key={`android-end-${draftEnd.getTime()}`}
+                      value={draftEnd}
+                      mode="date"
+                      display="default"
+                      minimumDate={customRangeEndPickerMin}
+                      maximumDate={customRangeTodayMax}
+                      onChange={onDraftEndChange}
+                    />
+                  )}
                 </View>
               )}
 
+              {dateError ? (
+                <View className="bg-red-50 border border-red-200 rounded-2xl p-3 mt-4">
+                  <Text className="text-xs text-red-600">{dateError}</Text>
+                </View>
+              ) : null}
+
               <TouchableOpacity
                 onPress={handleApplyCustomRange}
-                className="bg-blue-600 rounded-2xl py-4"
+                className="bg-blue-600 rounded-2xl py-4 mt-6"
               >
-                <Text className="text-center text-white font-semibold text-base">{t('merchant.dashboardSection.datePicker.apply')}</Text>
+                <Text className="text-center text-white font-semibold text-base">
+                  {t('merchant.dashboardSection.datePicker.apply')}
+                </Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>

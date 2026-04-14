@@ -1,13 +1,12 @@
-import type { PostgrestError } from '@supabase/supabase-js';
-
 import { loogin } from '../../lib/loogin';
-import { supabase } from '../supabase';
+import { apiClient, toApiError } from '../apiClient';
 
 const log = loogin.scope('deliveryRunnerService');
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: any | null };
 
 const TABLE = 'delivery_runners';
+const runnerIdToShopId = new Map<string, string>();
 
 export type DeliveryRunner = {
   id: string;
@@ -24,6 +23,9 @@ export type DeliveryRunnerPayload = {
 };
 
 function mapRow(row: any): DeliveryRunner {
+  if (row.id && row.shop_id) {
+    runnerIdToShopId.set(row.id, row.shop_id);
+  }
   return {
     id: row.id,
     shopId: row.shop_id,
@@ -37,19 +39,15 @@ function mapRow(row: any): DeliveryRunner {
 export async function fetchDeliveryRunners(shopId: string): Promise<ServiceResult<DeliveryRunner[]>> {
   log.debug('fetchDeliveryRunners', { shopId });
 
-  const { data, error } = await supabase
-    .from(TABLE)
-    .select('id, shop_id, name, phone_number, created_at, updated_at')
-    .eq('shop_id', shopId)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    log.error('Failed to fetch delivery runners', error);
-    return { data: null, error };
+  try {
+    const data = await apiClient.get<any[]>(`/api/v1/merchant/shops/${shopId}/runners`);
+    const mapped = (data ?? []).map((row: any) => mapRow({ ...row, shop_id: row.shop_id || shopId }));
+    return { data: mapped, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to fetch delivery runners', apiError);
+    return { data: null, error: apiError };
   }
-
-  const mapped = (data ?? []).map(mapRow);
-  return { data: mapped, error: null };
 }
 
 export async function createDeliveryRunner(
@@ -58,22 +56,17 @@ export async function createDeliveryRunner(
 ): Promise<ServiceResult<DeliveryRunner>> {
   log.debug('createDeliveryRunner', { shopId, name: payload.name });
 
-  const { data, error } = await supabase
-    .from(TABLE)
-    .insert({
-      shop_id: shopId,
+  try {
+    const data = await apiClient.post<any>(`/api/v1/merchant/shops/${shopId}/runners`, {
       name: payload.name,
       phone_number: payload.phoneNumber,
-    })
-    .select('id, shop_id, name, phone_number, created_at, updated_at')
-    .single();
-
-  if (error) {
-    log.error('Failed to create delivery runner', error);
-    return { data: null, error };
+    });
+    return { data: mapRow(data), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to create delivery runner', apiError);
+    return { data: null, error: apiError };
   }
-
-  return { data: mapRow(data), error: null };
 }
 
 export async function updateDeliveryRunner(
@@ -81,77 +74,54 @@ export async function updateDeliveryRunner(
   payload: DeliveryRunnerPayload
 ): Promise<ServiceResult<DeliveryRunner>> {
   log.debug('updateDeliveryRunner', { runnerId, name: payload.name });
-
-  const { data, error } = await supabase
-    .from(TABLE)
-    .update({
-      name: payload.name,
-      phone_number: payload.phoneNumber,
-    })
-    .eq('id', runnerId)
-    .select('id, shop_id, name, phone_number, created_at, updated_at')
-    .single();
-
-  if (error) {
-    log.error('Failed to update delivery runner', error);
-    return { data: null, error };
+  const shopId = runnerIdToShopId.get(runnerId);
+  if (!shopId) {
+    return {
+      data: null,
+      error: {
+        name: 'RunnerLookupError',
+        code: 'runner_lookup_failed',
+        message: 'Unable to resolve runner shop context.',
+        details: '',
+        hint: '',
+      },
+    };
   }
 
-  return { data: mapRow(data), error: null };
+  try {
+    const data = await apiClient.put<any>(`/api/v1/merchant/shops/${shopId}/runners/${runnerId}`, {
+      name: payload.name,
+      phone_number: payload.phoneNumber,
+    });
+    return { data: mapRow(data), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
+  }
 }
 
 export async function deleteDeliveryRunner(runnerId: string): Promise<ServiceResult<null>> {
   log.debug('deleteDeliveryRunner', { runnerId });
-
-  // Check if there are any ACTIVE orders (out_for_delivery) with this runner
-  // These are truly active and should prevent deletion
-  const { data: activeOrders, error: activeCheckError } = await supabase
-    .from('orders')
-    .select('id, order_number, status')
-    .eq('delivery_runner_id', runnerId)
-    .eq('status', 'out_for_delivery');
-
-  if (activeCheckError) {
-    log.error('Failed to check active orders', activeCheckError);
-    return { data: null, error: activeCheckError };
+  try {
+    const shopId = runnerIdToShopId.get(runnerId);
+    if (!shopId) {
+      return {
+        data: null,
+        error: {
+          name: 'RunnerLookupError',
+          code: 'runner_lookup_failed',
+          message: 'Unable to resolve runner shop context.',
+          details: '',
+          hint: '',
+        },
+      };
+    }
+    await apiClient.delete(`/api/v1/merchant/shops/${shopId}/runners/${runnerId}`);
+    return { data: null, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to delete delivery runner', apiError);
+    return { data: null, error: apiError };
   }
-
-  if (activeOrders && activeOrders.length > 0) {
-    const errorMessage = `Cannot delete delivery runner. There are ${activeOrders.length} active order(s) currently out for delivery assigned to this runner. Please wait until these orders are delivered or reassign them to another runner.`;
-    log.error('Cannot delete runner with active orders', { runnerId, activeOrdersCount: activeOrders.length });
-    const syntheticError: PostgrestError = {
-      name: 'PostgrestError',
-      code: '23514',
-      message: errorMessage,
-      details: '',
-      hint: '',
-    };
-    return {
-      data: null,
-      error: syntheticError,
-    };
-  }
-
-  // Set delivery_runner_id to NULL for all orders (delivered, pending, confirmed, cancelled)
-  // Delivered orders can now have NULL runner_id due to the updated constraint
-  const { error: updateError } = await supabase
-    .from('orders')
-    .update({ delivery_runner_id: null })
-    .eq('delivery_runner_id', runnerId);
-
-  if (updateError) {
-    log.error('Failed to update orders before deleting runner', updateError);
-    return { data: null, error: updateError };
-  }
-
-  // Now safe to delete the runner
-  const { error } = await supabase.from(TABLE).delete().eq('id', runnerId);
-
-  if (error) {
-    log.error('Failed to delete delivery runner', error);
-    return { data: null, error };
-  }
-
-  return { data: null, error: null };
 }
 

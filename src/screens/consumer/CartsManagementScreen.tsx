@@ -118,7 +118,7 @@ export default function CartsManagementScreen() {
     if (!shopDetailsQueries.data) return statuses;
 
     cartsList.forEach((cart) => {
-      const shopDetails = shopDetailsQueries.data[cart.shopId];
+      const shopDetails = shopDetailsQueries.data?.[cart.shopId];
       if (shopDetails) {
         const openingStatus = getCurrentOpeningStatus({
           opening_hours: shopDetails.opening_hours ?? null,

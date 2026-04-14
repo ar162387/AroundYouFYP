@@ -28,7 +28,7 @@ async function generateIcons() {
     // Generate WebP icons for each density (Android supports WebP and it's more efficient)
     for (const [folder, size] of Object.entries(iconSizes)) {
       const folderPath = path.join(androidResPath, folder);
-      
+
       // Ensure folder exists
       if (!fs.existsSync(folderPath)) {
         fs.mkdirSync(folderPath, { recursive: true });
@@ -77,4 +77,3 @@ async function generateIcons() {
 }
 
 generateIcons();
-

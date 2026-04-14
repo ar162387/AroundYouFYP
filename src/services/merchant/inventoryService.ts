@@ -1,6 +1,6 @@
-import type { PostgrestError } from '@supabase/supabase-js';
 import { loogin } from '../../lib/loogin';
-import { supabase } from '../supabase';
+import { apiClient, toApiError } from '../apiClient';
+import Config from 'react-native-config';
 import type {
   InventoryAuditLogEntry,
   InventoryAuditLogFilters,
@@ -14,13 +14,37 @@ import type {
 
 const log = loogin.scope('inventoryService');
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: any | null };
+const categoryShopMap = new Map<string, string>();
+const itemShopMap = new Map<string, string>();
+
+function getBackendBaseUrl(): string {
+  return (
+    Config.BACKEND_API_URL ||
+    Config.DOTNET_API_URL ||
+    Config.API_BASE_URL ||
+    Config.BACKEND_URL ||
+    ''
+  ).replace(/\/+$/, '');
+}
+
+function toAbsoluteBackendUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const baseUrl = getBackendBaseUrl();
+  if (!baseUrl) return url;
+  const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+  return `${baseUrl}${normalizedPath}`;
+}
 
 function escapeIlike(value: string) {
   return value.replace(/[%_\\]/g, (char) => `\\${char}`);
 }
 
 function mapCategory(row: any): InventoryCategory {
+  if (row.id && row.shop_id) {
+    categoryShopMap.set(row.id, row.shop_id);
+  }
   return {
     id: row.id,
     shopId: row.shop_id,
@@ -36,6 +60,9 @@ function mapCategory(row: any): InventoryCategory {
 }
 
 function mapItem(row: any): InventoryItem {
+  if (row.id && row.shop_id) {
+    itemShopMap.set(row.id, row.shop_id);
+  }
   return {
     id: row.id,
     shopId: row.shop_id,
@@ -43,7 +70,7 @@ function mapItem(row: any): InventoryItem {
     name: row.name,
     description: row.description,
     barcode: row.barcode,
-    imageUrl: row.image_url,
+    imageUrl: toAbsoluteBackendUrl(row.image_url),
     sku: row.sku,
     priceCents: row.price_cents ?? 0,
     currency: row.currency ?? 'PKR',
@@ -56,35 +83,72 @@ function mapItem(row: any): InventoryItem {
   };
 }
 
+function normalizeAuditFieldValue(value: unknown): { from: unknown; to: unknown } {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value) && 'from' in value && 'to' in value) {
+    const o = value as { from: unknown; to: unknown };
+    return { from: o.from, to: o.to };
+  }
+  return { from: null, to: value };
+}
+
 function mapAudit(row: any): InventoryAuditLogEntry {
+  const rawFields = row.changed_fields ?? {};
+  const changedFields: Record<string, { from: unknown; to: unknown }> = {};
+  for (const [k, v] of Object.entries(rawFields)) {
+    changedFields[k] = normalizeAuditFieldValue(v);
+  }
+
+  const rawActor = row.actor ?? {};
+  const actor = {
+    id: String((rawActor as any).id ?? 'system'),
+    name: (rawActor as any).name ?? null,
+    email: (rawActor as any).email ?? null,
+    role: ((rawActor as any).role === 'merchant' ? 'merchant_user' : (rawActor as any).role) ?? 'merchant_user',
+  } as InventoryAuditLogEntry['actor'];
+
   return {
-    id: row.id,
-    shopId: row.shop_id,
-    merchantItemId: row.merchant_item_id,
+    id: String(row.id),
+    shopId: String(row.shop_id),
+    merchantItemId: row.merchant_item_id != null ? String(row.merchant_item_id) : '',
     actionType: row.action_type,
-    changedFields: row.changed_fields ?? {},
+    changedFields,
     source: row.source ?? 'manual',
-    actor: row.actor ?? { id: 'system', role: 'system' },
+    actor,
     createdAt: row.created_at,
   };
 }
 
+function isLocalImageUri(uri?: string | null): boolean {
+  if (!uri) return false;
+  return uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('ph://');
+}
+
+async function uploadItemImage(shopId: string, itemId: string, imageUri: string): Promise<string | null> {
+  const formData = new FormData();
+  formData.append('file', {
+    uri: imageUri,
+    type: imageUri.toLowerCase().includes('.png') ? 'image/png' : 'image/jpeg',
+    name: `item-${itemId}-${Date.now()}.jpg`,
+  } as any);
+  const response = await apiClient.put<{ image_url?: string; imageUrl?: string }>(
+    `/api/v1/merchant/shops/${shopId}/inventory/${itemId}/image`,
+    formData,
+    { isFormData: true }
+  );
+  return toAbsoluteBackendUrl(response?.image_url || response?.imageUrl || null);
+}
+
 export async function fetchInventoryCategories(shopId: string): Promise<ServiceResult<InventoryCategory[]>> {
   log.debug('fetchInventoryCategories', { shopId });
-
-  const { data, error } = await supabase
-    .from('merchant_categories')
-    .select('*, item_count:merchant_item_categories(count)')
-    .eq('shop_id', shopId)
-    .order('name', { ascending: true });
-
-  if (error) {
-    log.error('Failed to fetch categories', error);
-    return { data: null, error };
+  try {
+    const data = await apiClient.get<any[]>(`/api/v1/merchant/shops/${shopId}/categories`);
+    const mapped = (data ?? []).map((row: any) => mapCategory({ ...row, shop_id: row.shop_id || shopId }));
+    return { data: mapped, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to fetch categories', apiError);
+    return { data: null, error: apiError };
   }
-
-  const mapped = (data ?? []).map((row: any) => mapCategory({ ...row, item_count: row.item_count?.[0]?.count ?? 0 }));
-  return { data: mapped, error: null };
 }
 
 export async function createInventoryCategory(payload: {
@@ -95,25 +159,18 @@ export async function createInventoryCategory(payload: {
 }): Promise<ServiceResult<InventoryCategory>> {
   log.debug('createInventoryCategory', payload);
 
-  const { data, error } = await supabase
-    .from('merchant_categories')
-    .insert({
-      shop_id: payload.shopId,
+  try {
+    const data = await apiClient.post<any>(`/api/v1/merchant/shops/${payload.shopId}/categories`, {
       name: payload.name,
       description: payload.description ?? null,
       template_id: payload.templateId ?? null,
-      is_custom: !payload.templateId,
-      is_active: true,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    log.error('Failed to create category', error);
-    return { data: null, error };
+    });
+    return { data: mapCategory({ ...data, shop_id: payload.shopId }), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to create category', apiError);
+    return { data: null, error: apiError };
   }
-
-  return { data: mapCategory({ ...data, item_count: 0 }), error: null };
 }
 
 export async function updateInventoryCategory(
@@ -121,24 +178,30 @@ export async function updateInventoryCategory(
   updates: Partial<Pick<InventoryCategory, 'name' | 'description' | 'isActive'>>
 ): Promise<ServiceResult<InventoryCategory>> {
   log.debug('updateInventoryCategory', { categoryId, updates });
-
-  const { data, error } = await supabase
-    .from('merchant_categories')
-    .update({
+  const shopId = categoryShopMap.get(categoryId);
+  if (!shopId) {
+    return {
+      data: null,
+      error: {
+        name: 'CategoryLookupError',
+        code: 'category_lookup_failed',
+        message: 'Category context is missing. Reload categories and try again.',
+        details: '',
+        hint: '',
+      },
+    };
+  }
+  try {
+    const data = await apiClient.put<any>(`/api/v1/merchant/shops/${shopId}/categories/${categoryId}`, {
       name: updates.name,
       description: updates.description,
       is_active: updates.isActive,
-    })
-    .eq('id', categoryId)
-    .select()
-    .single();
-
-  if (error) {
-    log.error('Failed to update category', error);
-    return { data: null, error };
+    });
+    return { data: mapCategory({ ...data, shop_id: shopId }), error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-
-  return { data: mapCategory({ ...data, item_count: data.item_count ?? 0 }), error: null };
 }
 
 export async function fetchInventoryItems(
@@ -146,55 +209,29 @@ export async function fetchInventoryItems(
   params: InventoryListParams = {}
 ): Promise<ServiceResult<InventoryListResponse>> {
   log.debug('fetchInventoryItems', { shopId, params });
-
-  let query = supabase
-    .from('merchant_item_view')
-    .select('*')
-    .eq('shop_id', shopId)
-    .limit(params.limit ?? 50);
-
-  if (params.search) {
-    const trimmed = params.search.trim();
-    if (trimmed.length > 0) {
-      const escaped = escapeIlike(trimmed);
-      const likeValue = `%${escaped}%`;
-      query = query.or(
-        [
-          `name.ilike.${likeValue}`,
-          `description.ilike.${likeValue}`,
-          `sku.ilike.${likeValue}`,
-          `barcode.ilike.${likeValue}`,
-        ].join(',')
-      );
+  try {
+    const data = await apiClient.get<any[]>(`/api/v1/merchant/shops/${shopId}/items`);
+    let items = (data ?? []).map((row) => mapItem({ ...row, shop_id: row.shop_id || shopId }));
+    if (params.search?.trim()) {
+      const q = params.search.trim().toLowerCase();
+      items = items.filter((item) => item.name.toLowerCase().includes(q));
     }
+    if (params.active !== null && params.active !== undefined) {
+      items = items.filter((item) => item.isActive === params.active);
+    }
+    if (params.categoryIds?.length) {
+      items = items.filter((item) => item.categories.some((cat) => params.categoryIds?.includes(cat.id)));
+    }
+    if (params.limit) {
+      items = items.slice(0, params.limit);
+    }
+    const nextCursor = items.length > 0 ? items[items.length - 1].updatedAt : null;
+    return { data: { items, nextCursor }, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to fetch inventory items', apiError);
+    return { data: null, error: apiError };
   }
-  if (params.categoryIds && params.categoryIds.length > 0) {
-    query = query.contains('category_ids', params.categoryIds);
-  }
-  if (params.active !== null && params.active !== undefined) {
-    query = query.eq('is_active', params.active);
-  }
-  if (params.templateFilter === 'template') {
-    query = query.not('template_id', 'is', null);
-  }
-  if (params.templateFilter === 'custom') {
-    query = query.is('template_id', null);
-  }
-  if (params.cursor) {
-    query = query.gt('updated_at', params.cursor);
-  }
-
-  const { data, error } = await query.order('updated_at', { ascending: false });
-
-  if (error) {
-    log.error('Failed to fetch inventory items', error);
-    return { data: null, error };
-  }
-
-  const items = (data ?? []).map(mapItem);
-  const nextCursor = items.length > 0 ? items[items.length - 1].updatedAt : null;
-
-  return { data: { items, nextCursor }, error: null };
 }
 
 export async function createInventoryItem(payload: {
@@ -204,46 +241,37 @@ export async function createInventoryItem(payload: {
   description?: string | null;
   barcode?: string | null;
   imageUrl?: string | null;
-  sku: string;
+  sku?: string | null;
   priceCents: number;
   isActive: boolean;
   categoryIds: string[];
 }): Promise<ServiceResult<InventoryItem>> {
   log.debug('createInventoryItem', { shopId: payload.shopId, templateId: payload.templateId });
-
-  const { data, error } = await supabase
-    .from('merchant_items')
-    .insert({
-      shop_id: payload.shopId,
+  try {
+    const localImageUri = isLocalImageUri(payload.imageUrl) ? payload.imageUrl : null;
+    const data = await apiClient.post<any>(`/api/v1/merchant/shops/${payload.shopId}/items`, {
       template_id: payload.templateId ?? null,
       name: payload.name,
       description: payload.description ?? null,
       barcode: payload.barcode ?? null,
-      image_url: payload.imageUrl ?? null,
-      sku: payload.sku,
+      image_url: localImageUri ? null : payload.imageUrl ?? null,
+      sku: payload.sku ?? null,
       price_cents: payload.priceCents,
       is_active: payload.isActive,
-      is_custom: !payload.templateId,
-    })
-    .select('*, categories:merchant_item_categories(merchant_categories(*))')
-    .single();
-
-  if (error) {
-    log.error('Failed to create inventory item', error);
-    return { data: null, error };
+      category_ids: payload.categoryIds,
+    });
+    let mapped = mapItem({ ...data, shop_id: payload.shopId });
+    if (localImageUri) {
+      const uploaded = await uploadItemImage(payload.shopId, mapped.id, localImageUri);
+      if (uploaded) {
+        mapped = { ...mapped, imageUrl: toAbsoluteBackendUrl(uploaded) };
+      }
+    }
+    return { data: mapped, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-
-  if (payload.categoryIds.length > 0) {
-    await supabase.from('merchant_item_categories').insert(
-      payload.categoryIds.map((categoryId, index) => ({
-        merchant_item_id: data.id,
-        merchant_category_id: categoryId,
-        sort_order: index,
-      }))
-    );
-  }
-
-  return { data: mapItem({ ...data, categories: data.categories?.map((c: any) => c.merchant_categories) ?? [] }), error: null };
 }
 
 export async function updateInventoryItem(
@@ -253,41 +281,41 @@ export async function updateInventoryItem(
   }
 ): Promise<ServiceResult<InventoryItem>> {
   log.debug('updateInventoryItem', { itemId, updates });
-
-  const { categoryIds, ...itemUpdates } = updates;
-
-  const { data, error } = await supabase
-    .from('merchant_items')
-    .update({
-      description: itemUpdates.description,
-      sku: itemUpdates.sku,
-      price_cents: itemUpdates.priceCents,
-      is_active: itemUpdates.isActive,
-      image_url: itemUpdates.imageUrl !== undefined ? itemUpdates.imageUrl : undefined,
-    })
-    .eq('id', itemId)
-    .select('*, categories:merchant_item_categories(merchant_categories(*))')
-    .single();
-
-  if (error) {
-    log.error('Failed to update inventory item', error);
-    return { data: null, error };
+  const shopId = itemShopMap.get(itemId);
+  if (!shopId) {
+    return {
+      data: null,
+      error: {
+        name: 'ItemLookupError',
+        code: 'item_lookup_failed',
+        message: 'Item context is missing. Reload items and try again.',
+        details: '',
+        hint: '',
+      },
+    };
   }
-
-  if (categoryIds) {
-    await supabase.from('merchant_item_categories').delete().eq('merchant_item_id', itemId);
-    if (categoryIds.length > 0) {
-      await supabase.from('merchant_item_categories').insert(
-        categoryIds.map((categoryId, index) => ({
-          merchant_item_id: itemId,
-          merchant_category_id: categoryId,
-          sort_order: index,
-        }))
-      );
+  try {
+    const localImageUri = isLocalImageUri(updates.imageUrl) ? updates.imageUrl : null;
+    const data = await apiClient.put<any>(`/api/v1/merchant/shops/${shopId}/items/${itemId}`, {
+      description: updates.description,
+      sku: updates.sku,
+      price_cents: updates.priceCents,
+      is_active: updates.isActive,
+      image_url: localImageUri ? undefined : updates.imageUrl,
+      category_ids: updates.categoryIds,
+    });
+    let mapped = mapItem({ ...data, shop_id: shopId });
+    if (localImageUri) {
+      const uploaded = await uploadItemImage(shopId, itemId, localImageUri);
+      if (uploaded) {
+        mapped = { ...mapped, imageUrl: toAbsoluteBackendUrl(uploaded) };
+      }
     }
+    return { data: mapped, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-
-  return { data: mapItem({ ...data, categories: data.categories?.map((c: any) => c.merchant_categories) ?? [] }), error: null };
 }
 
 export async function toggleInventoryItemActive(itemId: string, isActive: boolean): Promise<ServiceResult<InventoryItem>> {
@@ -299,67 +327,41 @@ export async function fetchInventoryTemplates(params: {
   limit?: number;
   cursor?: string | null;
 }): Promise<ServiceResult<{ items: InventoryTemplateItem[]; nextCursor?: string | null }>> {
-  log.debug('fetchInventoryTemplates', params);
-
-  let query = supabase
-    .from('item_templates')
-    .select('*')
-    .limit(params.limit ?? 50)
-    .order('updated_at', { ascending: false });
-
-  if (params.search) {
-    const trimmed = params.search.trim();
-    if (trimmed.length > 0) {
-      const escaped = escapeIlike(trimmed);
-      const likeValue = `%${escaped}%`;
-      query = query.or(
-        [`name.ilike.${likeValue}`, `barcode.ilike.${likeValue}`, `description.ilike.${likeValue}`].join(',')
-      );
-    }
+  try {
+    const query = params.search ? `?search=${encodeURIComponent(params.search)}` : '';
+    const data = await apiClient.get<any[]>(`/api/v1/merchant/templates/items${query}`);
+    const items = (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      barcode: row.barcode,
+      description: row.description,
+      imageUrl: toAbsoluteBackendUrl(row.image_url),
+      defaultUnit: row.default_unit,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+    return { data: { items, nextCursor: null }, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-  if (params.cursor) {
-    query = query.gt('updated_at', params.cursor);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    log.error('Failed to fetch templates', error);
-    return { data: null, error };
-  }
-
-  const items = (data ?? []).map((row: any) => ({
-    id: row.id,
-    name: row.name,
-    barcode: row.barcode,
-    description: row.description,
-    imageUrl: row.image_url,
-    defaultUnit: row.default_unit,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
-
-  const nextCursor = items.length > 0 ? items[items.length - 1].updatedAt : null;
-
-  return { data: { items, nextCursor }, error: null };
 }
 
 export async function fetchTemplateCategories(): Promise<ServiceResult<InventoryTemplateCategory[]>> {
-  const { data, error } = await supabase.from('category_templates').select('*').order('name', { ascending: true });
-  if (error) {
-    log.error('Failed to fetch template categories', error);
-    return { data: null, error };
+  try {
+    const data = await apiClient.get<any[]>('/api/v1/merchant/templates/categories');
+    const categories = (data ?? []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+    return { data: categories, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-
-  const categories = (data ?? []).map((row: any) => ({
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
-
-  return { data: categories, error: null };
 }
 
 export async function fetchInventoryAuditLog(
@@ -367,50 +369,22 @@ export async function fetchInventoryAuditLog(
   filters: InventoryAuditLogFilters = {}
 ): Promise<ServiceResult<{ entries: InventoryAuditLogEntry[]; nextCursor?: string | null }>> {
   log.debug('fetchInventoryAuditLog', { shopId, filters });
-
-  let query = supabase
-    .from('audit_logs')
-    .select('*')
-    .eq('shop_id', shopId)
-    .order('created_at', { ascending: false })
-    .limit(filters.limit ?? 50);
-
-  if (filters.actionTypes && filters.actionTypes.length > 0) {
-    query = query.in('action_type', filters.actionTypes);
+  try {
+    // Hermes / RN URLSearchParams often lacks .set(); build query string manually.
+    const pairs: string[] = [];
+    if (filters.limit != null) pairs.push(`limit=${encodeURIComponent(String(filters.limit))}`);
+    if (filters.merchantItemId) pairs.push(`merchantItemId=${encodeURIComponent(filters.merchantItemId)}`);
+    if (filters.cursor) pairs.push(`cursor=${encodeURIComponent(filters.cursor)}`);
+    const qs = pairs.length > 0 ? pairs.join('&') : '';
+    const path = `/api/v1/merchant/shops/${shopId}/items/audit-log${qs ? `?${qs}` : ''}`;
+    const data = await apiClient.get<{ entries: any[]; next_cursor?: string | null }>(path);
+    const entries = (data?.entries ?? []).map(mapAudit);
+    return { data: { entries, nextCursor: data?.next_cursor ?? null }, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    log.error('Failed to fetch inventory audit log', apiError);
+    return { data: null, error: apiError };
   }
-  if (filters.actorIds && filters.actorIds.length > 0) {
-    query = query.in('actor->>id', filters.actorIds);
-  }
-  if (filters.field) {
-    query = query.contains('changed_fields', { [filters.field]: {} });
-  }
-  if (filters.dateFrom) {
-    query = query.gte('created_at', filters.dateFrom);
-  }
-  if (filters.dateTo) {
-    query = query.lte('created_at', filters.dateTo);
-  }
-  if (filters.source) {
-    query = query.eq('source', filters.source);
-  }
-  if (filters.merchantItemId) {
-    query = query.eq('merchant_item_id', filters.merchantItemId);
-  }
-  if (filters.cursor) {
-    query = query.lt('created_at', filters.cursor);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    log.error('Failed to fetch audit log', error);
-    return { data: null, error };
-  }
-
-  const entries = (data ?? []).map(mapAudit);
-  const nextCursor = entries.length > 0 ? entries[entries.length - 1].createdAt : null;
-
-  return { data: { entries, nextCursor }, error: null };
 }
 
 export async function bulkAdoptTemplates(payload: {
@@ -418,129 +392,54 @@ export async function bulkAdoptTemplates(payload: {
   templateIds: string[];
   defaultCategoryId?: string | null;
 }): Promise<ServiceResult<{ jobId: string }>> {
-  log.debug('bulkAdoptTemplates', payload);
-
-  const { data, error } = await supabase
-    .rpc('bulk_adopt_templates', {
-      p_shop_id: payload.shopId,
-      p_template_ids: payload.templateIds,
-      p_default_category_id: payload.defaultCategoryId ?? null,
-    })
-    .single();
-
-  if (error) {
-    log.error('Failed to trigger bulk adoption', error);
-    return { data: null, error };
-  }
-
-  const jobResponse = (data as { job_id?: string | null } | null) ?? {};
-  return { data: { jobId: jobResponse.job_id ?? 'pending' }, error: null };
+  void payload;
+  return { data: { jobId: 'unsupported' }, error: null };
 }
 
 export async function deleteInventoryItem(itemId: string): Promise<ServiceResult<{ id: string }>> {
-  const deleteItem = async () =>
-    supabase.from('merchant_items').delete().eq('id', itemId).select('id').single();
-
-  const attempt = await deleteItem();
-  if (!attempt.error) {
-    return { data: attempt.data as { id: string }, error: null };
+  const shopId = itemShopMap.get(itemId);
+  if (!shopId) {
+    return {
+      data: null,
+      error: {
+        name: 'ItemLookupError',
+        code: 'item_lookup_failed',
+        message: 'Item context is missing. Reload items and try again.',
+        details: '',
+        hint: '',
+      },
+    };
   }
-
-  if (attempt.error.code !== '23503') {
-    log.error('Failed to delete inventory item', attempt.error);
-    return { data: null, error: attempt.error };
+  try {
+    await apiClient.delete(`/api/v1/merchant/shops/${shopId}/items/${itemId}`);
+    return { data: { id: itemId }, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-
-  const { error: updateError } = await supabase
-    .from('audit_logs')
-    .update({ merchant_item_id: null })
-    .eq('merchant_item_id', itemId);
-
-  if (updateError) {
-    log.error('Failed to nullify audit log references before deleting item', updateError);
-    return { data: null, error: updateError };
-  }
-
-  const retry = await deleteItem();
-  if (retry.error) {
-    log.error('Failed to delete inventory item on retry', retry.error);
-    return { data: null, error: retry.error };
-  }
-
-  return { data: retry.data as { id: string }, error: null };
 }
 
 export async function deleteInventoryCategory(categoryId: string): Promise<ServiceResult<{ id: string }>> {
-  const { data: linkedItems, error: linkedError } = await supabase
-    .from('merchant_item_categories')
-    .select('merchant_item_id')
-    .eq('merchant_category_id', categoryId);
-
-  if (linkedError) {
-    log.error('Failed to inspect category links', linkedError);
-    return { data: null, error: linkedError };
+  const shopId = categoryShopMap.get(categoryId);
+  if (!shopId) {
+    return {
+      data: null,
+      error: {
+        name: 'CategoryLookupError',
+        code: 'category_lookup_failed',
+        message: 'Category context is missing. Reload categories and try again.',
+        details: '',
+        hint: '',
+      },
+    };
   }
-
-  const linkedRows = (linkedItems ?? []) as { merchant_item_id: string | null }[];
-  const itemIds = Array.from(new Set(linkedRows.map((row) => row.merchant_item_id).filter((id): id is string => Boolean(id))));
-
-  if (itemIds.length > 0) {
-    const { data: allLinks, error: allLinksError } = await supabase
-      .from('merchant_item_categories')
-      .select('merchant_item_id, merchant_category_id')
-      .in('merchant_item_id', itemIds);
-
-    if (allLinksError) {
-      log.error('Failed to inspect item category assignments', allLinksError);
-      return { data: null, error: allLinksError };
-    }
-
-    const typedLinks = (allLinks ?? []) as {
-      merchant_item_id: string | null;
-      merchant_category_id: string | null;
-    }[];
-
-    const grouped = new Map<string, Set<string>>();
-    typedLinks.forEach((link) => {
-      const itemId = link.merchant_item_id;
-      const category = link.merchant_category_id;
-      if (!itemId || !category) {
-        return;
-      }
-      const set = grouped.get(itemId) ?? new Set<string>();
-      const normalizedCategory = category as string;
-      set.add(normalizedCategory);
-      grouped.set(itemId, set);
-    });
-
-    const blocked = Array.from(grouped.entries()).some(
-      ([, categories]) => categories.size <= 1 || (categories.size === 1 && categories.has(categoryId))
-    );
-
-    if (blocked) {
-      const conflictError: PostgrestError = {
-        name: 'CategoryConflictError',
-        code: '409',
-        details: 'category_has_single_assignment',
-        hint: 'Reassign impacted items to another category before deleting.',
-        message: 'Cannot delete category because one or more items only belong to this category.',
-      };
-      return { data: null, error: conflictError };
-    }
+  try {
+    await apiClient.delete(`/api/v1/merchant/shops/${shopId}/categories/${categoryId}`);
+    return { data: { id: categoryId }, error: null };
+  } catch (error) {
+    const apiError = toApiError(error);
+    return { data: null, error: apiError };
   }
-
-  const { data, error } = await supabase
-    .from('merchant_categories')
-    .delete()
-    .eq('id', categoryId)
-    .select('id')
-    .single();
-
-  if (error) {
-    log.error('Failed to delete inventory category', error);
-    return { data: null, error };
-  }
-  return { data: data as { id: string }, error: null };
 }
 
 

@@ -11,6 +11,8 @@ export interface ConfirmedLocation {
   city?: string;
   region?: string;
   streetLine?: string;
+  addressId?: string;
+  landmark?: string | null;
   timestamp: number;
 }
 

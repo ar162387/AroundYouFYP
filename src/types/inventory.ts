@@ -5,7 +5,14 @@ export type InventoryActionType =
   | 'ACTIVATE'
   | 'DEACTIVATE'
   | 'IMPORT'
-  | 'TEMPLATE_UPDATE';
+  | 'TEMPLATE_UPDATE'
+  | 'item_created'
+  | 'item_deleted'
+  | 'price_updated'
+  | 'name_updated'
+  | 'item_deactivated'
+  | 'image_updated'
+  | 'item_updated';
 
 export type InventoryChangeSource = 'manual' | 'bulk_import' | 'system_sync' | 'backfill' | 'template_update';
 
@@ -49,7 +56,7 @@ export interface InventoryItem {
   description?: string | null;
   barcode?: string | null;
   imageUrl?: string | null;
-  sku: string;
+  sku?: string | null;
   priceCents: number;
   currency?: string;
   isActive: boolean;

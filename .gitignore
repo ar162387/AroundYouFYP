@@ -33,6 +33,7 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+!android/app/src/main/res/raw/ay_backend_cert.pem
 
 # local env files
 .env

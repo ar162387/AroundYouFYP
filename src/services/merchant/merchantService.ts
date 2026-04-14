@@ -1,4 +1,17 @@
-import { supabase } from '../supabase';
+import { apiClient, toApiError } from '../apiClient';
+
+/** Present when POST /merchant/account upgrades role to merchant (new JWT). */
+export type MerchantRegistrationSession = {
+  access_token: string;
+  expires_at: string;
+  user: {
+    id: string;
+    email: string;
+    name?: string | null;
+    role: string;
+    created_at: string;
+  };
+};
 
 export type ShopType = 'grocery' | 'meat' | 'vegetable' | 'mart' | 'other';
 export type MerchantStatus = 'none' | 'pending' | 'verified';
@@ -30,161 +43,88 @@ export interface VerificationData {
 
 // Create merchant account
 export async function createMerchantAccount(
-  userId: string,
+  _userId: string,
   data: CreateMerchantAccountData
-): Promise<{ merchant: MerchantAccount | null; error: { message: string } | null }> {
+): Promise<{
+  merchant: MerchantAccount | null;
+  session: MerchantRegistrationSession | null;
+  error: { message: string } | null;
+}> {
   try {
-    const { data: merchant, error } = await supabase
-      .from('merchant_accounts')
-      .insert({
-        user_id: userId,
-        shop_type: data.shop_type,
-        number_of_shops: data.number_of_shops,
-        status: 'none',
-      })
-      .select()
-      .single();
+    const response = await apiClient.post<{
+      merchant: MerchantAccount;
+      access_token?: string;
+      expires_at?: string;
+      user?: MerchantRegistrationSession['user'];
+    }>('/api/v1/merchant/account', data);
 
-    if (error) {
-      return { merchant: null, error: { message: error.message } };
-    }
+    const session =
+      response.access_token && response.expires_at && response.user
+        ? {
+            access_token: response.access_token,
+            expires_at: response.expires_at,
+            user: response.user,
+          }
+        : null;
 
-    return { merchant, error: null };
-  } catch (error: any) {
-    return { merchant: null, error: { message: error.message || 'An error occurred' } };
+    return { merchant: response.merchant ?? null, session, error: null };
+  } catch (error) {
+    return { merchant: null, session: null, error: { message: toApiError(error).message } };
   }
 }
 
 // Get merchant account by user ID
 export async function getMerchantAccount(
-  userId: string
+  _userId: string
 ): Promise<{ merchant: MerchantAccount | null; error: { message: string } | null }> {
   try {
-    const { data: merchant, error } = await supabase
-      .from('merchant_accounts')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') {
-      return { merchant: null, error: { message: error.message } };
-    }
-
-    if (error && error.code === 'PGRST116') {
-      return { merchant: null, error: null }; // No merchant account found, not an error
-    }
-
+    const merchant = await apiClient.get<MerchantAccount>('/api/v1/merchant/account');
     return { merchant, error: null };
-  } catch (error: any) {
-    return { merchant: null, error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.status === 404) return { merchant: null, error: null };
+    return { merchant: null, error: { message: apiError.message } };
   }
 }
 
 // Update merchant status
 export async function updateMerchantStatus(
-  merchantId: string,
+  _merchantId: string,
   status: MerchantStatus
 ): Promise<{ error: { message: string } | null }> {
   try {
-    const { error } = await supabase
-      .from('merchant_accounts')
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', merchantId);
-
-    if (error) {
-      return { error: { message: error.message } };
-    }
-
+    await apiClient.put('/api/v1/merchant/account', { status });
     return { error: null };
-  } catch (error: any) {
-    return { error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    return { error: { message: toApiError(error).message } };
   }
 }
 
 // Submit verification information
 export async function submitVerification(
-  userId: string,
+  _userId: string,
   data: VerificationData
 ): Promise<{ merchant: MerchantAccount | null; error: { message: string } | null }> {
   try {
-    // First get the merchant account
-    const { merchant: existingMerchant, error: fetchError } = await getMerchantAccount(userId);
-    
-    if (fetchError) {
-      return { merchant: null, error: fetchError };
-    }
-
-    if (!existingMerchant) {
-      return { merchant: null, error: { message: 'Merchant account not found' } };
-    }
-
-    // Update with verification data and set status to pending
-    const { data: merchant, error } = await supabase
-      .from('merchant_accounts')
-      .update({
-        name_as_per_cnic: data.name_as_per_cnic,
-        cnic: data.cnic,
-        cnic_expiry: data.cnic_expiry,
-        status: 'pending',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existingMerchant.id)
-      .select()
-      .single();
-
-    if (error) {
-      return { merchant: null, error: { message: error.message } };
-    }
-
+    const merchant = await apiClient.put<MerchantAccount>('/api/v1/merchant/account', {
+      ...data,
+      status: 'pending',
+    });
     return { merchant, error: null };
-  } catch (error: any) {
-    return { merchant: null, error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    return { merchant: null, error: { message: toApiError(error).message } };
   }
 }
 
 // Delete merchant account
 export async function deleteMerchantAccount(
-  userId: string
+  _userId: string
 ): Promise<{ error: { message: string } | null }> {
   try {
-    // First check if merchant account exists
-    const { merchant, error: fetchError } = await getMerchantAccount(userId);
-    
-    if (fetchError) {
-      return { error: fetchError };
-    }
-
-    if (!merchant) {
-      return { error: { message: 'Merchant account not found' } };
-    }
-
-    // Check if there are any shops
-    const { data: shops, error: shopsError } = await supabase
-      .from('shops')
-      .select('id')
-      .eq('merchant_id', merchant.id);
-
-    if (shopsError) {
-      return { error: { message: shopsError.message } };
-    }
-
-    if (shops && shops.length > 0) {
-      return { error: { message: `Cannot delete merchant account. Please delete all ${shops.length} shop(s) first.` } };
-    }
-
-    // Delete the merchant account
-    const { error: deleteError } = await supabase
-      .from('merchant_accounts')
-      .delete()
-      .eq('id', merchant.id);
-
-    if (deleteError) {
-      return { error: { message: deleteError.message } };
-    }
-
+    await apiClient.delete('/api/v1/merchant/account');
     return { error: null };
-  } catch (error: any) {
-    return { error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    return { error: { message: toApiError(error).message } };
   }
 }
 

@@ -62,7 +62,7 @@ export function useSaveDeliveryLogic(shopId: string) {
     }
   }, {
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['delivery-logic', shopId] });
+      queryClient.invalidateQueries(['delivery-logic', shopId]);
     },
   });
 }

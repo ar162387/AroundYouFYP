@@ -1,19 +1,52 @@
-/**
- * Merchant Order Service
- * 
- * Handles merchant-side order operations including status updates,
- * runner assignment, and order management.
- */
-
-import { supabase } from '../supabase';
+import { apiClient, toApiError } from '../apiClient';
+import { subscribeToShopGroup } from '../orderRealtime';
 import {
-  Order,
   OrderWithAll,
-  OrderStatus,
   DeliveryRunnerWithStatus,
   OrderFilters,
   OrderAnalytics,
 } from '../../types/orders';
+
+type MerchantShopSummary = {
+  id: string;
+  name?: string;
+  shop_type?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+};
+
+function normalizeMerchantOrder(raw: any, shop?: MerchantShopSummary): OrderWithAll {
+  const fallbackShop = {
+    id: shop?.id || raw?.shop_id || raw?.shopId || '',
+    name: shop?.name || raw?.shop?.name || 'Unknown Shop',
+    shop_type: shop?.shop_type || raw?.shop?.shop_type || '',
+    address: shop?.address || raw?.shop?.address || '',
+    latitude: shop?.latitude ?? raw?.shop?.latitude ?? 0,
+    longitude: shop?.longitude ?? raw?.shop?.longitude ?? 0,
+  };
+
+  return {
+    ...raw,
+    shop_id: raw?.shop_id || raw?.shopId || fallbackShop.id,
+    delivery_address: raw?.delivery_address || raw?.deliveryAddress || {},
+    order_items: raw?.order_items || raw?.items || [],
+    shop: raw?.shop || fallbackShop,
+  } as OrderWithAll;
+}
+
+async function resolveShopIdForOrder(orderId: string): Promise<string> {
+  const shops = await apiClient.get<Array<{ id: string }>>('/api/v1/merchant/shops');
+  for (const shop of shops || []) {
+    try {
+      await apiClient.get(`/api/v1/merchant/shops/${shop.id}/orders/${orderId}`);
+      return shop.id;
+    } catch {
+      // Continue search.
+    }
+  }
+  throw new Error('Order not found in merchant shops.');
+}
 
 // ============================================================================
 // GET SHOP ORDERS
@@ -24,22 +57,8 @@ import {
  */
 export async function getShopOrders(shopId: string): Promise<OrderWithAll[]> {
   try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select(
-        `
-        *,
-        order_items(*),
-        shop:shops(id, name, image_url, shop_type, address, latitude, longitude),
-        delivery_runner:delivery_runners(id, name, phone_number)
-      `
-      )
-      .eq('shop_id', shopId)
-      .order('placed_at', { ascending: false });
-
-    if (error) throw error;
-
-    return (data || []) as any;
+    const orders = await apiClient.get<any[]>(`/api/v1/merchant/shops/${shopId}/orders`);
+    return (orders || []).map((order) => normalizeMerchantOrder(order, { id: shopId }));
   } catch (error) {
     console.error('Error getting shop orders:', error);
     return [];
@@ -51,46 +70,14 @@ export async function getShopOrders(shopId: string): Promise<OrderWithAll[]> {
  */
 export async function getAllMerchantOrders(userId: string): Promise<OrderWithAll[]> {
   try {
-    // First, get merchant account
-    const { data: merchantAccount, error: merchantError } = await supabase
-      .from('merchant_accounts')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
-
-    if (merchantError || !merchantAccount) {
-      return [];
-    }
-
-    // Get all shop IDs for this merchant
-    const { data: shops, error: shopsError } = await supabase
-      .from('shops')
-      .select('id')
-      .eq('merchant_id', merchantAccount.id);
-
-    if (shopsError || !shops || shops.length === 0) {
-      return [];
-    }
-
-    const shopIds = shops.map((shop) => shop.id);
-
-    // Get all orders for these shops
-    const { data, error } = await supabase
-      .from('orders')
-      .select(
-        `
-        *,
-        order_items(*),
-        shop:shops(id, name, image_url, shop_type, address, latitude, longitude),
-        delivery_runner:delivery_runners(id, name, phone_number)
-      `
-      )
-      .in('shop_id', shopIds)
-      .order('placed_at', { ascending: false });
-
-    if (error) throw error;
-
-    return (data || []) as any;
+    const shops = await apiClient.get<MerchantShopSummary[]>('/api/v1/merchant/shops');
+    const allOrders = await Promise.all(
+      (shops || []).map(async (shop) => {
+        const shopOrders = await apiClient.get<any[]>(`/api/v1/merchant/shops/${shop.id}/orders`);
+        return (shopOrders || []).map((order) => normalizeMerchantOrder(order, shop));
+      })
+    );
+    return allOrders.flat();
   } catch (error) {
     console.error('Error getting all merchant orders:', error);
     return [];
@@ -105,79 +92,11 @@ export async function getFilteredShopOrders(
   filters: OrderFilters
 ): Promise<OrderWithAll[]> {
   try {
-    let query = supabase
-      .from('orders')
-      .select(
-        `
-        *,
-        order_items(*),
-        shop:shops(id, name, image_url, shop_type, address, latitude, longitude),
-        delivery_runner:delivery_runners(id, name, phone_number)
-      `
-      )
-      .eq('shop_id', shopId);
-
-    // Apply status filter
+    let orders = await getShopOrders(shopId);
     if (filters.statusFilter) {
-      query = query.eq('status', filters.statusFilter);
+      orders = orders.filter((order) => order.status === filters.statusFilter);
     }
-
-    // Apply time filter
-    const now = new Date();
-    let startDate: Date | undefined;
-
-    switch (filters.timeFilter) {
-      case 'today':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        query = query.gte('placed_at', startDate.toISOString());
-        break;
-      case 'yesterday':
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        startDate = new Date(
-          yesterday.getFullYear(),
-          yesterday.getMonth(),
-          yesterday.getDate()
-        );
-        const endOfYesterday = new Date(startDate);
-        endOfYesterday.setDate(endOfYesterday.getDate() + 1);
-        query = query
-          .gte('placed_at', startDate.toISOString())
-          .lt('placed_at', endOfYesterday.toISOString());
-        break;
-      case '7days':
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 7);
-        query = query.gte('placed_at', startDate.toISOString());
-        break;
-      case '30days':
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 30);
-        query = query.gte('placed_at', startDate.toISOString());
-        break;
-      case 'custom':
-        if (filters.customStartDate) {
-          query = query.gte('placed_at', filters.customStartDate.toISOString());
-        }
-        if (filters.customEndDate) {
-          const endDate = new Date(filters.customEndDate);
-          endDate.setDate(endDate.getDate() + 1); // Include end date
-          query = query.lt('placed_at', endDate.toISOString());
-        }
-        break;
-      case 'all':
-      default:
-        // No time filter
-        break;
-    }
-
-    query = query.order('placed_at', { ascending: false });
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    return (data || []) as any;
+    return orders;
   } catch (error) {
     console.error('Error getting filtered shop orders:', error);
     return [];
@@ -196,23 +115,11 @@ export async function confirmOrder(
   orderId: string
 ): Promise<{ success: boolean; message?: string }> {
   try {
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: 'confirmed',
-        // confirmed_at is set automatically by validate_order_status_transition trigger
-      })
-      .eq('id', orderId);
-
-    if (error) throw error;
-
+    const shopId = await resolveShopIdForOrder(orderId);
+    await apiClient.post(`/api/v1/merchant/shops/${shopId}/orders/${orderId}/confirm`);
     return { success: true };
   } catch (error) {
-    console.error('Error confirming order:', error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : 'Failed to confirm order',
-    };
+    return { success: false, message: toApiError(error).message };
   }
 }
 
@@ -225,24 +132,13 @@ export async function assignRunnerAndDispatch(
   runnerId: string
 ): Promise<{ success: boolean; message?: string }> {
   try {
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: 'out_for_delivery',
-        delivery_runner_id: runnerId,
-        // out_for_delivery_at is set automatically by validate_order_status_transition trigger
-      })
-      .eq('id', orderId);
-
-    if (error) throw error;
-
+    const shopId = await resolveShopIdForOrder(orderId);
+    await apiClient.post(`/api/v1/merchant/shops/${shopId}/orders/${orderId}/dispatch`, {
+      runner_id: runnerId,
+    });
     return { success: true };
   } catch (error) {
-    console.error('Error assigning runner:', error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : 'Failed to assign runner',
-    };
+    return { success: false, message: toApiError(error).message };
   }
 }
 
@@ -254,24 +150,11 @@ export async function markOrderDelivered(
   orderId: string
 ): Promise<{ success: boolean; message?: string }> {
   try {
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: 'delivered',
-        // delivered_at is set automatically by validate_order_status_transition trigger
-      })
-      .eq('id', orderId);
-
-    if (error) throw error;
-
+    const shopId = await resolveShopIdForOrder(orderId);
+    await apiClient.post(`/api/v1/merchant/shops/${shopId}/orders/${orderId}/deliver`);
     return { success: true };
   } catch (error) {
-    console.error('Error marking order as delivered:', error);
-    return {
-      success: false,
-      message:
-        error instanceof Error ? error.message : 'Failed to mark order as delivered',
-    };
+    return { success: false, message: toApiError(error).message };
   }
 }
 
@@ -283,29 +166,11 @@ export async function cancelOrder(
   reason: string
 ): Promise<{ success: boolean; message?: string }> {
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error('User not authenticated');
-
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        status: 'cancelled',
-        cancellation_reason: reason,
-        cancelled_by: user.id,
-      })
-      .eq('id', orderId);
-
-    if (error) throw error;
-
+    const shopId = await resolveShopIdForOrder(orderId);
+    await apiClient.post(`/api/v1/merchant/shops/${shopId}/orders/${orderId}/cancel`, { reason });
     return { success: true };
   } catch (error) {
-    console.error('Error cancelling order:', error);
-    return {
-      success: false,
-      message: error instanceof Error ? error.message : 'Failed to cancel order',
-    };
+    return { success: false, message: toApiError(error).message };
   }
 }
 
@@ -320,54 +185,7 @@ export async function getDeliveryRunnersWithStatus(
   shopId: string
 ): Promise<DeliveryRunnerWithStatus[]> {
   try {
-    // Get all runners for the shop
-    const { data: runners, error: runnersError } = await supabase
-      .from('delivery_runners')
-      .select('*')
-      .eq('shop_id', shopId)
-      .order('name');
-
-    if (runnersError) throw runnersError;
-
-    // Get active orders for runners
-    const { data: activeOrders, error: ordersError } = await supabase
-      .from('orders')
-      .select('id, order_number, delivery_runner_id, status')
-      .eq('shop_id', shopId)
-      .in('status', ['confirmed', 'out_for_delivery']);
-
-    if (ordersError) throw ordersError;
-
-    // Build runner status map
-    const runnerOrderMap = new Map<
-      string,
-      { order_id: string; order_number: string }
-    >();
-    activeOrders?.forEach((order) => {
-      if (order.delivery_runner_id && order.status === 'out_for_delivery') {
-        runnerOrderMap.set(order.delivery_runner_id, {
-          order_id: order.id,
-          order_number: order.order_number,
-        });
-      }
-    });
-
-    // Combine data
-    const runnersWithStatus: DeliveryRunnerWithStatus[] =
-      runners?.map((runner) => {
-        const currentOrder = runnerOrderMap.get(runner.id);
-        return {
-          id: runner.id,
-          shop_id: runner.shop_id,
-          name: runner.name,
-          phone_number: runner.phone_number,
-          is_available: !currentOrder,
-          current_order_id: currentOrder?.order_id,
-          current_order_number: currentOrder?.order_number,
-        };
-      }) || [];
-
-    return runnersWithStatus;
+    return await apiClient.get<DeliveryRunnerWithStatus[]>(`/api/v1/merchant/shops/${shopId}/runners`);
   } catch (error) {
     console.error('Error getting delivery runners with status:', error);
     return [];
@@ -388,190 +206,218 @@ export async function getShopOrderAnalytics(
   customEndDate?: Date
 ): Promise<OrderAnalytics | null> {
   try {
-    let query = supabase
-      .from('orders')
-      .select('status, total_cents, confirmation_time_seconds, preparation_time_seconds, delivery_time_seconds, confirmed_at, out_for_delivery_at, delivered_at, placed_at')
-      .eq('shop_id', shopId);
-
-    // Apply time filter if provided
-    if (timeFilter && timeFilter !== 'all') {
-      const now = new Date();
-      let startDate: Date | undefined;
-
-      switch (timeFilter) {
-        case 'today':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case 'yesterday':
-          const yesterday = new Date(now);
-          yesterday.setDate(yesterday.getDate() - 1);
-          startDate = new Date(
-            yesterday.getFullYear(),
-            yesterday.getMonth(),
-            yesterday.getDate()
-          );
-          const endOfYesterday = new Date(startDate);
-          endOfYesterday.setDate(endOfYesterday.getDate() + 1);
-          query = query
-            .gte('placed_at', startDate.toISOString())
-            .lt('placed_at', endOfYesterday.toISOString());
-          break;
-        case '7days':
-          startDate = new Date(now);
-          startDate.setDate(startDate.getDate() - 7);
-          break;
-        case '30days':
-          startDate = new Date(now);
-          startDate.setDate(startDate.getDate() - 30);
-          break;
-      }
-
-      if (startDate && timeFilter !== 'yesterday') {
-        query = query.gte('placed_at', startDate.toISOString());
-      }
-    }
-
-    // Handle custom date range
-    if (customStartDate) {
-      query = query.gte('placed_at', customStartDate.toISOString());
-    }
-    if (customEndDate) {
-      const end = new Date(customEndDate);
-      end.setDate(end.getDate() + 1);
-      query = query.lt('placed_at', end.toISOString());
-    }
-
-    const { data: orders, error } = await query;
-
-    if (error) throw error;
-
-    if (!orders || orders.length === 0) {
-      return {
-        total_orders: 0,
-        total_revenue_cents: 0,
-        average_order_value_cents: 0,
-        status_breakdown: {
-          pending: 0,
-          confirmed: 0,
-          out_for_delivery: 0,
-          delivered: 0,
-          cancelled: 0,
-        },
-      };
-    }
-
-    // Calculate metrics
-    const total_orders = orders.length;
-    const total_revenue_cents = orders
-      .filter((o) => o.status === 'delivered')
-      .reduce((sum, o) => sum + o.total_cents, 0);
-    const average_order_value_cents =
-      total_orders > 0 ? Math.round(total_revenue_cents / total_orders) : 0;
-
-    // Status breakdown
-    const status_breakdown: Record<OrderStatus, number> = {
-      pending: 0,
-      confirmed: 0,
-      out_for_delivery: 0,
-      delivered: 0,
-      cancelled: 0,
-    };
-    orders.forEach((order) => {
-      status_breakdown[order.status as OrderStatus]++;
-    });
-
-    // Calculate average times (only for delivered orders)
-    const deliveredOrders = orders.filter((o) => o.status === 'delivered');
-    let average_confirmation_time_seconds: number | undefined;
-    let average_preparation_time_seconds: number | undefined;
-    let average_delivery_time_seconds: number | undefined;
-
-    console.log('Delivered orders count:', deliveredOrders.length);
-    console.log('Sample delivered order:', deliveredOrders[0]);
-
-    if (deliveredOrders.length > 0) {
-      // Try to get times from the calculated fields first
-      let confirmationTimes = deliveredOrders
-        .filter((o) => o.confirmation_time_seconds !== null && o.confirmation_time_seconds !== undefined)
-        .map((o) => o.confirmation_time_seconds!);
-      
-      let preparationTimes = deliveredOrders
-        .filter((o) => o.preparation_time_seconds !== null && o.preparation_time_seconds !== undefined)
-        .map((o) => o.preparation_time_seconds!);
-      
-      let deliveryTimes = deliveredOrders
-        .filter((o) => o.delivery_time_seconds !== null && o.delivery_time_seconds !== undefined)
-        .map((o) => o.delivery_time_seconds!);
-
-      // If calculated times are missing, calculate from timestamps
-      if (confirmationTimes.length === 0) {
-        confirmationTimes = deliveredOrders
-          .filter((o) => o.confirmed_at && o.placed_at)
-          .map((o) => {
-            const confirmed = new Date(o.confirmed_at!);
-            const placed = new Date(o.placed_at);
-            return Math.round((confirmed.getTime() - placed.getTime()) / 1000);
-          });
-      }
-
-      if (preparationTimes.length === 0) {
-        preparationTimes = deliveredOrders
-          .filter((o) => o.out_for_delivery_at && o.confirmed_at)
-          .map((o) => {
-            const outForDelivery = new Date(o.out_for_delivery_at!);
-            const confirmed = new Date(o.confirmed_at!);
-            return Math.round((outForDelivery.getTime() - confirmed.getTime()) / 1000);
-          });
-      }
-
-      if (deliveryTimes.length === 0) {
-        deliveryTimes = deliveredOrders
-          .filter((o) => o.delivered_at && o.out_for_delivery_at)
-          .map((o) => {
-            const delivered = new Date(o.delivered_at!);
-            const outForDelivery = new Date(o.out_for_delivery_at!);
-            return Math.round((delivered.getTime() - outForDelivery.getTime()) / 1000);
-          });
-      }
-
-      console.log('Confirmation times:', confirmationTimes);
-      console.log('Preparation times:', preparationTimes);
-      console.log('Delivery times:', deliveryTimes);
-
-      if (confirmationTimes.length > 0) {
-        average_confirmation_time_seconds = Math.round(
-          confirmationTimes.reduce((a, b) => a + b, 0) / confirmationTimes.length
-        );
-      }
-      if (preparationTimes.length > 0) {
-        average_preparation_time_seconds = Math.round(
-          preparationTimes.reduce((a, b) => a + b, 0) / preparationTimes.length
-        );
-      }
-      if (deliveryTimes.length > 0) {
-        average_delivery_time_seconds = Math.round(
-          deliveryTimes.reduce((a, b) => a + b, 0) / deliveryTimes.length
-        );
-      }
-    }
-
-    return {
-      total_orders,
-      total_revenue_cents,
-      average_order_value_cents,
-      average_confirmation_time_seconds,
-      average_preparation_time_seconds,
-      average_delivery_time_seconds,
-      status_breakdown,
-    };
+    const analytics = await apiClient.get<OrderAnalytics>(`/api/v1/merchant/shops/${shopId}/analytics`);
+    return analytics;
   } catch (error) {
     console.error('Error getting shop order analytics:', error);
     return null;
   }
 }
 
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function getTimeSeriesRange(
+  timeFilter: 'today' | 'yesterday' | '7days' | '30days' | 'all_time' | 'custom',
+  customStartDate?: Date,
+  customEndDate?: Date
+): { start: Date; end: Date } | null {
+  const now = new Date();
+  const todayStart = startOfLocalDay(now);
+  const tomorrowStart = new Date(todayStart);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+  switch (timeFilter) {
+    case 'today':
+      return { start: todayStart, end: tomorrowStart };
+    case 'yesterday': {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 1);
+      return { start, end: todayStart };
+    }
+    case '7days': {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 6);
+      return { start, end: tomorrowStart };
+    }
+    case '30days': {
+      const start = new Date(todayStart);
+      start.setDate(start.getDate() - 29);
+      return { start, end: tomorrowStart };
+    }
+    case 'all_time':
+      return { start: new Date(0), end: new Date(8640000000000000) };
+    case 'custom': {
+      if (!customStartDate || !customEndDate) return null;
+      const start = startOfLocalDay(customStartDate);
+      const endDay = startOfLocalDay(customEndDate);
+      const end = new Date(endDay);
+      end.setDate(end.getDate() + 1);
+      if (start.getTime() >= end.getTime()) return null;
+      return { start, end };
+    }
+    default:
+      return { start: todayStart, end: tomorrowStart };
+  }
+}
+
+function inRange(iso: string, start: Date, end: Date): boolean {
+  const t = new Date(iso).getTime();
+  return t >= start.getTime() && t < end.getTime();
+}
+
+function inRangeDate(d: Date, start: Date, end: Date): boolean {
+  const t = d.getTime();
+  return t >= start.getTime() && t < end.getTime();
+}
+
+function deliveredRevenueTime(order: OrderWithAll): Date | null {
+  if (order.status !== 'delivered') return null;
+  const raw = order.delivered_at || order.placed_at;
+  return raw ? new Date(raw) : null;
+}
+
+function padSeriesForChart(xLabels: string[], dataPkr: number[]): { xLabels: string[]; data: number[] } {
+  if (dataPkr.length === 0) return { xLabels: [], data: [] };
+  if (dataPkr.length === 1) {
+    return { xLabels: ['', xLabels[0] ?? ''], data: [0, dataPkr[0]] };
+  }
+  return { xLabels, data: dataPkr };
+}
+
+function buildTodayYesterdaySeries(
+  range: { start: Date; end: Date },
+  orders: OrderWithAll[]
+): { xLabels: string[]; data: number[]; orders: number; revenue: number } {
+  const placedInRange = orders.filter((o) => inRange(o.placed_at, range.start, range.end));
+  let revenueCents = 0;
+  const bucketPkr = new Array(6).fill(0);
+  for (const o of orders) {
+    const rt = deliveredRevenueTime(o);
+    if (!rt) continue;
+    if (!inRangeDate(rt, range.start, range.end)) continue;
+    revenueCents += o.total_cents;
+    const hour = rt.getHours();
+    const bucket = Math.min(5, Math.floor(hour / 4));
+    bucketPkr[bucket] += Math.round(o.total_cents / 100);
+  }
+  const xLabels = ['12a', '4a', '8a', '12p', '4p', '8p'];
+  return {
+    xLabels,
+    data: bucketPkr,
+    orders: placedInRange.length,
+    revenue: revenueCents,
+  };
+}
+
+function buildDayBucketsSeries(
+  range: { start: Date; end: Date },
+  orders: OrderWithAll[],
+  dayCount: number
+): { xLabels: string[]; data: number[]; orders: number; revenue: number } {
+  const placedInRange = orders.filter((o) => inRange(o.placed_at, range.start, range.end));
+  const bucketPkr = new Array(dayCount).fill(0);
+  let revenueCents = 0;
+  const xLabels: string[] = [];
+
+  for (let i = 0; i < dayCount; i++) {
+    const day = new Date(range.start);
+    day.setDate(day.getDate() + i);
+    xLabels.push(day.toLocaleDateString('en-US', { weekday: 'short' }));
+  }
+
+  for (const o of orders) {
+    const rt = deliveredRevenueTime(o);
+    if (!rt) continue;
+    if (!inRangeDate(rt, range.start, range.end)) continue;
+    revenueCents += o.total_cents;
+    const dayStart = startOfLocalDay(rt);
+    const idx = Math.floor((dayStart.getTime() - range.start.getTime()) / 86400000);
+    if (idx >= 0 && idx < dayCount) {
+      bucketPkr[idx] += Math.round(o.total_cents / 100);
+    }
+  }
+
+  return { xLabels, data: bucketPkr, orders: placedInRange.length, revenue: revenueCents };
+}
+
+function buildMultiDayChunkSeries(
+  range: { start: Date; end: Date },
+  orders: OrderWithAll[],
+  bucketCount: number
+): { xLabels: string[]; data: number[]; orders: number; revenue: number } {
+  const placedInRange = orders.filter((o) => inRange(o.placed_at, range.start, range.end));
+  const spanMs = range.end.getTime() - range.start.getTime();
+  const bucketMs = spanMs / bucketCount;
+  const bucketPkr = new Array(bucketCount).fill(0);
+  const xLabels: string[] = [];
+  let revenueCents = 0;
+
+  for (let i = 0; i < bucketCount; i++) {
+    const sliceStart = range.start.getTime() + i * bucketMs;
+    const d = new Date(sliceStart);
+    xLabels.push(
+      d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
+    );
+  }
+
+  for (const o of orders) {
+    const rt = deliveredRevenueTime(o);
+    if (!rt) continue;
+    const t = rt.getTime();
+    if (t < range.start.getTime() || t >= range.end.getTime()) continue;
+    revenueCents += o.total_cents;
+    const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor((t - range.start.getTime()) / bucketMs)));
+    bucketPkr[idx] += Math.round(o.total_cents / 100);
+  }
+
+  return { xLabels, data: bucketPkr, orders: placedInRange.length, revenue: revenueCents };
+}
+
+function buildAllTimeSeries(orders: OrderWithAll[]): { xLabels: string[]; data: number[]; orders: number; revenue: number } {
+  if (!orders.length) {
+    return { xLabels: [], data: [], orders: 0, revenue: 0 };
+  }
+  const times = orders.map((o) => new Date(o.placed_at).getTime());
+  const minT = Math.min(...times);
+  const maxT = Math.max(...times, Date.now());
+  const span = Math.max(86400000, maxT - minT);
+  const bucketCount = Math.min(18, Math.max(2, Math.ceil(span / (10 * 86400000))));
+  const bucketMs = span / bucketCount;
+  const bucketPkr = new Array(bucketCount).fill(0);
+  const xLabels: string[] = [];
+  let revenueCentsAll = 0;
+
+  for (let i = 0; i < bucketCount; i++) {
+    const d = new Date(minT + i * bucketMs);
+    xLabels.push(
+      `${d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}`
+    );
+  }
+
+  for (const o of orders) {
+    if (o.status === 'delivered') {
+      revenueCentsAll += o.total_cents;
+    }
+    const rt = deliveredRevenueTime(o);
+    if (!rt) continue;
+    const t = rt.getTime();
+    const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor((t - minT) / bucketMs)));
+    bucketPkr[idx] += Math.round(o.total_cents / 100);
+  }
+
+  const padded = padSeriesForChart(xLabels, bucketPkr);
+  return {
+    xLabels: padded.xLabels,
+    data: padded.data,
+    orders: orders.length,
+    revenue: revenueCentsAll,
+  };
+}
+
 /**
- * Get time-series order and revenue data for charting
+ * Get time-series order and revenue data for charting (filtered by the same range as dashboard chips).
  */
 export async function getShopOrderTimeSeries(
   shopId: string,
@@ -584,252 +430,39 @@ export async function getShopOrderTimeSeries(
   orders: number;
   revenue: number;
 }> {
-  try {
-    let query = supabase
-      .from('orders')
-      .select('placed_at, total_cents, status')
-      .eq('shop_id', shopId);
-
-    const now = new Date();
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-
-    // Apply time filter
-    switch (timeFilter) {
-      case 'today': {
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        query = query.gte('placed_at', startDate.toISOString());
-        break;
-      }
-      case 'yesterday': {
-        const yesterday = new Date(now);
-        yesterday.setDate(yesterday.getDate() - 1);
-        startDate = new Date(
-          yesterday.getFullYear(),
-          yesterday.getMonth(),
-          yesterday.getDate()
-        );
-        endDate = new Date(startDate);
-        endDate.setDate(endDate.getDate() + 1);
-        query = query
-          .gte('placed_at', startDate.toISOString())
-          .lt('placed_at', endDate.toISOString());
-        break;
-      }
-      case '7days': {
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 7);
-        query = query.gte('placed_at', startDate.toISOString());
-        break;
-      }
-      case '30days': {
-        startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 30);
-        query = query.gte('placed_at', startDate.toISOString());
-        break;
-      }
-      case 'custom': {
-        if (customStartDate) {
-          query = query.gte('placed_at', customStartDate.toISOString());
-          startDate = customStartDate;
-        }
-        if (customEndDate) {
-          const end = new Date(customEndDate);
-          end.setDate(end.getDate() + 1);
-          query = query.lt('placed_at', end.toISOString());
-          endDate = customEndDate;
-        }
-        break;
-      }
-      case 'all_time':
-      default:
-        // No filter
-        break;
-    }
-
-    query = query.order('placed_at', { ascending: true });
-
-    const { data: orders, error } = await query;
-
-    if (error) throw error;
-
-    if (!orders || orders.length === 0) {
-      return {
-        xLabels: [],
-        data: [],
-        orders: 0,
-        revenue: 0,
-      };
-    }
-
-    // Calculate total orders and revenue
-    const totalOrders = orders.length;
-    const totalRevenue = orders
-      .filter((o) => o.status === 'delivered')
-      .reduce((sum, o) => sum + o.total_cents, 0);
-
-    // Group orders by time period based on filter
-    let xLabels: string[] = [];
-    let data: number[] = [];
-    const dataMap = new Map<string, number>();
-
-    const effectiveStartDate = startDate || (orders[0] ? new Date(orders[0].placed_at) : now);
-    const effectiveEndDate = endDate || now;
-    const daysDiff = Math.ceil(
-      (effectiveEndDate.getTime() - effectiveStartDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    // Determine grouping interval
-    if (timeFilter === 'today' || timeFilter === 'yesterday' || (timeFilter === 'custom' && daysDiff <= 1)) {
-      // Hourly grouping
-      const hours = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'];
-      xLabels = hours;
-      
-      // Initialize all hours with 0
-      hours.forEach((hour) => {
-        dataMap.set(hour, 0);
-      });
-
-      // Group orders by hour
-      orders.forEach((order) => {
-        const orderDate = new Date(order.placed_at);
-        const hour = orderDate.getHours();
-        const hourKey = `${String(hour).padStart(2, '0')}:00`;
-        
-        // Find closest xLabel hour
-        const closestHour = hours.reduce((prev, curr) => {
-          const prevHour = parseInt(prev.split(':')[0]);
-          const currHour = parseInt(curr.split(':')[0]);
-          const prevDiff = Math.abs(hour - prevHour);
-          const currDiff = Math.abs(hour - currHour);
-          return currDiff < prevDiff ? curr : prev;
-        });
-        
-        const currentValue = dataMap.get(closestHour) || 0;
-        // Use revenue for chart data (in cents, convert to rupees for display)
-        const revenue = order.status === 'delivered' ? order.total_cents : 0;
-        dataMap.set(closestHour, currentValue + revenue);
-      });
-    } else if (daysDiff <= 7) {
-      // Daily grouping
-      const days: string[] = [];
-      const dayMap = new Map<string, number>();
-      
-      for (let i = 0; i <= daysDiff; i++) {
-        const date = new Date(effectiveStartDate);
-        date.setDate(date.getDate() + i);
-        const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' });
-        const dateKey = date.toISOString().split('T')[0];
-        days.push(dayLabel);
-        dayMap.set(dateKey, 0);
-      }
-      
-      xLabels = days;
-      
-      orders.forEach((order) => {
-        const orderDate = new Date(order.placed_at);
-        const dateKey = orderDate.toISOString().split('T')[0];
-        const currentValue = dayMap.get(dateKey) || 0;
-        const revenue = order.status === 'delivered' ? order.total_cents : 0;
-        dayMap.set(dateKey, currentValue + revenue);
-      });
-      
-      // Convert map to array in order
-      for (let i = 0; i <= daysDiff; i++) {
-        const date = new Date(effectiveStartDate);
-        date.setDate(date.getDate() + i);
-        const dateKey = date.toISOString().split('T')[0];
-        data.push(dayMap.get(dateKey) || 0);
-      }
-    } else if (daysDiff <= 30) {
-      // Weekly grouping
-      const weeks: string[] = [];
-      const weekMap = new Map<string, number>();
-      const numWeeks = Math.ceil(daysDiff / 7);
-      
-      for (let i = 0; i < numWeeks; i++) {
-        weeks.push(`Wk${i + 1}`);
-        weekMap.set(`week_${i}`, 0);
-      }
-      
-      xLabels = weeks;
-      
-      orders.forEach((order) => {
-        const orderDate = new Date(order.placed_at);
-        const weekIndex = Math.floor(
-          (orderDate.getTime() - effectiveStartDate.getTime()) / (1000 * 60 * 60 * 24 * 7)
-        );
-        const weekKey = `week_${Math.min(weekIndex, numWeeks - 1)}`;
-        const currentValue = weekMap.get(weekKey) || 0;
-        const revenue = order.status === 'delivered' ? order.total_cents : 0;
-        weekMap.set(weekKey, currentValue + revenue);
-      });
-      
-      // Convert map to array
-      for (let i = 0; i < numWeeks; i++) {
-        data.push(weekMap.get(`week_${i}`) || 0);
-      }
-    } else {
-      // Monthly grouping
-      const months: string[] = [];
-      const monthMap = new Map<string, number>();
-      const numMonths = Math.min(Math.ceil(daysDiff / 30), 12);
-      
-      for (let i = 0; i < numMonths; i++) {
-        const date = new Date(effectiveStartDate);
-        date.setMonth(date.getMonth() + i);
-        const monthLabel = date.toLocaleDateString('en-US', { month: 'short' });
-        months.push(monthLabel);
-        monthMap.set(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`, 0);
-      }
-      
-      xLabels = months;
-      
-      orders.forEach((order) => {
-        const orderDate = new Date(order.placed_at);
-        const monthKey = `${orderDate.getFullYear()}-${String(orderDate.getMonth() + 1).padStart(2, '0')}`;
-        const currentValue = monthMap.get(monthKey) || 0;
-        const revenue = order.status === 'delivered' ? order.total_cents : 0;
-        monthMap.set(monthKey, currentValue + revenue);
-      });
-      
-      // Convert map to array
-      for (let i = 0; i < numMonths; i++) {
-        const date = new Date(effectiveStartDate);
-        date.setMonth(date.getMonth() + i);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        data.push(monthMap.get(monthKey) || 0);
-      }
-    }
-
-    // Convert dataMap to array if using hourly grouping
-    if (timeFilter === 'today' || timeFilter === 'yesterday' || (timeFilter === 'custom' && daysDiff <= 1)) {
-      data = xLabels.map((label) => dataMap.get(label) || 0);
-    }
-
-    // Convert data from cents to rupees for display (divide by 100)
-    const dataInRupees = data.map((value) => Math.round(value / 100));
-    
-    // Generate yLabels based on max value (in rupees)
-    const maxValue = Math.max(...dataInRupees, 1);
-    const yMax = Math.ceil(maxValue / 1000) * 1000 || 1000;
-    const yLabels = Array.from({ length: 5 }, (_, i) => Math.floor((yMax / 4) * i));
-
-    return {
-      xLabels,
-      data: dataInRupees,
-      orders: totalOrders,
-      revenue: totalRevenue, // Keep in cents for accurate calculation
-    };
-  } catch (error) {
-    console.error('Error getting shop order time series:', error);
-    return {
-      xLabels: [],
-      data: [],
-      orders: 0,
-      revenue: 0,
-    };
+  const orders = await getShopOrders(shopId);
+  if (!orders.length) {
+    return { xLabels: [], data: [], orders: 0, revenue: 0 };
   }
+
+  if (timeFilter === 'all_time') {
+    return buildAllTimeSeries(orders);
+  }
+
+  const range = getTimeSeriesRange(timeFilter, customStartDate, customEndDate);
+  if (!range) {
+    return { xLabels: [], data: [], orders: 0, revenue: 0 };
+  }
+
+  let raw: { xLabels: string[]; data: number[]; orders: number; revenue: number };
+
+  if (timeFilter === 'today' || timeFilter === 'yesterday') {
+    raw = buildTodayYesterdaySeries(range, orders);
+  } else if (timeFilter === '7days') {
+    raw = buildDayBucketsSeries(range, orders, 7);
+  } else if (timeFilter === '30days') {
+    raw = buildMultiDayChunkSeries(range, orders, 10);
+  } else {
+    raw = buildMultiDayChunkSeries(range, orders, 8);
+  }
+
+  const padded = padSeriesForChart(raw.xLabels, raw.data);
+  return {
+    xLabels: padded.xLabels,
+    data: padded.data,
+    orders: raw.orders,
+    revenue: raw.revenue,
+  };
 }
 
 // ============================================================================
@@ -843,26 +476,16 @@ export function subscribeToShopOrders(
   shopId: string,
   callback: (orders: OrderWithAll[]) => void
 ) {
-  const channel = supabase
-    .channel(`shop-orders:${shopId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'orders',
-        filter: `shop_id=eq.${shopId}`,
-      },
-      async () => {
-        // Refetch all orders on any change
-        const orders = await getShopOrders(shopId);
-        callback(orders);
-      }
-    )
-    .subscribe();
-
+  let cleanup: (() => Promise<void>) | null = null;
+  (async () => {
+    cleanup = await subscribeToShopGroup(shopId, async () => {
+      callback(await getShopOrders(shopId));
+    });
+  })().catch((error) => console.warn('Shop order realtime subscribe failed', error));
   return () => {
-    supabase.removeChannel(channel);
+    if (cleanup) {
+      cleanup().catch(() => undefined);
+    }
   };
 }
 

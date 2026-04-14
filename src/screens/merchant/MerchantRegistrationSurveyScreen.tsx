@@ -5,12 +5,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
 import { useAuth } from '../../context/AuthContext';
 import * as merchantService from '../../services/merchant/merchantService';
+import { setAuthSession } from '../../services/authTokenStorage';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function MerchantRegistrationSurveyScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [selectedShopType, setSelectedShopType] = useState<merchantService.ShopType | null>(null);
   const [selectedNumberOfShops, setSelectedNumberOfShops] = useState<merchantService.NumberOfShops | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -37,7 +38,7 @@ export default function MerchantRegistrationSurveyScreen() {
 
     setIsCreating(true);
     try {
-      const { merchant, error } = await merchantService.createMerchantAccount(user.id, {
+      const { session, error } = await merchantService.createMerchantAccount(user.id, {
         shop_type: selectedShopType,
         number_of_shops: selectedNumberOfShops,
       });
@@ -45,6 +46,11 @@ export default function MerchantRegistrationSurveyScreen() {
       if (error) {
         Alert.alert('Error', error.message);
         return;
+      }
+
+      if (session) {
+        await setAuthSession(session.access_token, session.expires_at);
+        await refreshUser();
       }
 
       // Navigate to merchant dashboard

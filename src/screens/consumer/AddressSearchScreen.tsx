@@ -920,6 +920,7 @@ export default function AddressSearchScreen() {
             const city = lastReverse?.city || '';
             const region = lastReverse?.region || undefined;
             const formatted = lastReverse?.formatted || '';
+            let persistedAddress: addressService.ConsumerAddress | null = null;
 
             if (user) {
               if (editingAddressIdRef.current) {
@@ -940,6 +941,8 @@ export default function AddressSearchScreen() {
 
                 if (updateError) {
                   // Silent fail - continue anyway
+                } else {
+                  persistedAddress = updatedAddress;
                 }
               } else {
                 // Create new address
@@ -956,11 +959,23 @@ export default function AddressSearchScreen() {
 
                 if (saveError) {
                   // Silent fail - continue anyway
+                } else {
+                  persistedAddress = savedAddress;
                 }
               }
             }
 
-            setSelectedAddress({ label: streetAddress, city, coords: center, isCurrent: false });
+            setSelectedAddress({
+              label: persistedAddress?.street_address || streetAddress,
+              city: persistedAddress?.city || city,
+              coords: {
+                latitude: persistedAddress ? Number(persistedAddress.latitude) : center.latitude,
+                longitude: persistedAddress ? Number(persistedAddress.longitude) : center.longitude,
+              },
+              isCurrent: false,
+              addressId: persistedAddress?.id || editingAddressIdRef.current || undefined,
+              landmark: persistedAddress?.landmark || landmark.trim() || null,
+            });
             cameFromPinpointRef.current = false; // Reset when saving
             navigation.goBack();
           } catch (_) {

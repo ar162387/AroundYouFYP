@@ -1,12 +1,5 @@
-/**
- * Review Service
- * 
- * Handles all review-related operations including creating, updating,
- * and fetching reviews and ratings.
- */
-
-import { supabase } from '../supabase';
-import { PostgrestError } from '@supabase/supabase-js';
+import { ApiError, apiClient, toApiError } from '../apiClient';
+import { getCurrentUser } from '../authService';
 
 // ============================================================================
 // TYPES
@@ -43,7 +36,7 @@ export interface ShopReviewStats {
   };
 }
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: ApiError | null };
 
 // ============================================================================
 // CREATE/UPDATE REVIEW
@@ -60,53 +53,15 @@ export async function createOrUpdateReview(
   reviewText?: string
 ): Promise<ServiceResult<Review>> {
   try {
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return { data: null, error: userError || new Error('Not authenticated') as any };
-    }
-
-    // Check if review already exists
-    const { data: existingReview } = await supabase
-      .from('reviews')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('shop_id', shopId)
-      .single();
-
-    if (existingReview) {
-      // Update existing review
-      const { data, error } = await supabase
-        .from('reviews')
-        .update({
-          rating,
-          review_text: reviewText || null,
-          order_id: orderId || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingReview.id)
-        .select()
-        .single();
-
-      return { data: data as Review | null, error };
-    } else {
-      // Create new review
-      const { data, error } = await supabase
-        .from('reviews')
-        .insert({
-          user_id: user.id,
-          shop_id: shopId,
-          order_id: orderId || null,
-          rating,
-          review_text: reviewText || null,
-        })
-        .select()
-        .single();
-
-      return { data: data as Review | null, error };
-    }
+    const data = await apiClient.post<Review>('/api/v1/consumer/reviews', {
+      shop_id: shopId,
+      order_id: orderId || null,
+      rating,
+      review_text: reviewText || null,
+    });
+    return { data, error: null };
   } catch (error) {
-    return { data: null, error: error as PostgrestError };
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -119,21 +74,16 @@ export async function createOrUpdateReview(
  */
 export async function getReview(shopId: string): Promise<ServiceResult<Review | null>> {
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return { data: null, error: userError || new Error('Not authenticated') as any };
+    const { user, error } = await getCurrentUser();
+    if (error || !user) {
+      return { data: null, error: new ApiError(error?.message || 'Not authenticated', 401) };
     }
-
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('shop_id', shopId)
-      .maybeSingle();
-
-    return { data: data as Review | null, error };
+    const reviews = await getShopReviews(shopId);
+    if (reviews.error) return { data: null, error: reviews.error };
+    const ownReview = (reviews.data || []).find((review) => review.user_id === user.id) || null;
+    return { data: ownReview, error: null };
   } catch (error) {
-    return { data: null, error: error as PostgrestError };
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -142,21 +92,19 @@ export async function getReview(shopId: string): Promise<ServiceResult<Review | 
  */
 export async function getReviewByOrder(orderId: string): Promise<ServiceResult<Review | null>> {
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return { data: null, error: userError || new Error('Not authenticated') as any };
+    const { user, error } = await getCurrentUser();
+    if (error || !user) {
+      return { data: null, error: new ApiError(error?.message || 'Not authenticated', 401) };
     }
 
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('order_id', orderId)
-      .maybeSingle();
-
-    return { data: data as Review | null, error };
+    const order = await apiClient.get<{ shop_id: string }>(`/api/v1/consumer/orders/${orderId}`);
+    const reviews = await getShopReviews(order.shop_id);
+    if (reviews.error) return { data: null, error: reviews.error };
+    const ownReview =
+      (reviews.data || []).find((review) => review.user_id === user.id && review.order_id === orderId) || null;
+    return { data: ownReview, error: null };
   } catch (error) {
-    return { data: null, error: error as PostgrestError };
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -165,25 +113,10 @@ export async function getReviewByOrder(orderId: string): Promise<ServiceResult<R
  */
 export async function hasReviewedShop(shopId: string): Promise<ServiceResult<boolean>> {
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      return { data: false, error: userError || new Error('Not authenticated') as any };
-    }
-
-    const { data, error } = await supabase
-      .from('reviews')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('shop_id', shopId)
-      .maybeSingle();
-
-    if (error) {
-      return { data: false, error };
-    }
-
-    return { data: !!data, error: null };
+    const review = await getReview(shopId);
+    return { data: Boolean(review.data), error: review.error };
   } catch (error) {
-    return { data: false, error: error as PostgrestError };
+    return { data: false, error: toApiError(error) };
   }
 }
 
@@ -196,60 +129,17 @@ export async function hasReviewedShop(shopId: string): Promise<ServiceResult<boo
  */
 export async function getShopReviews(shopId: string): Promise<ServiceResult<ReviewWithUser[]>> {
   try {
-    const { data: reviews, error } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('shop_id', shopId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return { data: null, error };
-    }
-
-    if (!reviews || reviews.length === 0) {
+    const data = await apiClient.get<ReviewWithUser[]>(`/api/v1/consumer/shops/${shopId}/reviews`);
+    const reviews = (data || []).map((review) => ({
+      ...review,
+      user: review.user || { id: review.user_id },
+    }));
+    if (reviews.length === 0) {
       return { data: [], error: null };
     }
-
-    // Get user profiles for all reviews (for name)
-    const userIds = [...new Set(reviews.map((r) => r.user_id))];
-    const { data: userProfiles } = await supabase
-      .from('user_profiles')
-      .select('id, name, email')
-      .in('id', userIds);
-
-    // Map user profiles to reviews, fetching email from auth.users if not in user_profiles
-    // Since reviews.user_id references auth.users(id), we can get email directly from auth.users
-    const reviewsWithUsers: ReviewWithUser[] = await Promise.all(
-      reviews.map(async (review) => {
-        const profile = userProfiles?.find((p) => p.id === review.user_id);
-        
-        // Get email from user_profiles if available, otherwise get from auth.users via function
-        let email = profile?.email || null;
-        if (!email) {
-          // Fallback: get email from auth.users using database function
-          const { data: emailFromAuth, error: emailError } = await supabase.rpc(
-            'get_review_user_email',
-            { user_uuid: review.user_id }
-          );
-          if (!emailError && emailFromAuth) {
-            email = emailFromAuth;
-          }
-        }
-        
-        return {
-          ...review,
-          user: {
-            id: review.user_id,
-            name: profile?.name || null,
-            email: email, // Always get email since user is authenticated
-          },
-        };
-      })
-    );
-
-    return { data: reviewsWithUsers, error: null };
+    return { data: reviews, error: null };
   } catch (error) {
-    return { data: null, error: error as PostgrestError };
+    return { data: null, error: toApiError(error) };
   }
 }
 
@@ -258,14 +148,9 @@ export async function getShopReviews(shopId: string): Promise<ServiceResult<Revi
  */
 export async function getShopReviewStats(shopId: string): Promise<ServiceResult<ShopReviewStats>> {
   try {
-    const { data: reviews, error } = await supabase
-      .from('reviews')
-      .select('rating')
-      .eq('shop_id', shopId);
-
-    if (error) {
-      return { data: null, error };
-    }
+    const reviewsResponse = await getShopReviews(shopId);
+    if (reviewsResponse.error) return { data: null, error: reviewsResponse.error };
+    const reviews = reviewsResponse.data || [];
 
     if (!reviews || reviews.length === 0) {
       return {
@@ -298,7 +183,7 @@ export async function getShopReviewStats(shopId: string): Promise<ServiceResult<
       error: null,
     };
   } catch (error) {
-    return { data: null, error: error as PostgrestError };
+    return { data: null, error: toApiError(error) };
   }
 }
 

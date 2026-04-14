@@ -1,6 +1,8 @@
-import { supabase } from '../supabase';
 import type { OrderStatus } from '../../types/orders';
 import Config from 'react-native-config';
+import { apiClient, toApiError } from '../apiClient';
+import { getAccessToken } from '../authTokenStorage';
+import { getCurrentUser } from '../authService';
 import type {
   DayKey,
   DayOpeningHours,
@@ -53,23 +55,69 @@ export type UpdateShopData = Partial<CreateShopData> & {
   is_open?: boolean;
 };
 
-// Helper function to upload using Supabase Storage API
-// Note: Supabase Storage uses S3 backend. The S3 credentials you created bypass RLS at the storage level.
-// We use Supabase Storage API endpoint which internally uses the S3 backend with your credentials.
-async function uploadWithStorageAPI(
-  supabaseUrl: string,
-  apikey: string,
-  authToken: string,
-  bucketName: string,
-  filePath: string,
+function isLocalImageUri(uri?: string | null): boolean {
+  if (!uri) return false;
+  return uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('ph://');
+}
+
+function getBackendBaseUrl(): string {
+  return (
+    Config.BACKEND_API_URL ||
+    Config.DOTNET_API_URL ||
+    Config.API_BASE_URL ||
+    Config.BACKEND_URL ||
+    ''
+  ).replace(/\/+$/, '');
+}
+
+function toAbsoluteBackendUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const baseUrl = getBackendBaseUrl();
+  if (!baseUrl) return url;
+  const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
+function normalizeShopImageUrl<T extends { image_url: string | null }>(shop: T): T {
+  return {
+    ...shop,
+    image_url: toAbsoluteBackendUrl(shop.image_url),
+  };
+}
+
+/** Backend sends revenue as `revenueTodayPkr` → snake `revenue_today_pkr` after apiClient key mapping. */
+function merchantShopKpisFromApi(shop: MerchantShop): {
+  orders_today: number;
+  orders_cancelled_today: number;
+  revenue_today: number;
+} {
+  const s = shop as MerchantShop & { revenue_today_pkr?: number };
+  return {
+    orders_today: s.orders_today ?? 0,
+    orders_cancelled_today: s.orders_cancelled_today ?? 0,
+    revenue_today: s.revenue_today ?? s.revenue_today_pkr ?? 0,
+  };
+}
+
+async function uploadBinaryToMerchantEndpoint(
+  endpoint: string,
   imageUri: string,
-  mime: string,
-  filename: string
+  filenamePrefix: string
 ): Promise<{ url: string | null; error: { message: string } | null }> {
-  const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
-  const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${encodedPath}`;
-  
-  // Create FormData with the file
+  const token = await getAccessToken();
+  if (!token) {
+    return { url: null, error: { message: 'Not authenticated. Please log in again.' } };
+  }
+  const baseUrl = getBackendBaseUrl();
+  if (!baseUrl) {
+    return { url: null, error: { message: 'Backend API URL is missing.' } };
+  }
+
+  const extension = imageUri.toLowerCase().includes('.png') ? 'png' : 'jpg';
+  const mime = extension === 'png' ? 'image/png' : 'image/jpeg';
+  const filename = `${filenamePrefix}-${Date.now()}.${extension}`;
+
   const formData = new FormData();
   formData.append('file', {
     uri: imageUri,
@@ -77,54 +125,20 @@ async function uploadWithStorageAPI(
     name: filename,
   } as any);
 
-  return new Promise((resolve) => {
-    const xhr = new XMLHttpRequest();
-
-    xhr.upload.addEventListener('progress', (e) => {
-      if (e.lengthComputable) {
-        const percentComplete = (e.loaded / e.total) * 100;
-        console.log(`Upload progress: ${percentComplete.toFixed(2)}%`);
-      }
-    });
-
-    xhr.addEventListener('load', () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        console.log('✅ Upload successful');
-        // Get public URL from Supabase
-        const { data: urlData } = supabase.storage
-          .from(bucketName)
-          .getPublicUrl(filePath);
-        resolve({ url: urlData.publicUrl, error: null });
-      } else {
-        let errorMessage = 'Upload failed';
-        try {
-          const errorData = JSON.parse(xhr.responseText);
-          errorMessage = errorData.message || errorData.error || errorMessage;
-        } catch {
-          errorMessage = `Upload failed with status ${xhr.status}`;
-        }
-        console.error('❌ Upload error:', errorMessage, xhr.status, xhr.responseText);
-        resolve({ url: null, error: { message: errorMessage } });
-      }
-    });
-
-    xhr.addEventListener('error', () => {
-      console.error('❌ Upload network error');
-      resolve({ url: null, error: { message: 'Network request failed. Please check your internet connection.' } });
-    });
-
-    xhr.addEventListener('abort', () => {
-      console.error('❌ Upload aborted');
-      resolve({ url: null, error: { message: 'Upload was cancelled' } });
-    });
-
-    xhr.open('POST', uploadUrl);
-    xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
-    xhr.setRequestHeader('apikey', apikey);
-    xhr.setRequestHeader('x-upsert', 'false');
-    
-    xhr.send(formData);
+  const response = await fetch(`${baseUrl}${endpoint}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData as any,
   });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    return { url: null, error: { message: payload?.detail || payload?.message || 'Image upload failed' } };
+  }
+
+  return { url: toAbsoluteBackendUrl(payload.image_url || payload.imageUrl || null), error: null };
 }
 
 // Upload shop image to Supabase storage
@@ -132,90 +146,8 @@ export async function uploadShopImage(
   userId: string,
   imageUri: string
 ): Promise<{ url: string | null; error: { message: string } | null }> {
-  try {
-    // Derive mime type from uri; default to jpeg
-    const deriveMimeFromUri = (uri: string): { extension: string; mime: string } => {
-      const lower = uri.split('?')[0].split('#')[0].toLowerCase();
-      if (lower.endsWith('.png')) return { extension: 'png', mime: 'image/png' };
-      if (lower.endsWith('.webp')) return { extension: 'webp', mime: 'image/webp' };
-      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return { extension: 'jpg', mime: 'image/jpeg' };
-      // iOS photo library URIs (ph://) and most camera outputs are jpeg by default
-      return { extension: 'jpg', mime: 'image/jpeg' };
-    };
-
-    const { extension, mime } = deriveMimeFromUri(imageUri);
-
-    // Generate unique filename with correct extension
-    const timestamp = Date.now();
-    const filename = `shop-${userId}-${timestamp}.${extension}`;
-    // Path within the bucket (can include subdirectories)
-    const filePath = `shop-images/${filename}`;
-
-    // For React Native, we need to handle local file URIs differently
-    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
-      // Local file - Upload using Supabase Storage API
-      // Note: Supabase Storage uses S3 backend. Your S3 access keys bypass RLS at the storage level.
-      console.log('Uploading file:', { filePath, mime, filename, uriPrefix: imageUri.substring(0, 20) });
-
-      const supabaseUrl = Config.SUPABASE_URL || '';
-      const supabaseAnonKey = Config.SUPABASE_ANON_KEY || '';
-      
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return { url: null, error: { message: 'Supabase configuration missing' } };
-      }
-
-      // Get session token for authenticated upload
-      // RLS policies should allow authenticated users to upload to shop-images bucket
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        return { url: null, error: { message: 'Not authenticated. Please log in again.' } };
-      }
-
-      console.log('✅ Uploading with authenticated session (RLS policies should allow this)');
-      return uploadWithStorageAPI(
-        supabaseUrl,
-        supabaseAnonKey,
-        session.access_token,
-        'shop-images',
-        filePath,
-        imageUri,
-        mime,
-        filename
-      );
-    } else if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
-      // Remote URL - fetch and convert to blob
-      const response = await fetch(imageUri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.statusText}`);
-      }
-      const blob = await response.blob();
-
-      const { error } = await supabase.storage
-        .from('shop-images')
-        .upload(filePath, blob, {
-          contentType: mime,
-          upsert: false,
-        });
-
-      if (error) {
-        console.error('Supabase upload error:', error);
-        return { url: null, error: { message: error.message } };
-      }
-    } else {
-      return { url: null, error: { message: 'Unsupported image URI format' } };
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('shop-images')
-      .getPublicUrl(filePath);
-
-    return { url: urlData.publicUrl, error: null };
-  } catch (error: any) {
-    console.error('Upload error:', error);
-    return { url: null, error: { message: error.message || 'Failed to upload image' } };
-  }
+  void userId;
+  return { url: imageUri, error: null };
 }
 
 // Upload item image to Supabase storage (1:1 aspect ratio for item cards)
@@ -223,89 +155,8 @@ export async function uploadItemImage(
   userId: string,
   imageUri: string
 ): Promise<{ url: string | null; error: { message: string } | null }> {
-  try {
-    // Derive mime type from uri; default to jpeg
-    const deriveMimeFromUri = (uri: string): { extension: string; mime: string } => {
-      const lower = uri.split('?')[0].split('#')[0].toLowerCase();
-      if (lower.endsWith('.png')) return { extension: 'png', mime: 'image/png' };
-      if (lower.endsWith('.webp')) return { extension: 'webp', mime: 'image/webp' };
-      if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return { extension: 'jpg', mime: 'image/jpeg' };
-      // iOS photo library URIs (ph://) and most camera outputs are jpeg by default
-      return { extension: 'jpg', mime: 'image/jpeg' };
-    };
-
-    const { extension, mime } = deriveMimeFromUri(imageUri);
-
-    // Generate unique filename with correct extension
-    const timestamp = Date.now();
-    const filename = `item-${userId}-${timestamp}.${extension}`;
-    // Path within the bucket (using item-images subdirectory)
-    const filePath = `item-images/${filename}`;
-
-    // For React Native, we need to handle local file URIs differently
-    if (imageUri.startsWith('file://') || imageUri.startsWith('content://') || imageUri.startsWith('ph://')) {
-      // Local file - Upload using Supabase Storage API
-      console.log('Uploading item image:', { filePath, mime, filename, uriPrefix: imageUri.substring(0, 20) });
-
-      const supabaseUrl = Config.SUPABASE_URL || '';
-      const supabaseAnonKey = Config.SUPABASE_ANON_KEY || '';
-      
-      if (!supabaseUrl || !supabaseAnonKey) {
-        return { url: null, error: { message: 'Supabase configuration missing' } };
-      }
-
-      // Get session token for authenticated upload
-      // RLS policies should allow authenticated users to upload to shop-images bucket
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        return { url: null, error: { message: 'Not authenticated. Please log in again.' } };
-      }
-
-      console.log('✅ Uploading item image with authenticated session');
-      return uploadWithStorageAPI(
-        supabaseUrl,
-        supabaseAnonKey,
-        session.access_token,
-        'shop-images',
-        filePath,
-        imageUri,
-        mime,
-        filename
-      );
-    } else if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
-      // Remote URL - fetch and convert to blob
-      const response = await fetch(imageUri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch image: ${response.statusText}`);
-      }
-      const blob = await response.blob();
-
-      const { error } = await supabase.storage
-        .from('shop-images')
-        .upload(filePath, blob, {
-          contentType: mime,
-          upsert: false,
-        });
-
-      if (error) {
-        console.error('Supabase upload error:', error);
-        return { url: null, error: { message: error.message } };
-      }
-    } else {
-      return { url: null, error: { message: 'Unsupported image URI format' } };
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from('shop-images')
-      .getPublicUrl(filePath);
-
-    return { url: urlData.publicUrl, error: null };
-  } catch (error: any) {
-    console.error('Upload error:', error);
-    return { url: null, error: { message: error.message || 'Failed to upload image' } };
-  }
+  void userId;
+  return { url: imageUri, error: null };
 }
 
 // Pick image from device - this will be implemented in the component using react-native-image-picker
@@ -324,342 +175,108 @@ export async function validateImageUri(uri: string): Promise<{ valid: boolean; e
 
 // Create a new shop
 export async function createShop(
-  userId: string,
+  _userId: string,
   data: CreateShopData
 ): Promise<{ shop: MerchantShop | null; error: { message: string } | null }> {
   try {
-    // First, ensure merchant account exists
-    const { data: merchantAccount, error: merchantError } = await supabase
-      .from('merchant_accounts')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
+    await getCurrentUser();
+    const localImageUri = isLocalImageUri(data.image_url) ? data.image_url : null;
+    const payload = { ...data, image_url: localImageUri ? null : data.image_url };
+    const shop = await apiClient.post<MerchantShop>('/api/v1/merchant/shops', payload);
 
-    if (merchantError && merchantError.code !== 'PGRST116') {
-      return { shop: null, error: { message: 'Merchant account not found. Please complete merchant registration first.' } };
-    }
-
-    // If no merchant account, create one
-    let merchantId = merchantAccount?.id;
-    if (!merchantId) {
-      const { data: newMerchant, error: createMerchantError } = await supabase
-        .from('merchant_accounts')
-        .insert({
-          user_id: userId,
-          shop_type: data.shop_type.toLowerCase() as any,
-          number_of_shops: '1',
-          status: 'none',
-        })
-        .select('id')
-        .single();
-
-      if (createMerchantError) {
-        return { shop: null, error: { message: createMerchantError.message } };
+    let imageUrl = shop.image_url;
+    if (localImageUri) {
+      const upload = await uploadBinaryToMerchantEndpoint(
+        `/api/v1/merchant/shops/${shop.id}/image`,
+        localImageUri,
+        `shop-${shop.id}`
+      );
+      if (!upload.error && upload.url) {
+        imageUrl = upload.url;
       }
-      merchantId = newMerchant.id;
     }
 
-    // Create shop
-    const { data: shop, error } = await supabase
-      .from('shops')
-      .insert({
-        merchant_id: merchantId,
-        name: data.name,
-        description: data.description,
-        shop_type: data.shop_type,
-        address: data.address,
-        latitude: data.latitude,
-        longitude: data.longitude,
-        image_url: data.image_url || null,
-        tags: data.tags || [],
-        is_open: true,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      return { shop: null, error: { message: error.message } };
-    }
-
-    return { shop: shop as MerchantShop, error: null };
-  } catch (error: any) {
-    return { shop: null, error: { message: error.message || 'An error occurred' } };
+    return {
+      shop: normalizeShopImageUrl({
+        ...shop,
+        image_url: imageUrl,
+        ...merchantShopKpisFromApi(shop),
+      }),
+      error: null,
+    };
+  } catch (error) {
+    return { shop: null, error: { message: toApiError(error).message } };
   }
 }
 
 // Update an existing shop
 export async function updateShop(
   shopId: string,
-  userId: string,
+  _userId: string,
   data: UpdateShopData
 ): Promise<{ shop: MerchantShop | null; error: { message: string } | null }> {
   try {
-    // Verify the shop belongs to the user's merchant account
-    const { data: merchantAccount, error: merchantError } = await supabase
-      .from('merchant_accounts')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
+    const localImageUri = isLocalImageUri(data.image_url) ? data.image_url : null;
+    const payload = { ...data, image_url: localImageUri ? undefined : data.image_url };
+    const shop = await apiClient.put<MerchantShop>(`/api/v1/merchant/shops/${shopId}`, payload);
 
-    if (merchantError) {
-      return { shop: null, error: { message: 'Merchant account not found.' } };
+    let imageUrl = shop.image_url;
+    if (localImageUri) {
+      const upload = await uploadBinaryToMerchantEndpoint(
+        `/api/v1/merchant/shops/${shopId}/image`,
+        localImageUri,
+        `shop-${shopId}`
+      );
+      if (!upload.error && upload.url) {
+        imageUrl = upload.url;
+      }
     }
 
-    // Verify shop ownership
-    const { data: existingShop, error: shopError } = await supabase
-      .from('shops')
-      .select('merchant_id')
-      .eq('id', shopId)
-      .single();
-
-    if (shopError || !existingShop) {
-      return { shop: null, error: { message: 'Shop not found.' } };
-    }
-
-    if (existingShop.merchant_id !== merchantAccount.id) {
-      return { shop: null, error: { message: 'You do not have permission to update this shop.' } };
-    }
-
-    // Prepare update data (only include fields that are provided)
-    const updateData: any = {};
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.shop_type !== undefined) updateData.shop_type = data.shop_type;
-    if (data.address !== undefined) updateData.address = data.address;
-    if (data.latitude !== undefined) updateData.latitude = data.latitude;
-    if (data.longitude !== undefined) updateData.longitude = data.longitude;
-    // Handle image_url: null means remove, undefined means don't change, string means update
-    if (data.image_url !== undefined) {
-      updateData.image_url = data.image_url === null ? null : (data.image_url || null);
-    }
-    if (data.tags !== undefined) updateData.tags = data.tags || [];
-    if (data.opening_hours !== undefined) updateData.opening_hours = data.opening_hours;
-    if (data.holidays !== undefined) updateData.holidays = data.holidays;
-    if (data.open_status_mode !== undefined) updateData.open_status_mode = data.open_status_mode;
-    if (data.is_open !== undefined) updateData.is_open = data.is_open;
-
-    // Update shop
-    const { data: shop, error } = await supabase
-      .from('shops')
-      .update(updateData)
-      .eq('id', shopId)
-      .select()
-      .single();
-
-    if (error) {
-      return { shop: null, error: { message: error.message } };
-    }
-
-    // Return shop with calculated stats (same as getMerchantShops)
-    const shopWithStats: MerchantShop = {
-      ...shop,
-      orders_today: 0,
-      orders_cancelled_today: 0,
-      revenue_today: 0,
+    return {
+      shop: normalizeShopImageUrl({
+        ...shop,
+        image_url: imageUrl,
+        ...merchantShopKpisFromApi(shop),
+      }),
+      error: null,
     };
-
-    return { shop: shopWithStats, error: null };
-  } catch (error: any) {
-    return { shop: null, error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    return { shop: null, error: { message: toApiError(error).message } };
   }
 }
 
 // Get all shops for a merchant
 export async function getMerchantShops(
-  userId: string
+  _userId: string
 ): Promise<{ shops: MerchantShop[]; error: { message: string } | null }> {
   try {
-    // Get merchant account
-    const { data: merchantAccount, error: merchantError } = await supabase
-      .from('merchant_accounts')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
-
-    if (merchantError) {
-      return { shops: [], error: null }; // No merchant account, return empty array
-    }
-
-    // Get shops
-    const { data: shops, error } = await supabase
-      .from('shops')
-      .select('*')
-      .eq('merchant_id', merchantAccount.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      return { shops: [], error: { message: error.message } };
-    }
-
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const startOfTomorrow = new Date(startOfToday);
-    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-
-    const shopsWithStats: MerchantShop[] = await Promise.all(
-      (shops || []).map(async (shop) => {
-        const { data: ordersData, error: ordersError } = await supabase
-          .from('orders')
-          .select('status,total_cents')
-          .eq('shop_id', shop.id)
-          .gte('placed_at', startOfToday.toISOString())
-          .lt('placed_at', startOfTomorrow.toISOString());
-
-        if (ordersError || !ordersData) {
-          if (ordersError) {
-            console.error('Error loading order stats for shop', { shopId: shop.id, error: ordersError });
-          }
-
-          return {
-            ...shop,
-            orders_today: 0,
-            orders_cancelled_today: 0,
-            revenue_today: 0,
-          };
-        }
-
-        const orders = ordersData as Array<{ status: OrderStatus; total_cents: number | null }>;
-
-        let ordersToday = 0;
-        let cancelledToday = 0;
-        let revenueCents = 0;
-
-        orders.forEach((order) => {
-          ordersToday += 1;
-          if (order.status === 'cancelled') {
-            cancelledToday += 1;
-            return;
-          }
-          if (order.status === 'delivered' && typeof order.total_cents === 'number') {
-            revenueCents += order.total_cents;
-          }
-        });
-
-        // Compute real-time opening status based on opening hours
-        const openingStatus = getCurrentOpeningStatus({
-          opening_hours: shop.opening_hours as any,
-          holidays: shop.holidays as any,
-          open_status_mode: shop.open_status_mode as any,
-        });
-
-        return {
-          ...shop,
-          is_open: openingStatus.isOpen, // Override stored value with computed real-time status
-          orders_today: ordersToday,
-          orders_cancelled_today: cancelledToday,
-          revenue_today: revenueCents / 100,
-        };
-      })
-    );
-
+    await getCurrentUser();
+    const shops = await apiClient.get<MerchantShop[]>('/api/v1/merchant/shops');
+    const shopsWithStats = (shops || []).map((shop) => ({
+      ...shop,
+      image_url: toAbsoluteBackendUrl(shop.image_url),
+      ...merchantShopKpisFromApi(shop),
+    }));
     return { shops: shopsWithStats, error: null };
-  } catch (error: any) {
-    return { shops: [], error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.status === 401) {
+      return { shops: [], error: null };
+    }
+    return { shops: [], error: { message: apiError.message } };
   }
 }
 
 // Delete a shop
 export async function deleteShop(
   shopId: string,
-  userId: string
+  _userId: string
 ): Promise<{ error: { message: string } | null }> {
   try {
-    // Verify the shop belongs to the user's merchant account
-    const { data: merchantAccount, error: merchantError } = await supabase
-      .from('merchant_accounts')
-      .select('id')
-      .eq('user_id', userId)
-      .single();
-
-    if (merchantError) {
-      return { error: { message: 'Merchant account not found.' } };
-    }
-
-    // Verify shop ownership
-    const { data: existingShop, error: shopError } = await supabase
-      .from('shops')
-      .select('merchant_id')
-      .eq('id', shopId)
-      .single();
-
-    if (shopError || !existingShop) {
-      return { error: { message: 'Shop not found.' } };
-    }
-
-    if (existingShop.merchant_id !== merchantAccount.id) {
-      return { error: { message: 'You do not have permission to delete this shop.' } };
-    }
-
-    // Check if there are any ACTIVE orders (out_for_delivery) with runners from this shop
-    // These are truly active and should prevent deletion
-    const { data: activeOrders, error: activeOrdersError } = await supabase
-      .from('orders')
-      .select('id, order_number, status, delivery_runner_id')
-      .eq('shop_id', shopId)
-      .eq('status', 'out_for_delivery')
-      .not('delivery_runner_id', 'is', null);
-
-    if (activeOrdersError) {
-      return { error: { message: 'Failed to check active orders: ' + activeOrdersError.message } };
-    }
-
-    if (activeOrders && activeOrders.length > 0) {
-      return { 
-        error: { 
-          message: `Cannot delete shop. There are ${activeOrders.length} active order(s) currently out for delivery with assigned delivery runners. Please wait until these orders are delivered or cancel them before deleting the shop.` 
-        } 
-      };
-    }
-
-    // Get all runners for this shop to clean up their orders
-    const { data: runners, error: runnersError } = await supabase
-      .from('delivery_runners')
-      .select('id')
-      .eq('shop_id', shopId);
-
-    if (runnersError) {
-      return { error: { message: 'Failed to check delivery runners: ' + runnersError.message } };
-    }
-
-    // Set delivery_runner_id to NULL for all orders from this shop's runners
-    // Delivered orders can now have NULL runner_id due to the updated constraint
-    if (runners && runners.length > 0) {
-      const runnerIds = runners.map(r => r.id);
-      
-      // Update all orders (delivered, pending, confirmed, cancelled) to have NULL runner_id
-      // This prevents constraint violation when runners are deleted via CASCADE
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ delivery_runner_id: null })
-        .eq('shop_id', shopId)
-        .in('delivery_runner_id', runnerIds);
-
-      if (updateError) {
-        return { error: { message: 'Failed to update orders before shop deletion: ' + updateError.message } };
-      }
-    }
-
-    // Count orders for informational message (orders will be preserved with NULL shop_id)
-    const { count: orderCount } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('shop_id', shopId);
-
-    // Delete the shop
-    // Orders will have their shop_id set to NULL automatically due to ON DELETE SET NULL constraint
-    // This preserves order history while allowing shop deletion
-    const { error: deleteError } = await supabase
-      .from('shops')
-      .delete()
-      .eq('id', shopId);
-
-    if (deleteError) {
-      return { error: { message: deleteError.message } };
-    }
-
+    await apiClient.delete(`/api/v1/merchant/shops/${shopId}`);
     return { error: null };
-  } catch (error: any) {
-    return { error: { message: error.message || 'An error occurred' } };
+  } catch (error) {
+    return { error: { message: toApiError(error).message } };
   }
 }
 

@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { RootStackParamList } from './types';
 import { navigationRef } from './navigationRef';
+import { logCrashEvent } from '../utils/crashlyticsLogger';
 
 import MarketIcon from '../icons/MarketIcon';
 import SearchIcon from '../icons/SearchIcon';
@@ -40,7 +41,6 @@ import ShopAddressMapScreen from '../screens/merchant/ShopAddressMapScreen';
 import MerchantShopPortalScreen from '../screens/merchant/shop/MerchantShopPortalScreen';
 import ManageDeliveryAreasScreen from '../screens/merchant/shop/ManageDeliveryAreasScreen';
 import MerchantOrderScreen from '../screens/merchant/orders/MerchantOrderScreen';
-import ShoppingAssistantScreen from '../screens/consumer/ShoppingAssistantScreen';
 import PrivacyPolicyScreen from '../screens/PrivacyPolicyScreen';
 import SuggestionsComplaintsScreen from '../screens/SuggestionsComplaintsScreen';
 import AccountDeletionScreen from '../screens/AccountDeletionScreen';
@@ -49,6 +49,17 @@ import ConsumerFAQScreen from '../screens/consumer/ConsumerFAQScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
+
+function getActiveRouteName(state: any): string | null {
+  if (!state || !state.routes || state.index == null) {
+    return null;
+  }
+  const route = state.routes[state.index];
+  if (route?.state) {
+    return getActiveRouteName(route.state);
+  }
+  return route?.name ?? null;
+}
 
 function Tabs() {
   const { carts } = useCart();
@@ -114,8 +125,29 @@ function Tabs() {
 // Removed old emoji IconText in favor of themed SVG icons
 
 export default function AppNavigator() {
+  const routeNameRef = useRef<string | null>(null);
+
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => {
+        const currentRoute = navigationRef.current?.getCurrentRoute()?.name ?? null;
+        routeNameRef.current = currentRoute;
+        if (currentRoute) {
+          logCrashEvent('Nav ready', { route: currentRoute });
+        }
+      }}
+      onStateChange={(state) => {
+        const currentRoute = getActiveRouteName(state);
+        if (currentRoute && currentRoute !== routeNameRef.current) {
+          logCrashEvent('Nav route change', {
+            from: routeNameRef.current ?? 'unknown',
+            to: currentRoute,
+          });
+          routeNameRef.current = currentRoute;
+        }
+      }}
+    >
       <Stack.Navigator
         initialRouteName="Splash"
         screenOptions={{
@@ -295,15 +327,6 @@ export default function AppNavigator() {
           }}
         />
         <Stack.Screen
-          name="ShoppingAssistant"
-          component={ShoppingAssistantScreen}
-          options={{
-            headerShown: false,
-            animation: 'slide_from_bottom',
-            presentation: 'modal',
-          }}
-        />
-        <Stack.Screen
           name="PrivacyPolicy"
           component={PrivacyPolicyScreen}
           options={{
@@ -347,4 +370,3 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
-

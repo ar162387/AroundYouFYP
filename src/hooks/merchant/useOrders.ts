@@ -53,20 +53,22 @@ export const merchantOrderKeys = {
  */
 export function useShopOrders(shopId: string | undefined) {
   const queryClient = useQueryClient();
-  
-  const query = useQuery({
-    queryKey: merchantOrderKeys.list(shopId!),
-    queryFn: () => getShopOrders(shopId!),
-    enabled: !!shopId,
-    staleTime: 0, // Always fetch fresh data
-  });
+
+  const query = useQuery<OrderWithAll[]>(
+    merchantOrderKeys.list(shopId || ''),
+    () => getShopOrders(shopId || ''),
+    {
+      enabled: !!shopId,
+      staleTime: 0,
+    }
+  );
 
   // Subscribe to real-time updates
   useEffect(() => {
     if (!shopId) return;
 
-    const unsubscribe = subscribeToShopOrders(shopId, (orders) => {
-      queryClient.setQueryData(merchantOrderKeys.list(shopId), orders);
+    const unsubscribe = subscribeToShopOrders(shopId, (_orders) => {
+      queryClient.invalidateQueries(merchantOrderKeys.list(shopId));
     });
 
     return unsubscribe;
@@ -79,12 +81,14 @@ export function useShopOrders(shopId: string | undefined) {
  * Get all orders for all merchant shops
  */
 export function useAllMerchantOrders(userId: string | undefined) {
-  return useQuery({
-    queryKey: merchantOrderKeys.allMerchant(userId!),
-    queryFn: () => getAllMerchantOrders(userId!),
-    enabled: !!userId,
-    staleTime: 0, // Always fetch fresh data
-  });
+  return useQuery<OrderWithAll[]>(
+    merchantOrderKeys.allMerchant(userId || ''),
+    () => getAllMerchantOrders(userId || ''),
+    {
+      enabled: !!userId,
+      staleTime: 0,
+    }
+  );
 }
 
 /**
@@ -96,12 +100,14 @@ export function useFilteredShopOrders(
 ) {
   const queryClient = useQueryClient();
   
-  const query = useQuery({
-    queryKey: merchantOrderKeys.filtered(shopId!, filters),
-    queryFn: () => getFilteredShopOrders(shopId!, filters),
-    enabled: !!shopId,
-    staleTime: 0,
-  });
+  const query = useQuery<OrderWithAll[]>(
+    merchantOrderKeys.filtered(shopId || '', filters),
+    () => getFilteredShopOrders(shopId || '', filters),
+    {
+      enabled: !!shopId,
+      staleTime: 0,
+    }
+  );
 
   // Subscribe to real-time updates
   useEffect(() => {
@@ -109,9 +115,7 @@ export function useFilteredShopOrders(
 
     const unsubscribe = subscribeToShopOrders(shopId, () => {
       // Invalidate filtered queries on any order change
-      queryClient.invalidateQueries({
-        queryKey: merchantOrderKeys.filtered(shopId, filters),
-      });
+      queryClient.invalidateQueries(merchantOrderKeys.filtered(shopId, filters));
     });
 
     return unsubscribe;
@@ -124,13 +128,14 @@ export function useFilteredShopOrders(
  * Get delivery runners with their status
  */
 export function useDeliveryRunners(shopId: string | undefined) {
-  return useQuery<DeliveryRunnerWithStatus[]>({
-    queryKey: merchantOrderKeys.runners(shopId!),
-    queryFn: () => getDeliveryRunnersWithStatus(shopId!),
-    enabled: !!shopId,
-    staleTime: 5000, // 5 seconds
-    refetchInterval: 10000, // Refetch every 10 seconds
-  });
+  return useQuery<DeliveryRunnerWithStatus[]>(
+    merchantOrderKeys.runners(shopId || ''),
+    () => getDeliveryRunnersWithStatus(shopId || ''),
+    {
+      enabled: !!shopId,
+      staleTime: 5000,
+    }
+  );
 }
 
 /**
@@ -142,12 +147,14 @@ export function useShopOrderAnalytics(
   customStartDate?: Date,
   customEndDate?: Date
 ) {
-  return useQuery<OrderAnalytics | null>({
-    queryKey: [...merchantOrderKeys.analytics(shopId!, timeFilter), customStartDate?.toISOString(), customEndDate?.toISOString()],
-    queryFn: () => getShopOrderAnalytics(shopId!, timeFilter, customStartDate, customEndDate),
-    enabled: !!shopId,
-    staleTime: 30000, // 30 seconds
-  });
+  return useQuery<OrderAnalytics | null>(
+    [...merchantOrderKeys.analytics(shopId || '', timeFilter), customStartDate?.toISOString(), customEndDate?.toISOString()],
+    () => getShopOrderAnalytics(shopId || '', timeFilter, customStartDate, customEndDate),
+    {
+      enabled: !!shopId,
+      staleTime: 30000,
+    }
+  );
 }
 
 /**
@@ -159,12 +166,14 @@ export function useShopOrderTimeSeries(
   customStartDate?: Date,
   customEndDate?: Date
 ) {
-  return useQuery({
-    queryKey: [...merchantOrderKeys.all, 'time-series', shopId, timeFilter, customStartDate?.toISOString(), customEndDate?.toISOString()],
-    queryFn: () => getShopOrderTimeSeries(shopId!, timeFilter, customStartDate, customEndDate),
-    enabled: !!shopId,
-    staleTime: 30000, // 30 seconds
-  });
+  return useQuery(
+    [...merchantOrderKeys.all, 'time-series', shopId, timeFilter, customStartDate?.toISOString(), customEndDate?.toISOString()],
+    () => getShopOrderTimeSeries(shopId || '', timeFilter, customStartDate, customEndDate),
+    {
+      enabled: !!shopId,
+      staleTime: 30000,
+    }
+  );
 }
 
 // ============================================================================
@@ -178,11 +187,9 @@ export function useShopOrderTimeSeries(
 export function useConfirmOrder() {
   const queryClient = useQueryClient();
   
-  return useMutation({
-    mutationFn: (orderId: string) => confirmOrder(orderId),
+  return useMutation((orderId: string) => confirmOrder(orderId), {
     onSuccess: () => {
-      // Invalidate all merchant orders query to update the list screen
-      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+      queryClient.invalidateQueries(merchantOrderKeys.all);
     },
   });
 }
@@ -194,8 +201,7 @@ export function useConfirmOrder() {
 export function useAssignRunnerAndDispatch() {
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: ({
+  return useMutation(({
       orderId,
       runnerId,
       shopId,
@@ -203,13 +209,11 @@ export function useAssignRunnerAndDispatch() {
       orderId: string;
       runnerId: string;
       shopId?: string;
-    }) => assignRunnerAndDispatch(orderId, runnerId),
-    onSuccess: (_, variables) => {
-      // Invalidate all merchant orders query to update the list screen
-      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
-      // Invalidate runner status
+    }) => assignRunnerAndDispatch(orderId, runnerId), {
+    onSuccess: (_: unknown, variables: { shopId?: string }) => {
+      queryClient.invalidateQueries(merchantOrderKeys.all);
       if (variables.shopId) {
-        queryClient.invalidateQueries({ queryKey: merchantOrderKeys.runners(variables.shopId) });
+        queryClient.invalidateQueries(merchantOrderKeys.runners(variables.shopId));
       }
     },
   });
@@ -222,11 +226,9 @@ export function useAssignRunnerAndDispatch() {
 export function useMarkOrderDelivered() {
   const queryClient = useQueryClient();
   
-  return useMutation({
-    mutationFn: (orderId: string) => markOrderDelivered(orderId),
+  return useMutation((orderId: string) => markOrderDelivered(orderId), {
     onSuccess: () => {
-      // Invalidate all merchant orders query to update the list screen
-      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+      queryClient.invalidateQueries(merchantOrderKeys.all);
     },
   });
 }
@@ -238,12 +240,11 @@ export function useMarkOrderDelivered() {
 export function useCancelOrder() {
   const queryClient = useQueryClient();
   
-  return useMutation({
-    mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
+  return useMutation(({ orderId, reason }: { orderId: string; reason: string }) =>
       cancelOrderService(orderId, reason),
+    {
     onSuccess: () => {
-      // Invalidate all merchant orders query to update the list screen
-      queryClient.invalidateQueries({ queryKey: merchantOrderKeys.all });
+      queryClient.invalidateQueries(merchantOrderKeys.all);
     },
   });
 }
@@ -314,14 +315,14 @@ export function useGroupedOrders(orders: OrderWithAll[] | undefined) {
  * Get active orders count (pending, confirmed, out_for_delivery)
  */
 export function useActiveOrdersCount(shopId: string | undefined) {
-  const { data: orders } = useShopOrders(shopId);
+  const { data: orders = [] } = useShopOrders(shopId);
 
-  const activeCount = orders?.filter(
+  const activeCount = orders.filter(
     (order) =>
       order.status === 'pending' ||
       order.status === 'confirmed' ||
       order.status === 'out_for_delivery'
-  ).length || 0;
+  ).length;
 
   return activeCount;
 }
@@ -330,11 +331,11 @@ export function useActiveOrdersCount(shopId: string | undefined) {
  * Get pending orders that need confirmation
  */
 export function usePendingOrdersCount(shopId: string | undefined) {
-  const { data: orders } = useShopOrders(shopId);
+  const { data: orders = [] } = useShopOrders(shopId);
 
-  const pendingCount = orders?.filter(
+  const pendingCount = orders.filter(
     (order) => order.status === 'pending'
-  ).length || 0;
+  ).length;
 
   return pendingCount;
 }

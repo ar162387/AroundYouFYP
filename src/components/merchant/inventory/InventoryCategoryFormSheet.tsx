@@ -41,8 +41,15 @@ export function InventoryCategoryFormSheet({
   const { t } = useTranslation();
 
   const schema = useMemo(() => z.object({
-    name: z.string().min(1, t('merchant.inventory.form.required')).max(60, 'Keep category names under 60 characters'),
-    description: z.string().max(160, 'Keep descriptions short').optional().nullable(),
+    name: z
+      .string()
+      .min(1, t('merchant.inventory.form.required'))
+      .max(60, t('merchant.inventory.form.categoryNameMaxLength')),
+    description: z
+      .string()
+      .max(160, t('merchant.inventory.form.categoryDescriptionMaxLength'))
+      .optional()
+      .nullable(),
   }), [t]);
 
   const defaultValues = useMemo(() => ({

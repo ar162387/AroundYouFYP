@@ -26,24 +26,23 @@ export default function ReviewBottomSheet({
   const [reviewText, setReviewText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [alreadyReviewed, setAlreadyReviewed] = useState(false);
 
   // Reset form when modal opens/closes
   useEffect(() => {
     if (visible) {
       // Check if user has already reviewed this shop
       hasReviewedShop(shopId).then(({ data, error }) => {
-        if (!error && data) {
-          // User has reviewed before, but we still allow them to update
-          // Keep form empty for new submission
-          setRating(0);
-          setReviewText('');
-        }
+        setAlreadyReviewed(!error && Boolean(data));
+        setRating(0);
+        setReviewText('');
       });
     } else {
       // Reset form when closing
       setRating(0);
       setReviewText('');
       setError(null);
+      setAlreadyReviewed(false);
     }
   }, [visible, shopId]);
 
@@ -53,8 +52,16 @@ export default function ReviewBottomSheet({
   };
 
   const handleSubmit = async () => {
+    if (alreadyReviewed) {
+      setError('You have already reviewed this shop.');
+      return;
+    }
     if (rating === 0) {
       setError('Please select a rating');
+      return;
+    }
+    if (!shopId) {
+      setError('Unable to identify shop for this order. Please refresh and try again.');
       return;
     }
 
@@ -70,6 +77,11 @@ export default function ReviewBottomSheet({
       );
 
       if (submitError) {
+        if (submitError.message?.toLowerCase().includes('already reviewed')) {
+          setAlreadyReviewed(true);
+          setError('You have already reviewed this shop.');
+          return;
+        }
         setError('Failed to submit review. Please try again.');
         console.error('Error submitting review:', submitError);
       } else {
@@ -120,7 +132,8 @@ export default function ReviewBottomSheet({
                   <TouchableOpacity
                     key={star}
                     onPress={() => handleStarPress(star)}
-                    activeOpacity={0.7}
+                    activeOpacity={alreadyReviewed ? 1 : 0.7}
+                    disabled={alreadyReviewed}
                     style={{ marginHorizontal: 4 }}
                   >
                     <StarIcon
@@ -142,6 +155,7 @@ export default function ReviewBottomSheet({
                   setReviewText(text);
                   setError(null);
                 }}
+                editable={!alreadyReviewed}
                 multiline
                 numberOfLines={4}
                 style={{
@@ -164,15 +178,23 @@ export default function ReviewBottomSheet({
                 </View>
               )}
 
+              {alreadyReviewed && !error && (
+                <View className="mb-4">
+                  <Text className="text-amber-700 text-sm text-center">
+                    You already submitted a review for this shop.
+                  </Text>
+                </View>
+              )}
+
               {/* Submit Button */}
               <TouchableOpacity
                 className={`rounded-xl py-4 items-center justify-center ${
-                  rating === 0 || isSubmitting
+                  rating === 0 || isSubmitting || alreadyReviewed
                     ? 'bg-gray-300'
                     : 'bg-blue-600'
                 }`}
                 onPress={handleSubmit}
-                disabled={rating === 0 || isSubmitting}
+                disabled={rating === 0 || isSubmitting || alreadyReviewed}
                 activeOpacity={0.8}
               >
                 {isSubmitting ? (

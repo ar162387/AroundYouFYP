@@ -2,6 +2,7 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 apply plugin: "com.google.gms.google-services"
+apply plugin: "com.google.firebase.crashlytics"
 
 // Configure which .env file to use per build type for react-native-config
 // (debug uses local .env, release uses .env.production)
@@ -109,8 +110,8 @@ android {
         applicationId 'com.aroundyou.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
-        versionName "1.0.2"
+        versionCode 5
+        versionName "1.0.5"
         
         // react-native-config
         resValue "string", "build_config_package", "com.aroundyou.app"
@@ -128,9 +129,8 @@ android {
             
             // Debug: Print if env variables are loaded
             println "=== Environment Variables Check ==="
-            println "SUPABASE_URL: ${project.env.get('SUPABASE_URL') ? 'SET' : 'NOT SET'}"
+            println "BACKEND_API_URL: ${(project.env.get('BACKEND_API_URL') || project.env.get('DOTNET_API_URL')) ? 'SET' : 'NOT SET'}"
             println "GOOGLE_WEB_CLIENT_ID: ${project.env.get('GOOGLE_WEB_CLIENT_ID') ? 'SET' : 'NOT SET'}"
-            println "SUPABASE_ANON_KEY: ${project.env.get('SUPABASE_ANON_KEY') ? 'SET' : 'NOT SET'}"
         } else {
             println "ERROR: project.env not found! Environment variables are NOT loaded!"
             println "Make sure .env file exists in project root and dotenv.gradle is applied."
@@ -183,6 +183,15 @@ android {
     }
     buildTypes {
         debug {
+            signingConfig signingConfigs.debug
+        }
+        // Bundled JS (no Metro) + debuggable native + debug keystore — use for physical device dev.
+        debugRelease {
+            initWith(release)
+            debuggable true
+            matchingFallbacks = ['release']
+            minifyEnabled false
+            shrinkResources false
             signingConfig signingConfigs.debug
         }
         release {

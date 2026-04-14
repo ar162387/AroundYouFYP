@@ -158,7 +158,7 @@ export default function MerchantShopPortalScreen() {
               shop={shop}
               onShopDeleted={() => {
                 // Navigate back to shops list when shop is deleted
-                navigation.navigate('MerchantShops');
+                navigation.navigate('Home');
               }}
             />
           );
@@ -263,12 +263,10 @@ export default function MerchantShopPortalScreen() {
               decelerationRate="fast"
               bounces={false}
               nestedScrollEnabled={true}
-              // Allow nested horizontal scrolls to work properly
-              simultaneousHandlers={undefined}
             >
               {TABS.map((tab) => (
                 <View key={tab.key} style={{ width: screenWidth, flex: 1 }}>
-                  {tab.key === 'inventory' ? (
+                  {tab.key === 'inventory' || tab.key === 'orders' ? (
                     <View className="flex-1" style={{ paddingBottom: insets.bottom }}>
                       {renderSection(tab.key)}
                     </View>

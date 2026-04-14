@@ -1,7 +1,6 @@
-import type { PostgrestError } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { ApiError, apiClient, toApiError } from './apiClient';
 
-type ServiceResult<T> = { data: T | null; error: PostgrestError | null };
+type ServiceResult<T> = { data: T | null; error: ApiError | null };
 
 export type NotificationPreference = {
   id: string;
@@ -18,28 +17,21 @@ const TABLE = 'notification_preferences';
  * Get notification preferences for a user and role
  */
 export async function getNotificationPreferences(
-  userId: string,
+  _userId: string,
   role: 'consumer' | 'merchant'
 ): Promise<ServiceResult<NotificationPreference>> {
   try {
-    const { data, error } = await supabase
-      .from(TABLE)
-      .select('*')
-      .eq('user_id', userId)
-      .eq('role', role)
-      .single();
-
-    if (error) {
-      // If no preference exists yet, return null (not an error)
-      if (error.code === 'PGRST116') {
-        return { data: null, error: null };
-      }
-      return { data: null, error };
+    if (role !== 'consumer') {
+      return { data: null, error: new ApiError('Only consumer preferences are supported.', 422) };
     }
-
+    const data = await apiClient.get<NotificationPreference>('/api/v1/consumer/notification-preferences');
     return { data, error: null };
-  } catch (error: any) {
-    return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.status === 404) {
+      return { data: null, error: null };
+    }
+    return { data: null, error: apiError };
   }
 }
 
@@ -47,34 +39,21 @@ export async function getNotificationPreferences(
  * Update or create notification preferences
  */
 export async function updateNotificationPreferences(
-  userId: string,
+  _userId: string,
   role: 'consumer' | 'merchant',
   allowPushNotifications: boolean
 ): Promise<ServiceResult<NotificationPreference>> {
   try {
-    // Use upsert to create or update
-    const { data, error } = await supabase
-      .from(TABLE)
-      .upsert(
-        {
-          user_id: userId,
-          role,
-          allow_push_notifications: allowPushNotifications,
-        },
-        {
-          onConflict: 'user_id,role',
-        }
-      )
-      .select()
-      .single();
-
-    if (error) {
-      return { data: null, error };
+    if (role !== 'consumer') {
+      return { data: null, error: new ApiError('Only consumer preferences are supported.', 422) };
     }
-
+    const data = await apiClient.put<NotificationPreference>(
+      '/api/v1/consumer/notification-preferences',
+      { allow_push_notifications: allowPushNotifications }
+    );
     return { data, error: null };
-  } catch (error: any) {
-    return { data: null, error: error as PostgrestError };
+  } catch (error) {
+    return { data: null, error: toApiError(error) };
   }
 }
 

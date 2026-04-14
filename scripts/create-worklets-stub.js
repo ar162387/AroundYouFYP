@@ -61,4 +61,3 @@ module.exports = function() {
 } else {
   console.log('ℹ react-native-worklets already exists, skipping stub creation');
 }
-

@@ -4,7 +4,7 @@ import { useUserLocation } from './useUserLocation';
 import { findShopsByLocation } from '../../services/consumer/shopService';
 import { calculateShopsDeliveryFees } from '../../services/consumer/deliveryFeeService';
 import type { ConsumerShop } from '../../services/consumer/shopService';
-import { getConnectionResetCount } from '../../services/supabase';
+import { onForegroundResume, onNetworkRestored } from '../../utils/appLifecycleEvents';
 
 export function useShopsByLocation() {
   const { selectedAddress } = useLocationSelection();
@@ -15,7 +15,11 @@ export function useShopsByLocation() {
   
   // Determine which coordinates to use (priority: selectedAddress.coords > userCoords)
   const coords = useMemo(() => {
-    return selectedAddress?.coords || userCoords;
+    const result = selectedAddress?.coords || userCoords;
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:20',message:'Coords computed',data:{hasSelectedAddress:!!selectedAddress?.coords,hasUserCoords:!!userCoords,result:result?`${result.latitude},${result.longitude}`:null},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    return result;
   }, [
     selectedAddress?.coords?.latitude,
     selectedAddress?.coords?.longitude,
@@ -26,7 +30,6 @@ export function useShopsByLocation() {
   // Track last fetched coordinates to prevent duplicate fetches
   const lastFetchedCoordsRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
-  const lastConnectionResetCountRef = useRef<number>(0);
   
   // Create a stable key from coordinates
   const coordsKey = coords 
@@ -35,7 +38,13 @@ export function useShopsByLocation() {
 
   // Fetch shops function that can be called from anywhere
   const fetchShops = useCallback(async (forceRefresh = false) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:38',message:'fetchShops called',data:{forceRefresh,hasCoords:!!coords,coordsKey,lastFetchedCoords:lastFetchedCoordsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+    // #endregion
     if (!coords || !coords.latitude || !coords.longitude) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:39',message:'No coords available - early return',data:{coords:coords?`${coords.latitude},${coords.longitude}`:null},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,E'})}).catch(()=>{});
+      // #endregion
       if (isMountedRef.current) {
         setShops([]);
         setLoading(false);
@@ -46,6 +55,9 @@ export function useShopsByLocation() {
 
     // Skip if we already fetched for these exact coordinates (unless force refresh)
     if (!forceRefresh && lastFetchedCoordsRef.current === coordsKey) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:48',message:'Duplicate fetch prevented',data:{coordsKey,lastFetchedCoords:lastFetchedCoordsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       return;
     }
 
@@ -54,20 +66,26 @@ export function useShopsByLocation() {
       setError(null);
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:55',message:'Starting API call',data:{coords:coords?`${coords.latitude},${coords.longitude}`:null},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
+    // #endregion
     try {
-      console.log('Fetching shops for location:', { latitude: coords.latitude, longitude: coords.longitude });
       const result = await findShopsByLocation(coords.latitude, coords.longitude);
-      console.log('Shop fetch result:', { shopsCount: result.data?.length || 0, error: result.error });
 
       if (!isMountedRef.current) return;
 
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:62',message:'API call completed',data:{hasError:!!result.error,errorMessage:result.error?.message,shopsCount:result.data?.length||0},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
+      // #endregion
       if (result.error) {
         console.error('Error fetching shops:', result.error);
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:65',message:'API error - setting error state',data:{errorMessage:result.error.message,errorCode:result.error.code,willClearLastFetched:false},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'D,E'})}).catch(()=>{});
+        // #endregion
         setError(result.error.message || 'Failed to fetch shops');
         setShops([]);
       } else {
         const shopsData = result.data || [];
-        console.log('Setting shops:', shopsData.length);
         
         // Calculate delivery fees for all shops with timeout protection
         try {
@@ -107,6 +125,9 @@ export function useShopsByLocation() {
     } catch (err: any) {
       if (!isMountedRef.current) return;
       console.error('Exception fetching shops:', err);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:105',message:'Exception in fetchShops',data:{errorMessage:err?.message,errorName:err?.name,willClearLastFetched:false},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B,C,D,E'})}).catch(()=>{});
+      // #endregion
       setError(err?.message || 'An error occurred');
       setShops([]);
     } finally {
@@ -130,27 +151,35 @@ export function useShopsByLocation() {
     await fetchShops(true);
   }, [fetchShops]);
 
-  // Monitor connection resets and refetch when connection is restored
+  // Listen for app lifecycle events (foreground resume, network restored)
+  // This replaces the old connection reset polling which caused infinite loops
   useEffect(() => {
-    const checkConnectionReset = setInterval(() => {
-      const currentResetCount = getConnectionResetCount();
-      if (currentResetCount > lastConnectionResetCountRef.current) {
-        // Connection was reset, clear last fetched coords to trigger refetch
-        console.log('[useShopsByLocation] Connection reset detected, triggering refetch...');
-        lastConnectionResetCountRef.current = currentResetCount;
-        lastFetchedCoordsRef.current = null;
-        if (coords && isMountedRef.current) {
-          fetchShops(true); // Force refresh
-        }
+    const handleRefresh = () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:155',message:'Lifecycle event triggered refetch',data:{hasCoords:!!coords,isMounted:isMountedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B,C'})}).catch(()=>{});
+      // #endregion
+      console.log('[useShopsByLocation] Lifecycle event triggered, refetching shops...');
+      lastFetchedCoordsRef.current = null; // Clear to force refetch
+      if (coords && isMountedRef.current) {
+        fetchShops(true);
       }
-    }, 2000); // Check every 2 seconds
-
-    return () => clearInterval(checkConnectionReset);
+    };
+    
+    // Subscribe to both foreground resume and network restored events
+    const unsubscribeForeground = onForegroundResume(handleRefresh);
+    const unsubscribeNetwork = onNetworkRestored(handleRefresh);
+    
+    return () => {
+      unsubscribeForeground();
+      unsubscribeNetwork();
+    };
   }, [coords, fetchShops]);
 
   useEffect(() => {
     isMountedRef.current = true;
-    lastConnectionResetCountRef.current = getConnectionResetCount();
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/acb5d14a-8c7b-4e86-a207-c67239eea7e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useShopsByLocation.ts:175',message:'Initial fetch effect triggered',data:{coordsKey,hasCoords:!!coords},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A,E'})}).catch(()=>{});
+    // #endregion
     fetchShops();
 
     return () => {

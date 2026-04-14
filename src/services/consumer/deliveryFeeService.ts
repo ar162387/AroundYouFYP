@@ -121,7 +121,7 @@ export async function calculateShopsDeliveryFees(
     // Calculate base delivery fee (without order value surcharge)
     const baseFee = calculateDeliveryFee(distanceInMeters, deliveryLogic);
 
-    console.log(`Shop ${shop.id} (${shop.name}): distance=${distanceInMeters.toFixed(0)}m, fee=Rs ${baseFee.toFixed(0)}`);
+   
 
     return {
       ...shop,

@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -36,6 +37,7 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
   const { t } = useTranslation();
   const navigation = useNavigation<Nav>();
   const filterScrollRef = useRef<ScrollView>(null);
+  const { height: windowHeight } = useWindowDimensions();
 
   const {
     data: orders,
@@ -80,12 +82,12 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
 
   if (!typedOrders || !Array.isArray(typedOrders) || typedOrders.length === 0) {
     return (
-      <View className="flex-1 items-center justify-center p-8">
+      <View className="flex-1 items-center justify-center px-5 py-8" style={{ minHeight: Math.max(280, windowHeight * 0.45) }}>
         <Text className="text-6xl mb-4">📦</Text>
         <Text className="text-gray-900 text-lg font-semibold mb-2 text-center">
           {t('merchant.orders.noOrders')}
         </Text>
-        <Text className="text-gray-500 text-center">
+        <Text className="text-gray-500 text-center max-w-sm">
           {t('merchant.orders.noOrdersDesc')}
         </Text>
       </View>
@@ -93,7 +95,7 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
   }
 
   return (
-    <View className="flex-1">
+    <View className="flex-1 px-5">
       <View className="bg-white border-b border-gray-200">
         <ScrollView
           ref={filterScrollRef}
@@ -131,15 +133,25 @@ export default function OrdersSection({ shop }: OrdersSectionProps) {
 
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={
+          filteredOrders.length === 0
+            ? {
+                flexGrow: 1,
+                justifyContent: 'center',
+                paddingVertical: 24,
+                minHeight: Math.max(320, windowHeight * 0.5),
+              }
+            : { paddingVertical: 16, paddingBottom: 32 }
+        }
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isFetching} onRefresh={handleRefresh} />
         }
       >
         {filteredOrders.length === 0 ? (
-          <View className="py-8 items-center">
-            <Text className="text-gray-500 text-center">
+          <View className="items-center px-2">
+            <Text className="text-5xl mb-3">📦</Text>
+            <Text className="text-gray-900 text-base font-semibold text-center max-w-sm">
               {t('merchant.orders.noOrdersForPeriod')}
             </Text>
           </View>
@@ -213,8 +225,15 @@ function OrderCard({ order, onPress }: OrderCardProps) {
     }
   }, [order.status]);
 
-  const itemsPreview = order.order_items.slice(0, 5);
-  const remainingCount = order.order_items.length - 5;
+  const orderItems = order.order_items ?? [];
+  const itemsPreview = orderItems.slice(0, 5);
+  const remainingCount = Math.max(0, orderItems.length - 5);
+  const addressLine = (order.delivery_address?.street_address ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(', ');
 
   return (
     <TouchableOpacity
@@ -272,8 +291,8 @@ function OrderCard({ order, onPress }: OrderCardProps) {
             <LocationMarkerIcon size={18} color="#1D4ED8" innerColor="#FFFFFF" accentColor="rgba(255,255,255,0.25)" />
           </View>
           <Text className="text-gray-700 text-sm flex-1">
-            {order.delivery_address.street_address.split(',').slice(0, 2).join(',')}
-            {order.delivery_address.landmark && ` (${order.delivery_address.landmark})`}
+            {addressLine || '—'}
+            {order.delivery_address?.landmark ? ` (${order.delivery_address.landmark})` : ''}
           </Text>
         </View>
       </View>
