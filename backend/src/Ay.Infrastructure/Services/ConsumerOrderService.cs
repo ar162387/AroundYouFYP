@@ -174,11 +174,20 @@ public class ConsumerOrderService(
             .FirstOrDefaultAsync();
         if (merchantUserId != Guid.Empty)
         {
+            var merchantTitle = "New Order!";
+            var merchantBody = $"Order #{orderNumber} received at {shop.Name}.";
             _ = notifications.SendAsync(
                 merchantUserId,
-                "New Order!",
-                $"Order #{orderNumber} received at {shop.Name}.",
-                new Dictionary<string, string> { ["orderId"] = order.Id.ToString(), ["shopId"] = shop.Id.ToString() });
+                merchantTitle,
+                merchantBody,
+                new Dictionary<string, string>
+                {
+                    ["type"] = "new_order",
+                    ["orderId"] = order.Id.ToString(),
+                    ["shopId"] = shop.Id.ToString(),
+                    ["title"] = merchantTitle,
+                    ["body"] = merchantBody,
+                });
         }
 
         return Result.Success(ToDto(created!, false));
@@ -250,11 +259,21 @@ public class ConsumerOrderService(
                 .FirstOrDefaultAsync();
             if (merchantUserId != Guid.Empty)
             {
+                var cancelTitle = "Order Cancelled";
+                var cancelBody = $"Order #{order.OrderNumber} was cancelled by the customer.";
                 _ = notifications.SendAsync(
                     merchantUserId,
-                    "Order Cancelled",
-                    $"Order #{order.OrderNumber} was cancelled by the customer.",
-                    new Dictionary<string, string> { ["orderId"] = orderId.ToString(), ["status"] = "cancelled" });
+                    cancelTitle,
+                    cancelBody,
+                    new Dictionary<string, string>
+                    {
+                        ["type"] = "order_cancelled",
+                        ["orderId"] = orderId.ToString(),
+                        ["shopId"] = order.Shop.Id.ToString(),
+                        ["status"] = "cancelled",
+                        ["title"] = cancelTitle,
+                        ["body"] = cancelBody,
+                    });
             }
         }
 

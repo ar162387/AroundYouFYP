@@ -31,14 +31,17 @@ public class FirebaseNotificationService(
         var deviceTokenRepo = scope.ServiceProvider.GetRequiredService<IDeviceTokenRepository>();
         var prefRepo = scope.ServiceProvider.GetRequiredService<INotificationPreferenceRepository>();
 
-        // 1. Check notification preferences
-        // Notification preference is treated as user-level (role-agnostic).
-        // Fallback to legacy merchant-row in case older data exists there.
-        var pref = await prefRepo.GetAsync(userId, "consumer")
-            ?? await prefRepo.GetAsync(userId, "merchant");
-        if (pref is not null && !pref.AllowPushNotifications)
+        // 1. Check notification preferences (dual consumer+merchant accounts share one user id).
+        // Allow if either role row is missing or allows — suppress only when BOTH rows exist and are off.
+        // This avoids "consumer profile push off" blocking merchant new-order alerts for the same person.
+        var consumerPref = await prefRepo.GetAsync(userId, "consumer");
+        var merchantPref = await prefRepo.GetAsync(userId, "merchant");
+        var consumerAllows = consumerPref?.AllowPushNotifications ?? true;
+        var merchantAllows = merchantPref?.AllowPushNotifications ?? true;
+        var allowPush = consumerAllows || merchantAllows;
+        if (!allowPush)
         {
-            logger.LogDebug("Push suppressed for user {UserId} (preference off)", userId);
+            logger.LogDebug("Push suppressed for user {UserId} (consumer and merchant prefs both off)", userId);
             return;
         }
 
