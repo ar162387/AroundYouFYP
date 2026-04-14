@@ -46,3 +46,19 @@ yarn-error.*
 /ios
 # /android  # Keep android folder - it's needed for bare React Native builds
 .env.production
+# Phone / LAN dev build (see .env.example — copy from .env, set BACKEND_API_URL to Mac LAN IP)
+.env.lan
+
+# backend build and runtime artifacts
+backend/bin/
+backend/obj/
+backend/src/**/bin/
+backend/src/**/obj/
+backend/logs/
+backend/publish/
+backend/src/Ay.WebApi/logs/
+backend/wwwroot/uploads/
+
+# backend local-only config
+backend/appsettings.Development.json
+backend/appsettings.*.local.json

@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Merchant verification identities</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #5b9fd4;
+      --err: #e85d5d;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f6f9;
+        --card: #fff;
+        --border: #d5dde8;
+        --text: #1a2332;
+        --muted: #5a6b82;
+        --accent: #2563eb;
+        --err: #c62828;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+      padding: 1.25rem;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.25rem; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+      max-width: 72rem;
+    }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.25rem; }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      max-width: 32rem;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    .row { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: flex-end; margin-top: 0.75rem; }
+    button {
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .msg { margin-top: 0.75rem; font-size: 0.9rem; }
+    .msg.error { color: var(--err); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    tr:last-child td { border-bottom: none; }
+    code { font-size: 0.82em; }
+    .pill {
+      display: inline-block;
+      padding: 0.12rem 0.45rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--border);
+    }
+    .actions { white-space: nowrap; }
+    .actions button {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.78rem;
+      margin-right: 0.35rem;
+      margin-bottom: 0.25rem;
+    }
+    button.btn-verify { background: #2d7a4d; }
+    button.btn-reject {
+      background: transparent;
+      color: var(--err);
+      border: 1px solid var(--err);
+    }
+    @media (prefers-color-scheme: light) {
+      button.btn-verify { background: #15803d; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Merchant verification identities</h1>
+  <p class="sub">Rows come from the API: merchants who have submitted a CNIC on their account. Serve this file from the API (<code>/merchant-verifications.html</code>) or open locally and point the base URL at your running backend.</p>
+
+  <div class="panel">
+    <label for="baseUrl">API base URL</label>
+    <input id="baseUrl" type="text" autocomplete="off" spellcheck="false" />
+
+    <div class="row">
+      <div style="flex: 1; min-width: 12rem; max-width: 22rem;">
+        <label for="adminToken">Admin JWT bearer token</label>
+        <input id="adminToken" type="password" autocomplete="off" spellcheck="false" />
+      </div>
+      <button type="button" id="loadBtn">Load list</button>
+    </div>
+    <p class="msg error" id="errorMsg" hidden></p>
+  </div>
+
+  <div class="panel">
+    <p id="emptyHint" class="sub" style="margin:0">No data loaded yet.</p>
+    <div id="tableWrap" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th>Status</th>
+            <th>Email</th>
+            <th>Profile name</th>
+            <th>Name (CNIC)</th>
+            <th>CNIC</th>
+            <th>Expiry</th>
+            <th>Updated</th>
+            <th>IDs</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var STORAGE_KEY = 'ay-merchant-verifications';
+      var defaultBase = '';
+      try {
+        if (location.protocol !== 'file:') {
+          defaultBase = location.origin;
+        }
+      } catch (e) {}
+      var baseInput = document.getElementById('baseUrl');
+      var tokenInput = document.getElementById('adminToken');
+      var loadBtn = document.getElementById('loadBtn');
+      var tbody = document.getElementById('tbody');
+      var tableWrap = document.getElementById('tableWrap');
+      var emptyHint = document.getElementById('emptyHint');
+      var errorMsg = document.getElementById('errorMsg');
+
+      try {
+        var saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        baseInput.value = saved.baseUrl || defaultBase || 'http://localhost:5017';
+        tokenInput.value = saved.adminToken || '';
+      } catch (e) {
+        baseInput.value = defaultBase || 'http://localhost:5017';
+      }
+
+      function showError(text) {
+        errorMsg.textContent = text;
+        errorMsg.hidden = !text;
+      }
+
+      function esc(s) {
+        if (s == null || s === '') return '';
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      async function loadList() {
+        var base = (baseInput.value || '').trim().replace(/\/$/, '');
+        var token = (tokenInput.value || '').trim();
+        showError('');
+        if (!base) {
+          showError('Set API base URL.');
+          return false;
+        }
+        if (!token) {
+          showError('Set admin bearer token with role=admin.');
+          return false;
+        }
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ baseUrl: base, adminToken: token }));
+        } catch (e) {}
+
+        loadBtn.disabled = true;
+        try {
+          var url = base + '/api/v1/admin/merchant-verifications';
+          var res = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          if (res.status === 401 || res.status === 403) {
+            showError('Unauthorized. Use a valid JWT token for a user with admin role.');
+            return false;
+          }
+          if (!res.ok) {
+            var errBody = await res.text();
+            showError('Request failed (' + res.status + '): ' + (errBody.slice(0, 200) || res.statusText));
+            return false;
+          }
+          var rows = await res.json();
+          if (!Array.isArray(rows)) {
+            showError('Unexpected response shape.');
+            return false;
+          }
+          tbody.innerHTML = rows.map(function (r) {
+            var expiry = r.cnicExpiry != null ? String(r.cnicExpiry) : '—';
+            var updated = r.lastUpdatedAt != null ? String(r.lastUpdatedAt) : '—';
+            var mid = esc(r.merchantId);
+            var verified = String(r.status || '').toLowerCase() === 'verified';
+            var verifyDisabled = verified ? ' disabled' : '';
+            return (
+              '<tr>' +
+              '<td><span class="pill">' + esc(r.status) + '</span></td>' +
+              '<td>' + esc(r.email) + '</td>' +
+              '<td>' + esc(r.accountName) + '</td>' +
+              '<td>' + esc(r.nameAsPerCnic) + '</td>' +
+              '<td><code>' + esc(r.cnic) + '</code></td>' +
+              '<td>' + esc(expiry) + '</td>' +
+              '<td>' + esc(updated) + '</td>' +
+              '<td><code style="word-break:break-all">' + mid + '</code><br/><code style="word-break:break-all">' + esc(r.userId) + '</code></td>' +
+              '<td class="actions">' +
+              '<button type="button" class="btn-verify" data-action="approve" data-merchant-id="' + mid + '"' + verifyDisabled + '>Verify</button>' +
+              '<button type="button" class="btn-reject" data-action="reject" data-merchant-id="' + mid + '">Reject</button>' +
+              '</td>' +
+              '</tr>'
+            );
+          }).join('');
+          emptyHint.hidden = rows.length > 0;
+          tableWrap.hidden = rows.length === 0;
+          return true;
+        } catch (e) {
+          showError(e && e.message ? e.message : 'Network error — is the backend running and CORS allowed?');
+          return false;
+        } finally {
+          loadBtn.disabled = false;
+        }
+      }
+
+      loadBtn.addEventListener('click', function () {
+        loadList();
+      });
+
+      tbody.addEventListener('click', async function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute) return;
+        var action = t.getAttribute('data-action');
+        if (action !== 'approve' && action !== 'reject') return;
+        var merchantId = t.getAttribute('data-merchant-id');
+        if (!merchantId) return;
+
+        var base = (baseInput.value || '').trim().replace(/\/$/, '');
+        var token = (tokenInput.value || '').trim();
+        if (!base || !token) {
+          showError('Set API base URL and admin bearer token first.');
+          return;
+        }
+        var verb = action === 'approve' ? 'approve' : 'reject';
+        if (!window.confirm(action === 'approve'
+          ? 'Mark this merchant as verified?'
+          : 'Reject this submission? Identity fields will be cleared and status set to none.')) {
+          return;
+        }
+
+        t.disabled = true;
+        showError('');
+        try {
+          var res = await fetch(
+            base + '/api/v1/admin/merchant-verifications/' + encodeURIComponent(merchantId) + '/' + verb,
+            { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }
+          );
+          if (res.status === 401 || res.status === 403) {
+            var txt = await res.text();
+            showError('Auth failed (' + res.status + '): ' + txt.slice(0, 180));
+            return;
+          }
+          if (!res.ok && res.status !== 204) {
+            var errT = await res.text();
+            showError('Action failed (' + res.status + '): ' + errT.slice(0, 200));
+            return;
+          }
+          await loadList();
+        } catch (e) {
+          showError(e && e.message ? e.message : 'Network error');
+        } finally {
+          t.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
